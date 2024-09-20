@@ -34,28 +34,43 @@ def cut(alignment, interval, gfa_s):
 
     qlen = int(qlen)
     cigar = split((opt[-1].split(":")[2]))
-    
+
     path_seq = "".join([gfa_s[node] if path[0] == ">" else rc(gfa_s[node]) for node in path[1:].split(path[0])])[int(ps):int(pe)+1] # CHECKME pe+1 ?
     pp = 0 # position on path
     qp = int(qs) # position on query
     ccigar = []
+    addflag = False
+    stopflag = False
     for opl, op in cigar:
+        if not addflag and op != "D" and (qp == interval[0] or (qp < interval[0] and qp + opl > interval[0])):
+            addflag = True
+            cut = interval[0] - qp
+        if addflag and op != "D" and (qp < interval[1] and qp+opl >= interval[1]):
+            stopflag = True
+            cut = qp+opl - interval[1]
+
+        edit = ""
         if op == "=":
-            ccigar.append((opl, op, ""))
             qp += opl
             pp+= opl
         elif op == "X":
-            ccigar.append((opl, op, path_seq[pp:pp+opl]))
+            edit = path_seq[pp:pp+opl]
             qp += opl
             pp+=opl
         elif op == "D":
-            ccigar.append((opl,op, path_seq[pp:pp+opl]))
+            edit = path_seq[pp:pp+opl]
             pp+=opl
         elif op == "I":
-            ccigar.append((opl, op, ""))
             qp += opl
         else:
             assert False, f"Unkown operation in CIGAR string {op}"
+
+        if addflag:
+            ccigar.append((opl - cut, op, edit))
+            cut = 0
+        if stopflag:
+            break
+
     alignment.append(interval[0])
     alignment.append(interval[1])
     alignment.append(ccigar)
@@ -81,11 +96,12 @@ def smooth(alignments, read, minl=10):
     for al in alignments:
         int_s, int_e, cigar = al[-3:]
         if int_s > p:
-            # TODO decide if we want to add clips to the sequence
-            # seq += read[p:int_s]
             op = "N"
             if p == 0:
-                op = "S"
+                op = "H" # TODO S/H if hard clipping
+            # TODO decide if we want to add clips to the sequence
+            if op == "N":
+                seq += read[p:int_s]
             full_cigar.append((int_s - p, op))
             p += int_s - p
         for l, op, c in cigar:
@@ -112,11 +128,11 @@ def smooth(alignments, read, minl=10):
                     full_cigar.append((l, "="))
                 else:
                     full_cigar.append((l, op))
-        assert p == int_e
+        # assert p == int_e, f"Error on read {al[0]}, {p} {int_s}, {int_e}"
     if p < int(alignments[-1][1]):
         # TODO decide if we want to add clips to the sequence
         # seq+=read[p:]
-        full_cigar.append((len(read) - p, "S"))
+        full_cigar.append((len(read) - p, "H")) # TODO S/H
     full_cigar = compact(full_cigar)
     print(f"@{alignments[0][0]} {cigar2str(full_cigar)}")
     print(seq)
@@ -127,7 +143,7 @@ def main():
     gfa_fn = sys.argv[1]
     gaf_fn = sys.argv[2]
     fq_fn = sys.argv[3]
-    
+
     # TODO do not load in memory the full FASTQ
     # (this should be easier when reimplementing this into graphaligner)
     reads = {}
@@ -147,6 +163,7 @@ def main():
             # MAPQ
             # print("Skipping", tokens[0], "due to low MAPQ", file=sys.stderr)
             continue
+
         if len(alignments) == 0:
             alignments.append(tokens)
             continue
@@ -158,7 +175,7 @@ def main():
                 print("Skipping", alignments[0][0], "due to multiple alignments", file=sys.stderr)
                 alignments = []
             else:
-                alignments.sort(key=lambda x: x[2])
+                alignments.sort(key=lambda x: int(x[2]))
                 intervals = get_split(alignments)
                 for i in range(len(alignments)):
                     cut(alignments[i], intervals[i], gfa_s)
@@ -166,7 +183,7 @@ def main():
                 alignments = []
         alignments.append(tokens)
     if len(alignments) <= 3:
-        alignments.sort(key=lambda x: x[2])
+        alignments.sort(key=lambda x: int(x[2]))
         intervals = get_split(alignments)
         for i in range(len(alignments)):
             cut(alignments[i], intervals[i], gfa_s)
@@ -174,7 +191,7 @@ def main():
     else:
         # TODO
         print("Skipping", alignments[0][0], "due to multiple alignments", file=sys.stderr)
-    
+
 
 if __name__ == "__main__":
     # TODO argparse
