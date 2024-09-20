@@ -31,63 +31,29 @@ def rc(S):
 
 def cut(alignment, interval, gfa_s):
     qname, qlen, qs, qe, strand, path, plen, ps, pe, residues, ablen, mapq, *opt = alignment
+
     qlen = int(qlen)
     cigar = split((opt[-1].split(":")[2]))
     
-    p = int(ps) # offset on current node
-    pi = 0 # current node on path
-    ci = 0 # current cigar operation
-    sep = path[0]
+    path_seq = "".join([gfa_s[node] if path[0] == ">" else rc(gfa_s[node]) for node in path[1:].split(path[0])])[int(ps):int(pe)+1] # CHECKME pe+1 ?
+    pp = 0 # position on path
     qp = int(qs) # position on query
-    path = path[1:].split(sep)
     ccigar = []
-    while pi < len(path) and ci < len(cigar):
-        node = path[pi]
-        node_seq = gfa_s[node] if sep == ">" else rc(gfa_s[node])
-        node_l = len(node_seq)
-        opl, op = cigar[ci]
+    for opl, op in cigar:
         if op == "=":
-            if p + opl >= node_l:
-                ccigar.append((node_l - p, op, ""))
-                pi+=1
-                cigar[ci] = (opl - (node_l-p), op)
-                assert cigar[ci][0] >= 0, "Cigar length < 0 after cutting"
-                if cigar[ci][0] == 0:
-                    cigar.pop(0)
-                p = 0
-            else:
-                ccigar.append((opl, op, ""))
-                cigar.pop(0) # ci+=1
-                p += opl
+            ccigar.append((opl, op, ""))
+            qp += opl
+            pp+= opl
         elif op == "X":
-            if p + opl >= node_l:
-                ccigar.append((node_l - p, op, node_seq[p:]))
-                pi+=1
-                cigar[ci] = (opl- (node_l-p), op)
-                assert cigar[ci][0] >= 0, "Cigar length < 0 after cutting"
-                if cigar[ci][0] == 0:
-                    cigar.pop(0)
-                p = 0
-            else:
-                ccigar.append((opl, op, node_seq[p:p+opl]))
-                cigar.pop(0) # ci+=1
-                p+=opl
+            ccigar.append((opl, op, path_seq[pp:pp+opl]))
+            qp += opl
+            pp+=opl
         elif op == "D":
-            if opl + p >= node_l:
-                ccigar.append((node_l - p, op, node_seq[p:]))
-                pi+=1
-                cigar[ci] = (opl- (node_l-p), op)
-                assert cigar[ci][0] >= 0, "Cigar length < 0 after cutting"
-                if cigar[ci][0] == 0:
-                    cigar.pop(0)
-                p = 0
-            else:
-                ccigar.append((opl,op, node_seq[p:p+opl]))
-                cigar.pop(0) # ci+=1
-                p+=opl
+            ccigar.append((opl,op, path_seq[pp:pp+opl]))
+            pp+=opl
         elif op == "I":
             ccigar.append((opl, op, ""))
-            cigar.pop(0) # ci+=1
+            qp += opl
         else:
             assert False, f"Unkown operation in CIGAR string {op}"
     alignment.append(interval[0])
