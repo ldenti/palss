@@ -176,8 +176,43 @@ def smooth(alignments, read, ofq, ogaf, minl=10):
             # full_cigar.append((int_s - p, op))
             p += int_s - p
 
+        insertions = []
+        deletions = []
+        rp = 0
+        for l, op, _ in cigar:
+            if op == "I":
+                insertions.append((rp, rp+1))
+            elif op == "D":
+                deletions.append((rp, rp+l))
+            if op != "I":
+                rp += l
+
+        itosmooth = []
+        if len(insertions) > 0:
+            i_clusters = [[insertions[0]]]
+            for (s,e) in insertions[1:]:
+                if s - i_clusters[-1][-1][1] < 10: # FIXME hardcoded
+                    i_clusters[-1].append((s,e))
+                else:
+                    i_clusters.append([(s,e)])
+            for c in i_clusters:
+                f = sum([e - s for s,e in c]) < minl
+                itosmooth += [f for _ in c]
+        dtosmooth = []
+        if len(deletions) > 0:
+            d_clusters = [[deletions[0]]]
+            for (s,e) in deletions[1:]:
+                if s - d_clusters[-1][-1][1] < 10: # FIXME hardcoded
+                    d_clusters[-1].append((s,e))
+                else:
+                    d_clusters.append([(s,e)])
+            for c in d_clusters:
+                f = sum([e - s for s,e in c]) < minl
+                dtosmooth += [f for _ in c]
+
         local_cigar = []
         plen = 0
+        iidx, didx = 0, 0
         al[2] += poffset  # move starting position
         for l, op, c in cigar:
             assert (op in ["=", "I"] and c == "") or (
@@ -192,20 +227,22 @@ def smooth(alignments, read, ofq, ogaf, minl=10):
                 local_cigar.append((l, "="))
                 p += l
             elif op == "I":
-                if l < minl:
+                if itosmooth[iidx]:
                     p += l
                     poffset -= l
                 else:
                     seq += seq[p : p + l]
                     local_cigar.append((l, op))
                     p += l
+                iidx += 1
             elif op == "D":
-                if l < minl:
+                if dtosmooth[didx]:
                     seq += c
                     local_cigar.append((l, "="))
                     poffset += l
                 else:
                     local_cigar.append((l, op))
+                didx += 1
             else:
                 assert False, f"Unkown CIGAR operation, {op}, why?"
 
