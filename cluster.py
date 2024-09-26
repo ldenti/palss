@@ -1,5 +1,6 @@
 import sys
 import re
+import networkx as nx
 
 
 class SFS:
@@ -8,15 +9,14 @@ class SFS:
         self.s = s  # 0-based [
         self.e = e  # 0-based )
         self.nodes = []
+        self.path = False
 
-    def place(self, nodes, aprx=False):
+    def place(self, nodes, path=False):
         self.nodes = nodes
-        self.approximate = aprx
+        self.path = path
 
     def __repr__(self):
-        return (
-            f"{self.qname}:{self.s}-{self.e}\t{'>'.join([str(x) for x in self.nodes])}"
-        )
+        return f"{self.qname}:{self.s}-{self.e}\t{self.path}\t{'>'.join([str(x) for x in self.nodes])}"
 
 
 def split(cigar):
@@ -30,7 +30,8 @@ def split(cigar):
     return pairs
 
 
-def place(specifics, alignments, gfa_s):
+# Strong assumption: no SFS cover more than 1 smoothed alignment. For this reason, we filter out short alignments while smoothing (we smooth the read though)
+def place(specifics, alignments, graph):
     specifics_it = iter(specifics)
     alignments_it = iter(alignments)
 
@@ -38,11 +39,10 @@ def place(specifics, alignments, gfa_s):
     al = next(alignments_it, None)
     al_i = 0
 
-    # sfs_cat = []
     updateal = True
     while sfs != None and al != None:
         s, e = sfs.s, sfs.e
-        if updateal:
+        if True:  # updateal:
             (
                 qname,
                 qlen,
@@ -58,17 +58,19 @@ def place(specifics, alignments, gfa_s):
                 mapq,
                 *opt,
             ) = al
+            nidx = 0  # node idx
             cigar = split((opt[-1].split(":")[2]))
+            cx = 0  # current cigar operation
             path = [int(x) for x in path[1:].split(path[0])]
             qs, qe = int(qs), int(qe)  # [qs,qe)
-            ps, pe = int(ps), int(pe)  # [qs,qe)
+            ps, pe = int(ps), int(pe)  # [ps,pe)
             qp = qs  # current position on query
-            pp = ps  # current position on query
             updateal = False
         if e <= qs:
+            # Case 1: sfs precedes alignment
             if al_i == 0:
                 # TODO Clipping at begin
-                sfs.place(["SCLIP"], aprx=True)
+                pass
             else:
                 if alignments[al_i - 1][5][0] == alignments[al_i][5][0]:
                     x, y = int(
@@ -76,15 +78,35 @@ def place(specifics, alignments, gfa_s):
                             -1
                         ]
                     ), int(alignments[al_i][5][1:].split(alignments[al_i][5][0])[0])
-                    sfs.place([x, "...", y], aprx=True)
+                    if alignments[al_i - 1][5][0] == "<":
+                        x, y = y, x
+                    if x > y:
+                        # CHECKME: we may just need to invert x and y
+                        print(
+                            f"(1) Skipping subgraph from {x} to {y} - insertion on {alignments[al_i][0]} {alignments[al_i][5][0]} ?",
+                            file=sys.stderr,
+                        )
+                    else:
+                        if (
+                            y - x < 100
+                        ):  # hardcoded + approximation assuming topological sorting
+                            print(
+                                f"Computing subgraph from {x} to {y}", file=sys.stderr
+                            )
+                            allpaths = nx.all_simple_paths(graph, source=x, target=y)
+                            nodes = set(node for path in allpaths for node in path)
+                            sfs.place(nodes)
+                        else:
+                            print(f"Skipping subgraph from {x} to {y}", file=sys.stderr)
                 else:
                     # TODO complex event?
-                    sfs.place(["COMPLEX"], aprx=True)
+                    pass
             sfs = next(specifics_it, None)
         elif s < qs and e > qs:
+            # Case 2: sfs starts before alignment and ends after
             if al_i == 0:
                 # TODO Clipping at begin
-                sfs.place(["SCLIP"], aprx=True)
+                pass
             else:
                 if alignments[al_i - 1][5][0] == alignments[al_i][5][0]:
                     x = int(
@@ -94,20 +116,27 @@ def place(specifics, alignments, gfa_s):
                     )
 
                     subpath = []
-                    nx = 0  # node idx
-                    cx = 0
+                    used = ps
                     while True:
-                        node = path[nx]
-                        node_l = gfa_s[node]
+                        node = path[nidx]
+                        node_l = graph.nodes[node]["l"] - used
                         l, op = cigar[cx]
-                        if l >= node_l:
-                            nx += 1
-                            l = node_l
-                            cigar[cx] = (cigar[cx][0] - node_l, cigar[cx][1])
-                            if cigar[cx][0] <= 0:
-                                cx += 1
-                        else:
+                        if op == "I":
+                            cigar[cx] = (0, cigar[cx][1])
                             cx += 1
+                        else:
+                            if l >= node_l:
+                                nidx += 1
+                                used = 0
+                                l = node_l
+                                cigar[cx] = (cigar[cx][0] - node_l, cigar[cx][1])
+                                if cigar[cx][0] <= 0:
+                                    cx += 1
+                            else:
+                                used += l
+                                cigar[cx] = (0, cigar[cx][1])
+                                cx += 1
+
                         if op == "=" or op == "I":
                             qp += l
                         elif op == "D":
@@ -119,28 +148,56 @@ def place(specifics, alignments, gfa_s):
                                 subpath.append(node)
                         if qp >= e:
                             break
+
                     assert len(subpath) > 0
-                    sfs.place([x, "..."] + subpath, aprx=True)
+                    y = subpath[0]
+                    if alignments[al_i - 1][5][0] == "<":
+                        x, y = y, x
+                    if x > y:
+                        # CHECKME: we may just need to invert x and y
+                        print(
+                            f"(2) Skipping subgraph from {x} to {y} - insertion on {alignments[al_i][0]} {alignments[al_i][5][0]} ?",
+                            file=sys.stderr,
+                        )
+                    else:
+                        if (
+                            y - x < 100
+                        ):  # hardcoded + approximation assuming topological sorting
+                            print(
+                                f"Computing subgraph from {x} to {y}", file=sys.stderr
+                            )
+                            allpaths = nx.all_simple_paths(graph, source=x, target=y)
+                            nodes = set(node for path in allpaths for node in path)
+                            sfs.place(nodes | set(subpath))
+                        else:
+                            print(f"Skipping subgraph from {x} to {y}", file=sys.stderr)
                 else:
                     # TODO complex event?
-                    sfs.place(["COMPLEX"], aprx=True)
+                    pass
             sfs = next(specifics_it, None)
         elif s >= qs and e <= qe:
+            # Case 3: sfs is inside alignment
             subpath = []
-            nx = 0  # node idx
-            cx = 0
+            used = ps
             while True:
-                node = path[nx]
-                node_l = gfa_s[node]
+                node = path[nidx]
+                node_l = graph.nodes[node]["l"] - used
                 l, op = cigar[cx]
-                if l >= node_l:
-                    nx += 1
-                    l = node_l
-                    cigar[cx] = (cigar[cx][0] - node_l, cigar[cx][1])
-                    if cigar[cx][0] <= 0:
-                        cx += 1
-                else:
+                if op == "I":
+                    cigar[cx] = (0, cigar[cx][1])
                     cx += 1
+                else:
+                    if l >= node_l:
+                        nidx += 1
+                        used = 0
+                        l = node_l
+                        cigar[cx] = (cigar[cx][0] - node_l, cigar[cx][1])
+                        if cigar[cx][0] <= 0:
+                            cx += 1
+                    else:
+                        used += l
+                        cigar[cx] = (0, cigar[cx][1])
+                        cx += 1
                 if op == "=" or op == "I":
                     qp += l
                 elif op == "D":
@@ -153,32 +210,40 @@ def place(specifics, alignments, gfa_s):
                 if qp >= e:
                     break
             assert len(subpath) > 0
-            sfs.place(sorted(subpath))
+            sfs.place(sorted(subpath), path=True)
             sfs = next(specifics_it, None)
         elif s < qe and e > qe:
+            # Case 3: sfs overlaps alignment end
             if al_i == len(alignments) - 1:
                 # TODO Clipping at end
-                sfs.place(["ECLIP"], aprx=True)
+                pass
             else:
                 y = int(
                     alignments[al_i + 1][5][1:].split(alignments[al_i + 1][5][0])[0]
                 )
                 if alignments[al_i][5][0] == alignments[al_i + 1][5][0]:
                     subpath = []
-                    nx = 0  # node idx
-                    cx = 0
+                    used = ps
                     while True:
-                        node = path[nx]
-                        node_l = gfa_s[node]
+                        node = path[nidx]
+                        node_l = graph.nodes[node]["l"] - used
                         l, op = cigar[cx]
-                        if l >= node_l:
-                            nx += 1
-                            l = node_l
-                            cigar[cx] = (cigar[cx][0] - node_l, cigar[cx][1])
-                            if cigar[cx][0] <= 0:
-                                cx += 1
-                        else:
+                        if op == "I":
+                            cigar[cx] = (0, cigar[cx][1])
                             cx += 1
+                        else:
+                            if l >= node_l:
+                                nidx += 1
+                                used = 0
+                                l = node_l
+                                cigar[cx] = (cigar[cx][0] - node_l, cigar[cx][1])
+                                if cigar[cx][0] <= 0:
+                                    cx += 1
+                            else:
+                                used += l
+                                cigar[cx] = (0, cigar[cx][1])
+                                cx += 1
+
                         if op == "=" or op == "I":
                             qp += l
                         elif op == "D":
@@ -188,25 +253,49 @@ def place(specifics, alignments, gfa_s):
                         if qp >= s:
                             if len(subpath) == 0 or node != subpath[-1]:
                                 subpath.append(node)
+                                # in this case, subpath is path[nidx:] for sure
                         if cx == len(cigar) or qp >= e:
                             break
+
                     assert len(subpath) > 0
-                    sfs.place(subpath + ["...", y], aprx=True)
+                    assert subpath[-1] == path[-1]
+                    x = subpath[0]
+                    if alignments[al_i][5][0] == "<":
+                        x, y = y, x
+
+                    if x > y:
+                        print(
+                            f"(3) Skipping subgraph from {x} to {y} - insertion on {alignments[al_i][0]} {alignments[al_i][5][0]} ?",
+                            file=sys.stderr,
+                        )
+                    else:
+                        if (
+                            y - x < 100
+                        ):  # hardcoded + approximation assuming topological sorting
+                            print(
+                                f"Computing subgraph from {x} to {y}", file=sys.stderr
+                            )
+                            allpaths = nx.all_simple_paths(graph, source=x, target=y)
+                            nodes = set(node for path in allpaths for node in path)
+                            sfs.place(nodes | set(subpath))
+                        else:
+                            print(
+                                f"(3) Skipping subgraph from {x} to {y}",
+                                file=sys.stderr,
+                            )
                 else:
                     # TODO complex event?
-                    sfs.place(["COMPLEX"], aprx=True)
+                    pass
+            al = next(alignments_it, None)
+            al_i += 1
+            updateal = True
             sfs = next(specifics_it, None)
         elif s >= qe:
+            # Case 4: sfs is after current alignment
             # move to next alignment
             al = next(alignments_it, None)
             al_i += 1
             updateal = True
-    # for x in sfs_cat:
-    #     print(alignments[0][0], x[0], x[1])
-    # print("")
-    #     # [qs,qe)
-
-    #     cigar = split((opt[-1].split(":")[2]))
 
 
 def main():
@@ -214,12 +303,19 @@ def main():
     sfs_fn = sys.argv[2]
     gaf_fn = sys.argv[3]
 
-    gfa_s = {}
+    print("Iterating over nodes", file=sys.stderr)
+    graph = nx.DiGraph()
     for line in open(gfa_fn):
         if line.startswith("S"):
             _, idx, seq, *_ = line.strip("\n").split("\t")
-            gfa_s[int(idx)] = len(seq)
+            graph.add_node(int(idx), l=len(seq))
+    print("Iterating over edges", file=sys.stderr)
+    for line in open(gfa_fn):
+        if line.startswith("L"):
+            _, idx1, _, idx2, _, *_ = line.strip("\n").split("\t")
+            graph.add_edge(int(idx1), int(idx2))
 
+    print("Loading specific strings", file=sys.stderr)
     sfs = {}
     for line in open(sfs_fn):
         idx, st, le = line.strip("\n").split("\t")
@@ -242,9 +338,19 @@ def main():
             assert (
                 len(alignments) <= 3
             ), "Too many alignments for read {alignments[0][0]}, why?"
-            place(sfs[alignments[0][0]], alignments, gfa_s)
-            for _ in sfs[alignments[0][0]]:
-                print(_)
+            orientations = set(al[5][0] for al in alignments)
+            if len(orientations) > 1:
+                print(
+                    "Alignments with different orientations. Skipping for now",
+                    file=sys.stderr,
+                )
+            else:
+                orientation = list(orientations)[0]
+                # alignments.sort(key=lambda x: int(x[2]), reverse=orientation == "<")
+                alignments.sort(key=lambda x: int(x[2]))
+                place(sfs[alignments[0][0]], alignments, graph)
+                for _ in sfs[alignments[0][0]]:
+                    print(_)
 
             alignments = []
         alignments.append(tokens)
@@ -252,6 +358,17 @@ def main():
         assert (
             len(alignments) <= 3
         ), "Too many alignments for read {alignments[0][0]}, why?"
+        orientations = set(al[5][0] for al in alignments)
+        if len(orientations) > 1:
+            print(
+                "Alignments with different orientations. Skipping for now",
+                file=sys.stderr,
+            )
+        else:
+            orientation = list(orientations)[0]
+            # alignments.sort(key=lambda x: int(x[2]), reverse=orientation == "<")
+            alignments.sort(key=lambda x: int(x[2]))
+            place(sfs[alignments[0][0]], alignments, graph)
 
     placed = 0
     total = 0
