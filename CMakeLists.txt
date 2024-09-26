@@ -43,7 +43,7 @@ ExternalProject_Add(rb3
 )
 ExternalProject_Get_Property(rb3 SOURCE_DIR)
 SET(RB3_SOURCE_DIR ${SOURCE_DIR})
-SET(RB3_INCLUDE_DIR ${ROPEBWT_SOURCE_DIR})
+SET(RB3_INCLUDE_DIR ${RB3_SOURCE_DIR})
 set(rb3-src ${RB3_SOURCE_DIR}/fm-index.c ${RB3_SOURCE_DIR}/rld0.c ${RB3_SOURCE_DIR}/mrope.c ${RB3_SOURCE_DIR}/rope.c ${RB3_SOURCE_DIR}/io.c ${RB3_SOURCE_DIR}/rle.c ${RB3_SOURCE_DIR}/kthread.c ${RB3_SOURCE_DIR}/kalloc.c ${RB3_SOURCE_DIR}/misc.c ${RB3_SOURCE_DIR}/ssa.c ${RB3_SOURCE_DIR}/dawg.c ${RB3_SOURCE_DIR}/libsais16.c)
 set_source_files_properties(${rb3-src} PROPERTIES GENERATED TRUE)
 add_library(RB3 OBJECT ${rb3-src})
@@ -77,6 +77,7 @@ add_dependencies(KMC kmc)
 add_dependencies(pansv RB3 KMC)
 
 target_include_directories(pansv
+    PRIVATE ${RB3_INCLUDE_DIR}
     PRIVATE ${KMC_INCLUDE_DIR}
     PRIVATE ${PROJECT_SOURCE_DIR}
 )

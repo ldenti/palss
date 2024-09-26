@@ -4,9 +4,9 @@
 #include <vector>
 #include <zlib.h>
 
+#include "fm-index.h"
 #include "kmc_api/kmc_file.h"
 #include "kseq.h"
-#include "ropebwt3/fm-index.h"
 
 // KSTREAM_INIT(gzFile, gzread, 65536)
 KSEQ_INIT(gzFile, gzread)
