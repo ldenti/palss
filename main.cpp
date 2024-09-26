@@ -81,7 +81,7 @@ vector<sfs_t> assemble_lr(const vector<sfs_t> &sfs) {
   while (i < sfs.size()) {
     int j;
     for (j = i + 1; j < sfs.size(); ++j) {
-      if (sfs[j - 1].s + sfs[j - 1].l <= sfs[j].s) {
+      if (sfs[j - 1].s + sfs[j - 1].l <= sfs[j].s - 200) { // FIXME hardcoded
         // non-overlapping
         int l = sfs[j - 1].s + sfs[j - 1].l - sfs[i].s;
         assembled_sfs.push_back({sfs[i].s, l});
@@ -104,7 +104,7 @@ vector<sfs_t> assemble_rl(const vector<sfs_t> &sfs) {
   while (i >= 0) {
     int j;
     for (j = i - 1; j >= 0; --j) {
-      if (sfs[j + 1].s + sfs[j + 1].l <= sfs[j].s) {
+      if (sfs[j + 1].s + sfs[j + 1].l <= sfs[j].s - 200) { // FIXME hardcoded
         // non-overlapping
         int l = sfs[j + 1].s + sfs[j + 1].l - sfs[i].s;
         assembled_sfs.push_back({sfs[i].s, l});

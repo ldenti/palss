@@ -262,23 +262,24 @@ def smooth(alignments, read, ofq, ogaf, minl=10):
 
     for al in alignments:
         # qname, qlen, qs, qe, strand, path, plen, ps, pe, residues, ablen, mapq, *opt
-        print(
-            al[0],
-            len(seq),
-            al[2],
-            al[3],
-            al[4],
-            al[5],
-            al[6],
-            al[7],
-            al[8],
-            "*",
-            "*",
-            al[11],
-            al[-1],
-            sep="\t",
-            file=ogaf,
-        )  # al[9], al[10],
+        if al[3] - al[2] > 100: # FIXME: hardcoded
+            print(
+                al[0],
+                len(seq),
+                al[2],
+                al[3],
+                al[4],
+                al[5],
+                al[6],
+                al[7],
+                al[8],
+                "*",
+                "*",
+                al[11],
+                al[-1],
+                sep="\t",
+                file=ogaf,
+            )  # al[9], al[10],
     alignments.append(len(seq))
 
 
