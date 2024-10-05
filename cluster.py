@@ -10,10 +10,12 @@ class SFS:
         self.e = e  # 0-based )
         self.nodes = []
         self.path = False
+        self.placed = False
 
     def place(self, nodes, path=False):
         self.nodes = nodes
         self.path = path
+        self.placed = True
 
     def __repr__(self):
         return f"{self.qname}:{self.s}-{self.e}\t{self.path}\t{'>'.join([str(x) for x in self.nodes])}"
@@ -323,8 +325,8 @@ def main():
             sfs[idx] = []
         sfs[idx].append(SFS(idx, int(st), int(st) + int(le)))
 
-    print(len(sfs))
-
+    # print(len(sfs))
+    
     alignments = []
     for line in open(gaf_fn):
         tokens = line.strip("\n").split("\t")
@@ -349,9 +351,6 @@ def main():
                 # alignments.sort(key=lambda x: int(x[2]), reverse=orientation == "<")
                 alignments.sort(key=lambda x: int(x[2]))
                 place(sfs[alignments[0][0]], alignments, graph)
-                for _ in sfs[alignments[0][0]]:
-                    print(_)
-
             alignments = []
         alignments.append(tokens)
     if len(alignments) > 0:
@@ -370,13 +369,38 @@ def main():
             alignments.sort(key=lambda x: int(x[2]))
             place(sfs[alignments[0][0]], alignments, graph)
 
+
+    ss = []
+    for _, S in sfs.items():
+        for s in S:
+            if s.placed:
+                ss.append(s)
+
+    clusters = [[ss[0]]]
+    for s in ss[1:]:
+        ii = -1
+        for i, c in enumerate(clusters):
+            cg = set.union(*[set(s2.nodes) for s2 in c])
+            if len(set(s.nodes) & cg) > 0:
+                ii = i
+                break
+        if ii != -1:
+            clusters[i].append(s)
+        else:
+            clusters.append([s])
+    for i, c in enumerate(clusters):
+        if len(c) < 2:
+            continue
+        cg = set.union(*[set(s.nodes) for s in c])
+        print(",".join([f"{s.qname}:{s.s}-{s.e}" for s in c]), ",".join([str(x) for x in cg]))
+
     placed = 0
     total = 0
     for qname, specifics in sfs.items():
         for s in specifics:
             total += 1
             placed += len(s.nodes) > 0
-    print(placed, total, placed / total)
+    # print(placed, total, placed / total)
 
 
 if __name__ == "__main__":

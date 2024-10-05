@@ -5,75 +5,27 @@
 #include <zlib.h>
 
 #include "fm-index.h"
-#include "kmc_api/kmc_file.h"
+// #include "kmc_api/kmc_file.h"
 #include "kseq.h"
 
-// KSTREAM_INIT(gzFile, gzread, 65536)
-KSEQ_INIT(gzFile, gzread)
+#include "gsketch.hpp"
+
+// KSEQ_INIT(gzFile, gzread) // we already init kstream in gsketch
+__KSEQ_TYPE(gzFile)
+__KSEQ_BASIC(static, gzFile)
+__KSEQ_READ(static)
 
 using namespace std;
 
+int main_call(int argc, char *argv[]);
+
 struct sfs_t {
-  int s;
-  int l;
+  int s;       // start on query
+  int l;       // length
+  int sn = -1; // starting node with "unique" kmer
+  int en = -1; // ending node with "unique" kmer
+  int strand = 1;
 };
-
-// struct seg_t {
-//   string idx;
-//   string seq;
-// };
-
-// seg_t gfa_parse_S(char *s) {
-//   seg_t ret;
-//   int i, is_ok = 0;
-//   char *p, *q, *seg = 0, *seq = 0, *rest = 0;
-//   uint32_t sid, len = 0;
-//   for (i = 0, p = q = s + 2;; ++p) {
-//     if (*p == 0 || *p == '\t') {
-//       int c = *p;
-//       *p = 0;
-//       if (i == 0) {
-//         ret.idx = q;
-//       } else if (i == 1) {
-//         ret.seq = q;
-//         is_ok = 1, rest = c ? p + 1 : 0;
-//         break;
-//       }
-//       ++i, q = p + 1;
-//       if (c == 0)
-//         break;
-//     }
-//   }
-//   // if (!is_ok) { // something is missing
-//   return ret;
-// }
-
-// int extract_segments_from_gfa(int argc, char *argv[]) {
-//   char *gfa_fn = argv[1];
-//   int l = atoi(argv[2]);
-
-//   kstring_t s = {0, 0, 0}, fa_seq = {0, 0, 0};
-//   int dret;
-//   gzFile fp = gzopen(
-//       gfa_fn, "r"); // && strcmp(fn, "-") ? gzopen(fn, "r") : gzdopen(0,
-//       "r");
-//   if (fp == 0)
-//     return 0;
-//   kstream_t *ks = ks_init(fp);
-//   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-//     if (s.s[0] == 'S') {
-//       seg_t seg = gfa_parse_S(s.s);
-//       if (seg.seq.size() >= l)
-//         cout << ">" << seg.idx << "\n" << seg.seq << endl;
-//     }
-//   }
-//   free(fa_seq.s);
-//   free(s.s);
-//   ks_destroy(ks);
-//   gzclose(fp);
-
-//   return 0;
-// }
 
 vector<sfs_t> assemble_lr(const vector<sfs_t> &sfs) {
   vector<sfs_t> assembled_sfs;
@@ -167,49 +119,117 @@ vector<sfs_t> ping_pong_search(const rb3_fmi_t *index, uint8_t *P, int l) {
   return S;
 }
 
-vector<sfs_t> extend(const vector<sfs_t> &sfs, char *P, int l,
-                     CKMCFile &kmc_db) {
+vector<sfs_t> extend(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk
+                     /* , const string &seq_name */) {
   vector<sfs_t> extended_sfs;
-  int k = kmc_db.KmerLength();
+  int k = gsk.k;
   int b, e;
+  int n = -1, sn = -1, en = -1;
   char *kmer = (char *)malloc((k + 1) * sizeof(char));
   kmer[k] = '\0';
-  CKmerAPI ckmer(k);
+  uint64_t kmer_d;       // kmer
+  uint64_t rckmer_d = 0; // reverse and complemented kmer
+  uint64_t ckmer_d = 0;  // canonical kmer
+  int c;                 // current char
+
+  // FIXME: hardcoded
+  int N = 20;
   for (const sfs_t &s : sfs) {
     // cerr << s.s << " " << s.l << endl;
     b = s.s - k;
     b = b < 0 ? 0 : b;
     e = s.s + s.l;
     e = e > l - k + 1 ? l - k + 1 : e;
-    // cerr << b << ":" << e << endl;
 
-    strncpy(kmer, P + b, k);
-    ckmer.from_string(kmer);
-    while (b > 0 && !kmc_db.IsKmer(ckmer)) {
+    memcpy(kmer, P + b, k);
+    kmer_d = k2d(kmer, k);
+    rckmer_d = rc(kmer_d, k);
+    ckmer_d = std::min(kmer_d, rckmer_d);
+    vector<pair<int, int>> snodes;
+    while (b > 0 && snodes.size() < N) {
+      if ((sn = gsk.get(ckmer_d)) != -1)
+        snodes.push_back(make_pair(sn, b));
       --b;
-      strncpy(kmer, P + b, k);
-      ckmer.from_string(kmer);
+      c = P[b] < 5 ? P[b] - 1 : rand() % 4;
+      kmer_d = rsprepend(kmer_d, c, k);
+      rckmer_d = lsappend(rckmer_d, reverse_char(c), k);
+      ckmer_d = std::min(kmer_d, rckmer_d);
     }
 
-    strncpy(kmer, P + e, k);
-    ckmer.from_string(kmer);
-    while (e < l - k + 1 && !kmc_db.IsKmer(ckmer)) {
+    memcpy(kmer, P + e, k);
+    kmer_d = k2d(kmer, k);
+    rckmer_d = rc(kmer_d, k);
+    ckmer_d = std::min(kmer_d, rckmer_d);
+    vector<pair<int, int>> enodes;
+    while (e < l - k + 1 && enodes.size() < N) {
+      if ((en = gsk.get(ckmer_d)) != -1)
+        enodes.push_back(make_pair(en, e));
       ++e;
-      strncpy(kmer, P + e, k);
-      ckmer.from_string(kmer);
+      c = P[e] < 5 ? P[e] - 1 : rand() % 4;
+      kmer_d = lsappend(kmer_d, c, k);
+      rckmer_d = rsprepend(rckmer_d, reverse_char(c), k);
+      ckmer_d = std::min(kmer_d, rckmer_d);
     }
-    // cerr << b << ":" << e << endl;
-    // cerr << endl;
-    extended_sfs.push_back({b, e - b + k + 1});
+
+    if (snodes.size() == 0 || enodes.size() == 0) {
+      extended_sfs.push_back({b, e + k + 1 - b, -1, -1, 0});
+    } else {
+      // for (int i = 0; i < snodes.size(); ++i)
+      //   cout << snodes[i].first << " ";
+      // cout << " >>>  ";
+      // for (int i = 0; i < enodes.size(); ++i)
+      //   cout << enodes[i].first << " ";
+      // cout << endl;
+
+      int mind = 100;
+      int d;
+      for (int i = 0; i < snodes.size(); ++i) {
+        for (int j = 0; j < enodes.size(); ++j) {
+          d = abs(snodes[i].first - enodes[j].first);
+          if (d < mind) {
+
+            sn = snodes[i].first;
+            b = snodes[i].second;
+            en = enodes[j].first;
+            e = enodes[j].second;
+            mind = d;
+          }
+        }
+      }
+      if (sn <= en)
+        extended_sfs.push_back({b, e + k + 1 - b, sn, en, 1});
+      else
+        extended_sfs.push_back({b, e + k + 1 - b, en, sn, 0});
+
+      // if (sn != -1 && en != -1) {
+      //   std::cout << (sn <= en ? sn : en) << ">" << (sn <= en ? en : sn) <<
+      //   endl; CXXGraph::Node<int> n1(to_string(sn <= en ? sn : en), sn <= en
+      //   ? sn : en); CXXGraph::Node<int> n2(to_string(sn <= en ? en : sn), sn
+      //   <= en ? en : sn); std::cout << "d(" << n1 << "," << n2 << ") = " <<
+      //   std::flush; auto res = gsk.graph.dijkstra(n1, n2); cout << res.result
+      //   << "\n";
+      // }
+    }
   }
   free(kmer);
   return extended_sfs;
 }
 
 int main(int argc, char *argv[]) {
-  char *fmd_fn = argv[1];
-  char *fq_fn = argv[2];
-  char *kmc_fn = argv[3];
+  if (strcmp(argv[1], "call") == 0)
+    return main_call(argc - 1, argv + 1);
+
+  char *gfa_fn = argv[1];
+  char *fmd_fn = argv[2];
+  char *fq_fn = argv[3];
+  int k = stoi(argv[4]);
+
+  cerr << "Building graph sketch..." << endl;
+  GSK gsk(gfa_fn);
+  gsk.build_sketch(k);
+  gsk.build_graph();
+  cerr << "Done." << endl;
+  return 1;
 
   rb3_fmi_t f;
   rb3_fmi_restore(&f, fmd_fn, 0);
@@ -218,17 +238,15 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  CKMCFile kmc_db;
-  kmc_db.OpenForRA(kmc_fn);
-
+  cerr << "Computing specific strings..." << endl;
   gzFile fp = gzopen(fq_fn, "r");
   kseq_t *seq = kseq_init(fp);
   int l;
-  char *ss = (char *)malloc(100000); // FIXME
+  // char *ss = (char *)malloc(100000); // FIXME
   uint8_t *s;
   vector<sfs_t> S;
   while ((l = kseq_read(seq)) >= 0) {
-    strncpy(ss, seq->seq.s, seq->seq.l + 1);
+    //   strncpy(ss, seq->seq.s, seq->seq.l + 1);
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
     S = ping_pong_search(&f, s, seq->seq.l);
@@ -236,20 +254,21 @@ int main(int argc, char *argv[]) {
     //   cerr << s.s << "\t" << s.l << endl;
     // cerr << "---" << endl;
     S = assemble_rl(S);
-    // for (const auto &s : S)
-    //   cerr << s.s << "\t" << s.l << endl;
-    // S = extend(S, ss, l, kmc_db);
-    // for (const auto &s : S)
-    //   cerr << s.s << "\t" << s.l << endl;
+    //   // for (const auto &s : S)
+    //   //   cerr << s.s << "\t" << s.l << endl;
+
+    S = extend(S, s, l, gsk);
+    //   // for (const auto &s : S)
+    //   //   cerr << s.s << "\t" << s.l << endl;
     // S = assemble_lr(S);
     for (const auto &s : S)
-      cout << seq->name.s << "\t" << s.s << "\t" << s.l << endl;
+      cout << seq->name.s << "\t" << s.s << "\t" << s.l << "\t" << s.sn << ">"
+           << s.en << "\t" << s.strand << "\t" << l << endl;
   }
   kseq_destroy(seq);
   gzclose(fp);
   rb3_fmi_free(&f);
-  kmc_db.Close();
 
-  cerr << "Done" << endl;
+  cerr << "END" << endl;
   return 0;
 }
