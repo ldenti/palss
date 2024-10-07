@@ -13,6 +13,8 @@ hifiasm -t16 --write-ec --bin-only small.fq -o small
 ```
 
 ### TODO
+- [ ] report how many string we are filtering out and why
+- [ ] improve logging
 - [ ] build fmd directly from vg/gbwt
 - [ ] parallelize
 

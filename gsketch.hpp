@@ -9,14 +9,14 @@
 #include <string>
 #include <zlib.h>
 
-#include "CXXGraph/CXXGraph.hpp"
+// #include "CXXGraph/CXXGraph.hpp"
 #include "kseq.h"
 
 KSTREAM_INIT(gzFile, gzread, 65536)
 
 using namespace std;
 
-static const uint8_t to_int[128] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0
+static const uint8_t to_int[128] = {0, 0, 1, 2, 3, 0, 0, 0, 0, 0, // 0
                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 10
                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 20
                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 30
@@ -36,7 +36,8 @@ inline uint64_t k2d(char *kmer, uint8_t k) {
   uint64_t kmer_d = 0;
   uint8_t x;
   for (uint8_t i = 0; i < k; ++i) {
-    x = (kmer[i] < 6 ? kmer[i] : to_int[kmer[i]]) - 1;
+    x = (kmer[i] < 6 ? kmer[i] : to_int[kmer[i]]) -
+        1; // we assume sequence to be encoded as A:1 but in kmer A is 0
     kmer_d = (kmer_d << 2) | (x < 4 ? x : rand() % 4);
   }
   return kmer_d;

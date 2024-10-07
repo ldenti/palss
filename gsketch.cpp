@@ -5,7 +5,8 @@ GSK::GSK(char *fn) { gfa_fn = fn; }
 void GSK::add_kmer(uint64_t &kmer_d, int &idx) {
   auto x = sketch.find(kmer_d);
   auto y = multi.find(kmer_d);
-  assert((x == sketch.end()) == (y == multi.end()) && y != multi.end());
+
+  // assert((x == sketch.end()) == (y == multi.end()) && y != multi.end());
   // we cannot have false false here
   if (x == sketch.end() && y == multi.end()) {
     sketch[kmer_d] = idx;
