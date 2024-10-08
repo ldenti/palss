@@ -9,7 +9,6 @@
 #include <string>
 #include <zlib.h>
 
-// #include "CXXGraph/CXXGraph.hpp"
 #include "kseq.h"
 
 KSTREAM_INIT(gzFile, gzread, 65536)
@@ -76,7 +75,6 @@ struct link_t {
 
 class GSK {
 public:
-  // CXXGraph::Graph<int> graph;
   boost::adjacency_list<> graph;
   map<uint64_t, uint64_t> sketch;
   int k;

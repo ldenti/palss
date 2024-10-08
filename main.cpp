@@ -30,13 +30,13 @@ struct sfs_t {
   int qidx; // read index
   int s;    // start on query
   int l;    // length
-  anchor_t a = {};
-  anchor_t b = {};
-  int strand = 1;
+  anchor_t a = {}; // left anchor
+  anchor_t b = {}; // right anchor
+  int strand = 1; // inferred strand
   uint64_t esk = -1,
            eek = -1; // expected starting and ending kmers (from cluster)
-  int good = true;
-  string seq = "";
+  int good = 1; // is it good for calling step?
+  char *seq = NULL; // sequence
 };
 
 struct cluster_t {
@@ -45,6 +45,7 @@ struct cluster_t {
   uint64_t ka = -1, kb = -1; // starting and ending kmers
 };
 
+/* Merge specifics strings that are too close on the same read */
 vector<sfs_t> assemble(const vector<sfs_t> &sfs) {
   vector<sfs_t> assembled_sfs;
   int i = sfs.size() - 1;
@@ -114,6 +115,7 @@ vector<sfs_t> ping_pong_search(const rb3_fmi_t *index, uint8_t *P, int qidx,
   return S;
 }
 
+/* Anchor specific strings on graph using graph sketch */
 vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
   vector<sfs_t> anchored_sfs;
   int k = gsk.k;
@@ -172,19 +174,6 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
     if (sanchors.size() == 0 || eanchors.size() == 0)
       // extended_sfs.push_back({b, e + k + 1 - b, -1, -1, 0});
       continue;
-    // for (int i = 0; i < snodes.size(); ++i)
-    // cout << snodes[i].first << " ";
-    // cout << " >>>  ";
-    // for (int i = 0; i < enodes.size(); ++i)
-    //   cout << enodes[i].first << " ";
-    // cout << endl;
-    /*for (int i = 0; i < sanchors.size(); ++i)*/
-    /*  cerr << "S " << sanchors[i].v << " " << sanchors[i].p << " " <<
-     * sanchors[i].seq << endl;*/
-    /*for (int i = 0; i < eanchors.size(); ++i)*/
-    /*  cerr << "E " << eanchors[i].v << " " << eanchors[i].p << " " <<
-     * eanchors[i].seq << endl;*/
-    /*cerr << endl;*/
     int mind = 100;
     int d;
     int sax = -1, eax = -1; // index for selected anchors
@@ -204,7 +193,7 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
     anchor_t sa = sanchors[sax];
     anchor_t ea = eanchors[eax];
     int b = sa.p;
-    int l = ea.p + k + 1 - sa.p;
+    int l = ea.p + k - sa.p;
     int strand = 1;
     if (sa.v > ea.v) {
       anchor_t tmp = sa;
@@ -233,6 +222,7 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
   return anchored_sfs;
 }
 
+/* Add specific string s to cluster c and update its anchors */
 void add(cluster_t &c, const sfs_t &s) {
   c.specifics.push_back(s);
   if (c.va == -1 || s.a.v < c.va) {
@@ -245,7 +235,7 @@ void add(cluster_t &c, const sfs_t &s) {
   }
 }
 
-// sweep line clustering
+/* Sweep line clustering of specific strings based on their subgraphs - assuming topological sorted DAG */
 vector<cluster_t> cluster(const vector<sfs_t> SS, const GSK &gsk) {
   vector<cluster_t> clusters(1);
   add(clusters.back(), SS[0]);
@@ -278,13 +268,6 @@ void merge(cluster_t &C) {
         last = i;
       }
     }
-    /*cerr << c.first << endl;*/
-    /*cerr << c.second[first].strand << " " << c.second[last].strand << endl;*/
-    /*cerr << c.second[first].a.p << " " << c.second[first].a.v << " : " <<
-     * c.second[first].b.p << " " << c.second[first].b.v << endl;*/
-    /*cerr << c.second[last].a.p << " " << c.second[last].a.v << " : " <<
-     * c.second[last].b.p << " " << c.second[last].b.v << endl;*/
-    /*cerr << endl;*/
     newC.push_back({c.first, c.second[first].s,
                     c.second[last].s + c.second[last].l - c.second[first].s,
                     c.second[0].strand ? c.second[first].a : c.second[last].a,
@@ -304,6 +287,16 @@ string d2s(uint64_t kmer, int k) {
   return kk;
 }
 
+string decode(const char *s, int l) {
+  if (s == NULL)
+    return "";
+  char ds[l+1];
+  for(int i=0; i<l; ++i)
+    ds[i] = "NACGT"[s[i]];
+  ds[l] = '\0';
+  return ds;
+}
+
 int main(int argc, char *argv[]) {
   if (strcmp(argv[1], "call") == 0)
     return main_call(argc - 1, argv + 1);
@@ -313,12 +306,12 @@ int main(int argc, char *argv[]) {
   char *fq_fn = argv[3];
   int k = stoi(argv[4]);
   int w = 2;  // FIXME: hardcoded, minimum weight for clusters
-  int hd = 0; // FIXME: hardcoded, hamming distance
+  int hd = 0; // FIXME: hardcoded, hamming distance for fixing anchors
 
   cerr << "Building graph sketch..." << endl;
   GSK gsk(gfa_fn);
   gsk.build_sketch(k);
-  // gsk.build_graph();
+  gsk.build_graph();
   cerr << "Done." << endl;
 
   rb3_fmi_t f;
@@ -332,7 +325,6 @@ int main(int argc, char *argv[]) {
   gzFile fp = gzopen(fq_fn, "r");
   kseq_t *seq = kseq_init(fp);
   int l;
-  // char *ss = (char *)malloc(100000); // FIXME
   uint8_t *s;
   vector<sfs_t> S;
   vector<sfs_t> SS;
@@ -341,7 +333,6 @@ int main(int argc, char *argv[]) {
   vector<int> strands(2);
   int strand;
   while ((l = kseq_read(seq)) >= 0) {
-    //   strncpy(ss, seq->seq.s, seq->seq.l + 1);
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
 
@@ -404,8 +395,16 @@ int main(int argc, char *argv[]) {
     cout << c.specifics.size() << " " << c.va << ">" << c.vb << " "
          << (c.va - 1) * 32 << " " << c.ka << " " << c.kb << endl;
     for (auto &s : c.specifics) {
-      if (s.a.seq == c.ka && s.b.seq == c.kb)
+      cout << s.good << " " << qnames[s.qidx] << ":" << s.s << "-" << s.s + s.l
+           << " " << s.l << " " << s.strand << " " << s.a.v << ">" << s.b.v
+           << " " << d2s(s.a.seq, k) << " " << d2s(s.b.seq, k) << " " << decode(s.seq, s.l) << endl;
+
+      if (s.a.seq == c.ka && s.b.seq == c.kb) {
+        s.esk = c.ka;
+        s.eek = c.kb;
+        pspecifics[s.qidx].push_back(&s);
         continue;
+      }
       if (s.strand) {
         s.esk = c.ka;
         s.eek = c.kb;
@@ -414,9 +413,6 @@ int main(int argc, char *argv[]) {
         s.eek = c.ka;
       }
       pspecifics[s.qidx].push_back(&s);
-      cout << qnames[s.qidx] << ":" << s.s << "-" << s.s + s.l << " " << s.l
-           << " " << s.strand << " " << s.a.v << ">" << s.b.v << " " << s.a.seq
-           << " " << s.b.seq << endl;
     }
   }
   cout << "---" << endl;
@@ -437,28 +433,19 @@ int main(int argc, char *argv[]) {
     rb3_char2nt6(seq->seq.l, s);
 
     for (sfs_t *s : pspecifics[qidx]) {
-      if (s->a.seq == s->esk && s->b.seq == s->eek)
-        continue;
-      /*cerr << "Extending " << s << " on " << seq->name.s << " " << s->s << " "
-       * << s->l << " " << s->strand << endl;*/
-
       if (s->a.seq != s->esk) {
+        s->good = 2;
         p = s->s - 1;
         memcpy(kmer, seq->seq.s + p, k);
         kmer_d = k2d(kmer, k);
         rckmer_d = rc(kmer_d, k);
         ckmer_d = std::min(kmer_d, rckmer_d);
-        // cerr << "B " << p << " : " << s->esk << " " << ckmer_d << " " <<
-        // d2s(ckmer_d, k) << endl;
-        while (p > 0 && (pc = popcount(ckmer_d ^ s->esk)) > hd) {
+       while (p > 0 && (pc = popcount(ckmer_d ^ s->esk)) > hd) {
           --p;
           c = seq->seq.s[p] < 5 ? seq->seq.s[p] - 1 : rand() % 4;
-          // cerr << "ACGT"[c] << endl;
           kmer_d = rsprepend(kmer_d, c, k);
           rckmer_d = lsappend(rckmer_d, reverse_char(c), k);
           ckmer_d = std::min(kmer_d, rckmer_d);
-          // cerr << "B " << p << " : " << s->esk << " " << ckmer_d << " " <<
-          // d2s(ckmer_d, k) << endl;
         }
         if (pc > hd) {
           s->good = 0;
@@ -488,8 +475,14 @@ int main(int argc, char *argv[]) {
         } else {
           s->b.seq = ckmer_d; // FIXME: change also the vertex or don't change
                               // anything and mark the anchors as not updated
-          s->l += p + k - (s->s + s->l) + 1; // CHECKME this +1
+          s->l += p + k - (s->s + s->l) + 1;
         }
+      }
+
+      if (s->good > 0) {
+        s->seq = (char *)malloc((s->l+1)*sizeof(char));
+        memcpy(s->seq, seq->seq.s + s->s, s->l);
+        s->seq[s->l] = '\0';
       }
     }
     ++qidx;
@@ -504,12 +497,13 @@ int main(int argc, char *argv[]) {
       continue;
 
     cout << c.specifics.size() << " " << c.va << ">" << c.vb << " "
-         << (c.va - 1) * 32 << "-" << (c.vb) * 32 << " " << c.ka << " " << c.kb
+         << (c.va - 1) * 32 << "-" << (c.vb) * 32 << " " << d2s(c.ka, k) << " " << d2s(c.kb, k)
          << endl;
     for (auto &s : c.specifics) {
+      /*assert((s.good > 0 && s.seq != NULL) || (s.good == 0 && s.seq == NULL));*/
       cout << s.good << " " << qnames[s.qidx] << ":" << s.s << "-" << s.s + s.l
            << " " << s.l << " " << s.strand << " " << s.a.v << ">" << s.b.v
-           << " " << s.a.seq << " " << s.b.seq << endl;
+           << " " << d2s(s.a.seq, k) << " " << d2s(s.b.seq, k) << " " << decode(s.seq, s.l) << endl;
     }
   }
 

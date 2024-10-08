@@ -33,19 +33,13 @@ int GSK::build_graph() {
 
   link_t *link = (link_t *)malloc(1 * sizeof(link_t));
 
-  // CXXGraph::T_EdgeSet<int> edgeSet;
-  cerr << nvertices << endl;
+  cerr << "Graph has " << nvertices << " vertices" << endl;
   graph = boost::adjacency_list<>(nvertices);
   int edge_idx = 0;
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
     if (s.s[0] == 'L') {
       gfa_parse_L(s.s, link);
       add_edge(link->idx1, link->idx2, graph);
-      // CXXGraph::Node<int> node1(to_string(link->idx1), link->idx1);
-      // CXXGraph::Node<int> node2(to_string(link->idx2), link->idx2);
-      // CXXGraph::DirectedWeightedEdge<int> edge(edge_idx, node1, node2, 1);
-      // ++edge_idx;
-      // edgeSet.insert(make_shared<CXXGraph::DirectedWeightedEdge<int>>(edge));
     }
   }
   free(link);
@@ -53,8 +47,6 @@ int GSK::build_graph() {
   ks_destroy(ks);
   gzclose(fp);
 
-  // graph = CXXGraph::Graph<int>(edgeSet);
-  // graph.writeToFile();
   return 0;
 }
 
