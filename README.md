@@ -25,9 +25,10 @@ hifiasm -t16 --write-ec --bin-only small.fq -o small
 bcftools view -c 5 -v snps,indels -e '(ILEN <= -50 || ILEN >= 50)' hprc-v1.1-mc-chm13.vcfbub.a100k.wave.chr19.vcf.gz | bcftools norm -Oz --check-ref e --fasta-ref reference.fa > chr19.smallvar.vcf.gz
 tabix -p vcf chr19.smallvar.vcf.gz
 
-vg construct -t 4 -r reference.fa -v chr19.smallvar.vcf.gz --alt-paths | vg mod --unchop - > reference.vg
-vg convert --xg-out reference.vg > reference.xg
-vg gbwt --discard-overlaps --vcf-input chr19.smallvar.vcf.gz --xg-name reference.xg --output reference.gbwt
+vg construct -t 4 -r reference.fa -v chr19.smallvar.vcf.gz --alt-paths --node-max 512 > reference.vg
+vg gbwt --discard-overlaps --vcf-input chr19.smallvar.vcf.gz --xg-name reference.vg --output reference.gbwt --graph-name reference.gbwtgraph
+vg convert --gbwt-in reference.gbwt reference.gbwtgraph | vg ids -s - | vg view - > reference.gfa
+
 vg paths --extract-fasta -g reference.gbwt -x reference.xg > reference.paths.fa
 
 ~/code/pansv/build/rb3-prefix/src/rb3/ropebwt3 build -m 100M -d reference.paths.fa > reference.paths.fa.fmd

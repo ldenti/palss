@@ -64,9 +64,10 @@ inline uint64_t rsprepend(const uint64_t kmer, const uint64_t c,
 }
 
 struct seg_t {
-  int idx;
-  char *seq;
-  int l;
+  int idx;   // identifier (as in gfa)
+  char *seq; // sequence
+  int l;     // actual length
+  int c;     // capacity
 };
 
 struct link_t {
@@ -98,6 +99,7 @@ public:
   vector<int> adj(int);
   vector<path_t *> get_subpaths(int, int);
   int get_sequence(const path_t *, char **, int *);
+  int compatible(int, int);
 
 private:
   char *gfa_fn;
@@ -106,6 +108,8 @@ private:
   void gfa_parse_S(char *, seg_t *);
   void gfa_parse_L(char *, link_t *);
   void gfa_parse_P(char *, path_t *);
+  void gfa_parse_W(char *, path_t *);
+
   void get_s();
   void add_kmer(uint64_t &, int &);
 };

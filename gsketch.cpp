@@ -118,9 +118,13 @@ int GSK::build_graph() {
   /*graph = boost::adjacency_list<>(nvertices);*/
   /*int edge_idx = 0;*/
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-    if (s.s[0] == 'P') {
+    if (s.s[0] == 'P' || s.s[0] == 'W') {
       path_t *path = init_path(2048);
-      gfa_parse_P(s.s, path);
+      if (s.s[0] == 'P')
+        gfa_parse_P(s.s, path);
+      else
+        gfa_parse_W(s.s, path);
+
       paths.push_back(path);
       // graph[link->idx1].push_back(link->idx2);
       /* add_edge(link->idx1, link->idx2, graph);*/
@@ -139,6 +143,24 @@ void GSK::destroy_graph() {
   for (path_t *p : paths) {
     destroy_path(p);
   }
+}
+
+int GSK::compatible(int x, int y) {
+  if (x > y) {
+    int tmp = x;
+    x = y;
+    y = tmp;
+  }
+  for (int p = 0; p < paths.size(); ++p) {
+    int f = 0, ok = 0;
+    for (int i = 0; i < paths[p]->l; ++i) {
+      if (paths[p]->vertices[i] == x)
+        f = 1;
+      if (paths[p]->vertices[i] == y)
+        return f;
+    }
+  }
+  return 0;
 }
 
 int GSK::build_sketch(int klen) {
@@ -161,6 +183,7 @@ int GSK::build_sketch(int klen) {
   seg->l = 0;
   // seg->idx = (char *)malloc(1024);
   seg->seq = (char *)malloc(4096);
+  seg->c = 4096;
   nvertices = 0;
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
     if (s.s[0] == 'S') {
@@ -184,6 +207,8 @@ int GSK::build_sketch(int klen) {
       // cout << ">" << seg->idx << " " << seg->l << "\n" << seg->seq << endl;
     }
   }
+  free(seg->seq);
+  free(seg);
   free(s.s);
   ks_destroy(ks);
   gzclose(fp);
@@ -208,6 +233,8 @@ void GSK::gfa_parse_S(char *s, seg_t *ret) {
         ret->idx = stoi(q);
         // strcpy(ret->idx, q);
       } else if (i == 1) {
+        // TODO: reallocate if vertex is longer than 4096
+        // right now we assume to have a vg chopped graph
         strcpy(ret->seq, q);
         vertices[ret->idx] = ret->seq;
         ret->l = p - q;
@@ -275,6 +302,36 @@ void GSK::gfa_parse_P(char *s, path_t *path) {
             }
             *(qq - 1) = 0;
             /*cerr << "Adding " << q << " to " << path->idx << endl;*/
+            add_vertex(path, stoi(q));
+            q = qq + 1;
+            if (c == 0)
+              break;
+          }
+        }
+        break;
+      }
+      ++i, q = p + 1;
+    }
+  }
+}
+
+void GSK::gfa_parse_W(char *s, path_t *path) {
+  int x = 0; // current index for insertion
+  int i;
+  char *p, *q, *qq;
+  for (i = 0, p = q = s + 2;; ++p) {
+    if (*p == 0 || *p == '\t') {
+      *p = 0;
+      if (i == 0) {
+        strcpy(path->idx, q);
+        *(p + 2) = 0;
+        path->idx[p - q] = *(p + 1);
+      } else if (i == 5) {
+        ++q;
+        for (qq = q;; ++qq) {
+          if (*qq == 0 || *qq == '>') {
+            int c = *qq;
+            *qq = 0;
             add_vertex(path, stoi(q));
             q = qq + 1;
             if (c == 0)

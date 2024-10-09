@@ -5,9 +5,8 @@
 #include <vector>
 #include <zlib.h>
 
-#include "fm-index.h"
-// #include "kmc_api/kmc_file.h"
 #include "abpoa.h"
+#include "fm-index.h"
 #include "kseq.h"
 #include "ksw2.h"
 
@@ -19,9 +18,6 @@ __KSEQ_BASIC(static, gzFile)
 __KSEQ_READ(static)
 
 using namespace std;
-
-int main_call(int argc, char *argv[]);
-// int main_gbwt(int argc, char *argv[]);
 
 struct anchor_t {
   int v = -1;        // vertex on graph
@@ -49,6 +45,7 @@ struct cluster_t {
 };
 
 int build_consensus(const vector<sfs_t> &specifics, char **cons, int *cons_c) {
+  // TODO: move this outside and init just once
   // INIT ABPOA
   abpoa_t *ab = abpoa_init();
   abpoa_para_t *abpt = abpoa_init_para();
@@ -256,11 +253,41 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
     if (sanchors.size() == 0 || eanchors.size() == 0)
       // extended_sfs.push_back({b, e + k + 1 - b, -1, -1, 0});
       continue;
+
+    /*for (const auto &sa:sanchors) {*/
+    /*  cerr << sa.v << "|";*/
+    /*}*/
+    /*cerr << " ";*/
+    /*for (const auto &ea:eanchors) {*/
+    /*  cerr << ea.v << "|";*/
+    /*}*/
+    /*cerr << endl;*/
+
     int mind = 100;
     int d;
     int sax = -1, eax = -1; // index for selected anchors
+    map<pair<int, int>, int> memo;
+    map<pair<int, int>, int>::iterator hhit;
+    int comp;
+    int x = 0, y = 0;
+    pair<int, int> xy = {x, y};
     for (int i = 0; i < sanchors.size(); ++i) {
+      x = sanchors[i].v;
+      xy.first = x;
       for (int j = 0; j < eanchors.size(); ++j) {
+        y = eanchors[j].v;
+        xy.second = y;
+        cerr << "Checking " << x << ">" << y << endl;
+        if ((hhit = memo.find(xy)) == memo.end()) {
+          memo[xy] = gsk.compatible(sanchors[i].v, eanchors[j].v);
+          cerr << "Computing from graph: " << memo[xy] << endl;
+          /*memo[make_pair(y, x)] = memo[xy];*/
+        }
+        comp = memo[xy];
+        cerr << "Comp: " << comp << endl;
+        if (!comp)
+          continue;
+
         d = abs(sanchors[i].v - eanchors[j].v);
         if (d < mind) {
           sax = i;
@@ -285,14 +312,6 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
     }
     anchored_sfs.push_back({s.qidx, b, l, sa, ea, strand});
     assert(sa.v <= ea.v);
-    // if (sn != -1 && en != -1) {
-    //   std::cout << (sn <= en ? sn : en) << ">" << (sn <= en ? en : sn) <<
-    //   endl; CXXGraph::Node<int> n1(to_string(sn <= en ? sn : en), sn <= en
-    //   ? sn : en); CXXGraph::Node<int> n2(to_string(sn <= en ? en : sn), sn
-    //   <= en ? en : sn); std::cout << "d(" << n1 << "," << n2 << ") = " <<
-    //   std::flush; auto res = gsk.graph.dijkstra(n1, n2); cout << res.result
-    //   << "\n";
-    // }
   }
   free(kmer);
 
@@ -381,11 +400,6 @@ string decode(const char *s, int l, int shift) {
 }
 
 int main(int argc, char *argv[]) {
-  if (strcmp(argv[1], "call") == 0)
-    return main_call(argc - 1, argv + 1);
-  /*else if (strcmp(argv[1], "gbwt") == 0)*/
-  /*  return main_gbwt(argc-1, argv+1);*/
-
   char *gfa_fn = argv[1];
   char *fmd_fn = argv[2];
   char *fq_fn = argv[3];
@@ -397,8 +411,8 @@ int main(int argc, char *argv[]) {
   GSK gsk(gfa_fn);
   gsk.build_sketch(k);
   gsk.build_graph();
-  cerr << "Done." << endl;
 
+  cerr << "Restoring FMD index..." << endl;
   rb3_fmi_t f;
   rb3_fmi_restore(&f, fmd_fn, 0);
   if (f.e == 0 && f.r == 0) {
@@ -417,27 +431,30 @@ int main(int argc, char *argv[]) {
   vector<string> qnames;
   vector<int> strands(2);
   int strand;
+  int n = 0;
   while ((l = kseq_read(seq)) >= 0) {
+    cout << seq->name.s << endl;
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
 
     S = ping_pong_search(&f, s, qidx, seq->seq.l);
     S = assemble(S);
+    cout << S.size() << " specific strings" << endl;
     S = anchor(S, s, l, gsk);
+    cout << S.size() << " anchored specific strings" << endl;
 
     strands[0] = 0;
     strands[1] = 0;
     for (const auto &s : S)
       ++strands[s.strand];
     // FIXME: plus strand if tie
+    cout << strands[0] << "/" << strands[1] << endl;
     strand = 1;
     if (strands[0] > strands[1])
       strand = 0;
     for (const auto &s : S)
       if (s.strand == strand)
         SS.push_back(s);
-    // SS.reserve(SS.size() + strands[strand];
-    // SS.insert(SS.end(), S.begin(), S.end());
 
     qnames.push_back(seq->name.s);
     ++qidx;
@@ -448,21 +465,33 @@ int main(int argc, char *argv[]) {
   gzclose(fp);
   rb3_fmi_free(&f);
 
-  cerr << "Clustering " << SS.size() << " specific strings" << endl;
+  cerr << "Sorting " << SS.size() << " specific strings..." << endl;
   std::sort(SS.begin(), SS.end(),
             [](const sfs_t &a, const sfs_t &b) { return a.a.v < b.b.v; });
+  cerr << "Clustering..." << endl;
   vector<cluster_t> Cs = cluster(SS, gsk);
 
   cerr << "Merging " << Cs.size() << " clusters" << endl;
+  int lowsc_n = 0;
+  int lowsc_am_n = 0;
+  int sc_n = 0;
   for (auto &c : Cs) {
     if (c.specifics.size() < w) {
+      ++lowsc_n;
       c.specifics.clear();
     } else {
       merge(c);
-      if (c.specifics.size() < w)
+      if (c.specifics.size() < w) {
         c.specifics.clear();
+        ++lowsc_am_n;
+      } else {
+        ++sc_n;
+      }
     }
   }
+  cerr << lowsc_n << " clusters filtered" << endl;
+  cerr << lowsc_am_n << " clusters filtered after merging" << endl;
+  cerr << sc_n << " clusters will be analyzed" << endl;
 
   // checking if specifics start/end with "correct" kmers
   vector<vector<sfs_t *>> pspecifics(qnames.size());
@@ -475,15 +504,14 @@ int main(int argc, char *argv[]) {
       if (s.a.seq == c.ka && s.b.seq == c.kb) {
         s.esk = c.ka;
         s.eek = c.kb;
-        pspecifics[s.qidx].push_back(&s);
-        continue;
-      }
-      if (s.strand) {
-        s.esk = c.ka;
-        s.eek = c.kb;
       } else {
-        s.esk = c.kb;
-        s.eek = c.ka;
+        if (s.strand) {
+          s.esk = c.ka;
+          s.eek = c.kb;
+        } else {
+          s.esk = c.kb;
+          s.eek = c.ka;
+        }
       }
       pspecifics[s.qidx].push_back(&s);
     }
@@ -565,19 +593,25 @@ int main(int argc, char *argv[]) {
   kseq_destroy(seq);
   gzclose(fp);
 
-  // checking if specifics start/end with "correct" kmers
   char *pseq = (char *)malloc(4096 * sizeof(char));
   int pseq_c = 4096;
   int pseq_l = 0;
   char *cons = (char *)malloc(4096 * sizeof(char));
   int cons_c = 4096;
   int cons_l = 0;
+
+  // From minimap2 asm5
+  // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L141
+  // int a, b, q, e, q2, e2; // matching score, mismatch, gap-open and gap-ext
+  // penalties mo->a = 1, mo->b = 19, mo->q = 39, mo->q2 = 81, mo->e = 3, mo->e2
+  // = 1, mo->zdrop = mo->zdrop_inv = 200;
   int sc_mch = 1, sc_mis = -9, gapo = 81, gape = 1;
   int8_t a = (int8_t)sc_mch,
          b = sc_mis < 0 ? (int8_t)sc_mis : -(int8_t)sc_mis; // a>0 and b<0
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
                     b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
   ksw_extz_t ez;
+
   for (auto &c : Cs) {
     if (c.specifics.empty())
       continue;
@@ -597,7 +631,7 @@ int main(int argc, char *argv[]) {
 
     cons_l = build_consensus(c.specifics, &cons, &cons_c);
     cout << decode(cons, cons_l, 1) << endl;
-
+    cout << "Analyzing " << subpaths.size() << " subpaths" << endl;
     for (const path_t *p : subpaths) {
       pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
       cout << decode(pseq, pseq_l, 1) << endl;
