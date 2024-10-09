@@ -26,6 +26,7 @@ static unsigned char _char26_table[256] = {
     4, 4,         4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
     4, 4,         4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4};
 
+
 int main_call(int argc, char *argv[]) {
   char *gfa_fn = argv[1];
   char *fq_fn = argv[2];

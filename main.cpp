@@ -7,7 +7,9 @@
 
 #include "fm-index.h"
 // #include "kmc_api/kmc_file.h"
+#include "abpoa.h"
 #include "kseq.h"
+#include "ksw2.h"
 
 #include "gsketch.hpp"
 
@@ -19,6 +21,7 @@ __KSEQ_READ(static)
 using namespace std;
 
 int main_call(int argc, char *argv[]);
+// int main_gbwt(int argc, char *argv[]);
 
 struct anchor_t {
   int v = -1;        // vertex on graph
@@ -27,16 +30,16 @@ struct anchor_t {
 };
 
 struct sfs_t {
-  int qidx; // read index
-  int s;    // start on query
-  int l;    // length
+  int qidx;        // read index
+  int s;           // start on query
+  int l;           // length
   anchor_t a = {}; // left anchor
   anchor_t b = {}; // right anchor
-  int strand = 1; // inferred strand
+  int strand = 1;  // inferred strand
   uint64_t esk = -1,
            eek = -1; // expected starting and ending kmers (from cluster)
-  int good = 1; // is it good for calling step?
-  char *seq = NULL; // sequence
+  int good = 1;      // is it good for calling step?
+  char *seq = NULL;  // sequence
 };
 
 struct cluster_t {
@@ -44,6 +47,91 @@ struct cluster_t {
   int va = -1, vb = -1;      // starting and ending vertices
   uint64_t ka = -1, kb = -1; // starting and ending kmers
 };
+
+int build_consensus(const vector<sfs_t> &specifics, char **cons, int *cons_c) {
+  // INIT ABPOA
+  abpoa_t *ab = abpoa_init();
+  abpoa_para_t *abpt = abpoa_init_para();
+  abpt->disable_seeding = 0;
+  abpt->align_mode = 0; // global
+  abpt->out_msa = 0;
+  abpt->out_cons = 1;
+  abpt->out_gfa = 0;
+  // abpt->is_diploid = 1; // TODO: maybe this works now
+  abpt->progressive_poa = 1;
+  abpt->amb_strand = 0;
+  abpoa_post_set_para(abpt);
+  // abpt->match = 2;      // match score
+  // abpt->mismatch = 4;   // mismatch penalty
+  // abpt->gap_mode = ABPOA_CONVEX_GAP; // gap penalty mode
+  // abpt->gap_open1 = 4;  // gap open penalty #1
+  // abpt->gap_ext1 = 2;   // gap extension penalty #1
+  // abpt->gap_open2 = 24; // gap open penalty #2
+  // abpt->gap_ext2 = 1;   // gap extension penalty #2
+  // gap_penalty = min{gap_open1 + gap_len*gap_ext1, gap_open2+gap_len*gap_ext2}
+
+  int *seq_lens = (int *)malloc(sizeof(int) * specifics.size());
+  uint8_t **bseqs = (uint8_t **)malloc(sizeof(uint8_t *) * specifics.size());
+  int goods = 0, i = 0;
+  for (const sfs_t &s : specifics) {
+    if (!s.good)
+      continue;
+    seq_lens[goods] = s.l;
+    bseqs[goods] = (uint8_t *)malloc(sizeof(uint8_t) * (s.l + 1));
+    for (i = 0; i < s.l; ++i)
+      bseqs[goods][i] = s.seq[i] - 1;
+    bseqs[goods][s.l] = '\0';
+
+    if (!s.strand) {
+      // rc
+      for (i = 0; i < (s.l >> 1); ++i) {
+        int tmp = bseqs[goods][s.l - 1 - i];
+        tmp = (tmp >= 0 && tmp <= 3) ? 3 - tmp : tmp;
+        bseqs[goods][s.l - 1 - i] =
+            (bseqs[goods][i] >= 0 && bseqs[goods][i] <= 3) ? 3 - bseqs[goods][i]
+                                                           : bseqs[goods][i];
+        bseqs[goods][i] = tmp;
+      }
+      if (s.l & 1)
+        bseqs[goods][i] = (bseqs[goods][i] >= 0 && bseqs[goods][i] <= 3)
+                              ? 3 - bseqs[goods][i]
+                              : bseqs[goods][i];
+    }
+    ++goods;
+  }
+
+  abpoa_msa(ab, abpt, goods, NULL, seq_lens, bseqs, NULL, NULL);
+  abpoa_cons_t *abc = ab->abc;
+  int cons_l = 0;
+  if (abc->n_cons > 0) {
+    cons_l = abc->cons_len[0];
+    if (cons_l + 1 > *cons_c) {
+      cerr << "--- Reallocating from " << *cons_c << " to " << cons_l + 1
+           << endl;
+      char *temp = (char *)realloc(*cons, (cons_l + 1) * sizeof(char));
+      if (temp == NULL) {
+        free(cons);
+        cerr << "Error while reallocating memory for consensus string" << endl;
+        exit(2);
+      } else {
+        *cons = temp;
+      }
+      *cons_c = cons_l + 1;
+    }
+    for (i = 0; i < cons_l; ++i)
+      (*cons)[i] = abc->cons_base[0][i]; // "ACGTN"[abc->cons_base[0][i]];
+    (*cons)[i] = '\0';
+  }
+
+  for (i = 0; i < goods; ++i)
+    free(bseqs[i]);
+  free(bseqs);
+  free(seq_lens);
+  abpoa_free(ab);
+  abpoa_free_para(abpt);
+
+  return cons_l;
+}
 
 /* Merge specifics strings that are too close on the same read */
 vector<sfs_t> assemble(const vector<sfs_t> &sfs) {
@@ -134,14 +222,12 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
     b = b < 0 ? 0 : b;
     e = s.s + s.l;
     e = e > l - k + 1 ? l - k + 1 : e;
-    /*cerr << "Extending from " << b << " " << e << endl;*/
 
     memcpy(kmer, P + b, k);
     kmer_d = k2d(kmer, k);
     rckmer_d = rc(kmer_d, k);
     ckmer_d = std::min(kmer_d, rckmer_d);
     vector<anchor_t> sanchors;
-    /*cerr << "s " << b << " " << ckmer_d << endl;*/
     while (b > 0 && sanchors.size() < N) {
       if ((vx = gsk.get(ckmer_d)) != -1)
         sanchors.push_back({vx, b, ckmer_d});
@@ -150,15 +236,12 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
       kmer_d = rsprepend(kmer_d, c, k);
       rckmer_d = lsappend(rckmer_d, reverse_char(c), k);
       ckmer_d = std::min(kmer_d, rckmer_d);
-      /*cerr << "s " << b << " " << ckmer_d << endl;*/
     }
-    /*cerr << "-" << endl;*/
 
     memcpy(kmer, P + e, k);
     kmer_d = k2d(kmer, k);
     rckmer_d = rc(kmer_d, k);
     ckmer_d = std::min(kmer_d, rckmer_d);
-    /*cerr << "e " << e << " " << ckmer_d << endl;*/
     vector<anchor_t> eanchors;
     while (e < l - k + 1 && eanchors.size() < N) {
       if ((vx = gsk.get(ckmer_d)) != -1)
@@ -168,7 +251,6 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
       kmer_d = lsappend(kmer_d, c, k);
       rckmer_d = rsprepend(rckmer_d, reverse_char(c), k);
       ckmer_d = std::min(kmer_d, rckmer_d);
-      /*cerr << "e " << e << " " << ckmer_d << endl;*/
     }
 
     if (sanchors.size() == 0 || eanchors.size() == 0)
@@ -235,7 +317,8 @@ void add(cluster_t &c, const sfs_t &s) {
   }
 }
 
-/* Sweep line clustering of specific strings based on their subgraphs - assuming topological sorted DAG */
+/* Sweep line clustering of specific strings based on their subgraphs - assuming
+ * topological sorted DAG */
 vector<cluster_t> cluster(const vector<sfs_t> SS, const GSK &gsk) {
   vector<cluster_t> clusters(1);
   add(clusters.back(), SS[0]);
@@ -287,12 +370,12 @@ string d2s(uint64_t kmer, int k) {
   return kk;
 }
 
-string decode(const char *s, int l) {
+string decode(const char *s, int l, int shift) {
   if (s == NULL)
     return "";
-  char ds[l+1];
-  for(int i=0; i<l; ++i)
-    ds[i] = "NACGT"[s[i]];
+  char ds[l + 1];
+  for (int i = 0; i < l; ++i)
+    ds[i] = "NACGTN"[s[i] + shift];
   ds[l] = '\0';
   return ds;
 }
@@ -300,6 +383,8 @@ string decode(const char *s, int l) {
 int main(int argc, char *argv[]) {
   if (strcmp(argv[1], "call") == 0)
     return main_call(argc - 1, argv + 1);
+  /*else if (strcmp(argv[1], "gbwt") == 0)*/
+  /*  return main_gbwt(argc-1, argv+1);*/
 
   char *gfa_fn = argv[1];
   char *fmd_fn = argv[2];
@@ -337,13 +422,7 @@ int main(int argc, char *argv[]) {
     rb3_char2nt6(seq->seq.l, s);
 
     S = ping_pong_search(&f, s, qidx, seq->seq.l);
-    /*for (const auto &s : S)*/
-    /*  cout << seq->name.s << " " << s.s << " " << s.l << endl;*/
-    /*cout << "_" << endl;*/
     S = assemble(S);
-    /*for (const auto &s : S)*/
-    /*  cout << seq->name.s << " " << s.s << " " << s.l << endl;*/
-    /*cout << "_" << endl;*/
     S = anchor(S, s, l, gsk);
 
     strands[0] = 0;
@@ -392,13 +471,7 @@ int main(int argc, char *argv[]) {
       continue;
     for (const sfs_t &s : c.specifics)
       assert(s.l > 0);
-    cout << c.specifics.size() << " " << c.va << ">" << c.vb << " "
-         << (c.va - 1) * 32 << " " << c.ka << " " << c.kb << endl;
     for (auto &s : c.specifics) {
-      cout << s.good << " " << qnames[s.qidx] << ":" << s.s << "-" << s.s + s.l
-           << " " << s.l << " " << s.strand << " " << s.a.v << ">" << s.b.v
-           << " " << d2s(s.a.seq, k) << " " << d2s(s.b.seq, k) << " " << decode(s.seq, s.l) << endl;
-
       if (s.a.seq == c.ka && s.b.seq == c.kb) {
         s.esk = c.ka;
         s.eek = c.kb;
@@ -415,7 +488,7 @@ int main(int argc, char *argv[]) {
       pspecifics[s.qidx].push_back(&s);
     }
   }
-  cout << "---" << endl;
+
   fp = gzopen(fq_fn, "r");
   seq = kseq_init(fp);
   qidx = 0;
@@ -431,7 +504,6 @@ int main(int argc, char *argv[]) {
   while ((l = kseq_read(seq)) >= 0) {
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
-
     for (sfs_t *s : pspecifics[qidx]) {
       if (s->a.seq != s->esk) {
         s->good = 2;
@@ -440,7 +512,8 @@ int main(int argc, char *argv[]) {
         kmer_d = k2d(kmer, k);
         rckmer_d = rc(kmer_d, k);
         ckmer_d = std::min(kmer_d, rckmer_d);
-       while (p > 0 && (pc = popcount(ckmer_d ^ s->esk)) > hd) {
+        pc = hd + 1;
+        while (p > 0 && (pc = popcount(ckmer_d ^ s->esk)) > hd) {
           --p;
           c = seq->seq.s[p] < 5 ? seq->seq.s[p] - 1 : rand() % 4;
           kmer_d = rsprepend(kmer_d, c, k);
@@ -462,6 +535,7 @@ int main(int argc, char *argv[]) {
         kmer_d = k2d(kmer, k);
         rckmer_d = rc(kmer_d, k);
         ckmer_d = std::min(kmer_d, rckmer_d);
+        pc = hd + 1;
         while (p < l - k + 1 && (pc = popcount(ckmer_d ^ s->eek)) > hd) {
           ++p;
           c = seq->seq.s[p + k - 1] < 5 ? seq->seq.s[p + k - 1] - 1
@@ -480,7 +554,7 @@ int main(int argc, char *argv[]) {
       }
 
       if (s->good > 0) {
-        s->seq = (char *)malloc((s->l+1)*sizeof(char));
+        s->seq = (char *)malloc((s->l + 1) * sizeof(char));
         memcpy(s->seq, seq->seq.s + s->s, s->l);
         s->seq[s->l] = '\0';
       }
@@ -492,21 +566,56 @@ int main(int argc, char *argv[]) {
   gzclose(fp);
 
   // checking if specifics start/end with "correct" kmers
+  char *pseq = (char *)malloc(4096 * sizeof(char));
+  int pseq_c = 4096;
+  int pseq_l = 0;
+  char *cons = (char *)malloc(4096 * sizeof(char));
+  int cons_c = 4096;
+  int cons_l = 0;
+  int sc_mch = 1, sc_mis = -9, gapo = 81, gape = 1;
+  int8_t a = (int8_t)sc_mch,
+         b = sc_mis < 0 ? (int8_t)sc_mis : -(int8_t)sc_mis; // a>0 and b<0
+  int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
+                    b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
+  ksw_extz_t ez;
   for (auto &c : Cs) {
     if (c.specifics.empty())
       continue;
 
     cout << c.specifics.size() << " " << c.va << ">" << c.vb << " "
-         << (c.va - 1) * 32 << "-" << (c.vb) * 32 << " " << d2s(c.ka, k) << " " << d2s(c.kb, k)
-         << endl;
+         << (c.va - 1) * 32 << "-" << (c.vb) * 32 << " " << d2s(c.ka, k) << " "
+         << d2s(c.kb, k) << endl;
+    vector<path_t *> subpaths = gsk.get_subpaths(c.va, c.vb);
     for (auto &s : c.specifics) {
-      /*assert((s.good > 0 && s.seq != NULL) || (s.good == 0 && s.seq == NULL));*/
+      /*  assert((s.good > 0 && s.seq != NULL) || (s.good == 0 && s.seq ==
+       * NULL));*/
       cout << s.good << " " << qnames[s.qidx] << ":" << s.s << "-" << s.s + s.l
-           << " " << s.l << " " << s.strand << " " << s.a.v << ">" << s.b.v
-           << " " << d2s(s.a.seq, k) << " " << d2s(s.b.seq, k) << " " << decode(s.seq, s.l) << endl;
+           << " (" << s.l << ") " << s.strand << " " << s.a.v << ">" << s.b.v
+           << " " << d2s(s.a.seq, k) << " " << d2s(s.b.seq, k) << " "
+           << decode(s.seq, s.l, 0) << endl;
     }
-  }
 
+    cons_l = build_consensus(c.specifics, &cons, &cons_c);
+    cout << decode(cons, cons_l, 1) << endl;
+
+    for (const path_t *p : subpaths) {
+      pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
+      cout << decode(pseq, pseq_l, 1) << endl;
+
+      memset(&ez, 0, sizeof(ksw_extz_t));
+      ksw_extz2_sse(0, cons_l, (uint8_t *)cons, pseq_l, (uint8_t *)pseq, 5, mat,
+                    4, 2, -1, 200, 0, 0, &ez);
+      for (int i = 0; i < ez.n_cigar; ++i)
+        printf("%d%c", ez.cigar[i] >> 4, "MID"[ez.cigar[i] & 0xf]);
+      putchar('\n');
+      free(ez.cigar);
+    }
+    cout << endl;
+  }
+  free(cons);
+  free(pseq);
+
+  gsk.destroy_graph();
   cerr << "END" << endl;
   return 0;
 }

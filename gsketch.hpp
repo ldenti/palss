@@ -1,12 +1,13 @@
 #ifndef GSKETCH_HPP
 #define GSKETCH_HPP
 
-#include <boost/graph/adjacency_list.hpp>
+/*#include <boost/graph/adjacency_list.hpp>*/
 #include <cassert>
 #include <iostream>
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 #include <zlib.h>
 
 #include "kseq.h"
@@ -73,16 +74,30 @@ struct link_t {
   int idx2;
 };
 
+struct path_t {
+  char *idx;
+  int *vertices;
+  int l;
+  int capacity;
+};
+
 class GSK {
 public:
-  boost::adjacency_list<> graph;
+  /*boost::adjacency_list<> graph;*/
+  vector<vector<int>> graph;
+  vector<path_t *> paths;    // TODO: sampling
+  map<int, string> vertices; // make this an array assuming indices in [0,n]
   map<uint64_t, uint64_t> sketch;
   int k;
   int nvertices; // number of vertices
   GSK(char *);
   int build_graph();
+  void destroy_graph();
   int build_sketch(int l);
   int get(uint64_t &);
+  vector<int> adj(int);
+  vector<path_t *> get_subpaths(int, int);
+  int get_sequence(const path_t *, char **, int *);
 
 private:
   char *gfa_fn;
@@ -90,6 +105,7 @@ private:
 
   void gfa_parse_S(char *, seg_t *);
   void gfa_parse_L(char *, link_t *);
+  void gfa_parse_P(char *, path_t *);
   void get_s();
   void add_kmer(uint64_t &, int &);
 };

@@ -7,8 +7,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 project(PANSV VERSION 1.0.0)
-add_executable(pansv gsketch.cpp main_call.cpp main.cpp)
-# add_executable(pansv kalloc.c gfa-aug.c gfa-base.c  gfa-bbl.c  gfa-ed.c gfa-io.c index.c kthread.c options.c sys.c misc.c sketch.c main.cpp)
+add_executable(pansv gsketch.cpp main_call.cpp main.cpp) # main_gbwt.cpp
 set_target_properties(pansv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
 # gfatools
@@ -29,19 +28,59 @@ set_target_properties(pansv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
 
-# message(STATUS "CXXGRAPH will be built from source")
-# ExternalProject_Add(cxxg
-#     GIT_REPOSITORY https://github.com/ZigRazor/CXXGraph.git
-#     GIT_TAG e3583edf1e73649aed3b9177c4bbbf42426fda89
+# ksw2
+########
+message(STATUS "gfatools will be built from source")
+ExternalProject_Add(ksw2
+    GIT_REPOSITORY https://github.com/lh3/ksw2.git
+    GIT_TAG ""
+    BUILD_IN_SOURCE 1
+    UPDATE_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make
+    INSTALL_COMMAND ""
+)
+ExternalProject_Get_Property(ksw2 SOURCE_DIR)
+SET(KSW2_INCLUDE_DIR ${SOURCE_DIR})
+
+# # sdsl-lite (vg fork)
+# #######################
+# message(STATUS "sdsl-lite (vg fork) will be built from source")
+# ExternalProject_Add(sdsl
+#     GIT_REPOSITORY https://github.com/vgteam/sdsl-lite.git
+#     GIT_TAG 03288600910bd9cec2b70cd52db12066361b2ca9
 #     BUILD_IN_SOURCE 1
 #     UPDATE_COMMAND ""
 #     CONFIGURE_COMMAND ""
 #     BUILD_COMMAND ""
+#     INSTALL_COMMAND bash install.sh .
+# )
+# ExternalProject_Get_Property(sdsl SOURCE_DIR)
+# SET(SDSL_SOURCE_DIR ${SOURCE_DIR})
+# SET(SDSL_INCLUDE_DIR ${SDSL_SOURCE_DIR}/include)
+# add_library(SDSL STATIC IMPORTED)
+# set_target_properties(SDSL PROPERTIES IMPORTED_LOCATION ${SDSL_SOURCE_DIR}/lib/libsdsl.a)
+# add_dependencies(SDSL sdsl)
+#
+# # gbwt
+# ########
+# message(STATUS "gbwt will be built from source")
+# ExternalProject_Add(gbwt
+#     GIT_REPOSITORY https://github.com/jltsiren/gbwt.git
+#     GIT_TAG f198496a890410b6f37b55428ca8bd8f73d4bf52
+#     BUILD_IN_SOURCE 1
+#     UPDATE_COMMAND ""
+#     CONFIGURE_COMMAND ""
+#     BUILD_COMMAND make SDSL_DIR=${SDSL_SOURCE_DIR}
 #     INSTALL_COMMAND ""
 # )
-# ExternalProject_Get_Property(cxxg SOURCE_DIR)
-# SET(CXXG_SOURCE_DIR ${SOURCE_DIR})
-# SET(CXXG_INCLUDE_DIR ${CXXG_SOURCE_DIR}/include)
+# ExternalProject_Get_Property(gbwt SOURCE_DIR)
+# SET(GBWT_SOURCE_DIR ${SOURCE_DIR})
+# SET(GBWT_INCLUDE_DIR ${GBWT_SOURCE_DIR}/include)
+# add_library(GBWT STATIC IMPORTED)
+# set_target_properties(GBWT PROPERTIES IMPORTED_LOCATION ${GBWT_SOURCE_DIR}/lib/libgbwt.a)
+# add_dependencies(GBWT gbwt)
+# add_dependencies(GBWT SDSL)
 
 # ropebwt3
 ############
@@ -63,37 +102,9 @@ set_source_files_properties(${rb3-src} PROPERTIES GENERATED TRUE)
 add_library(RB3 OBJECT ${rb3-src})
 add_dependencies(RB3 rb3)
 
-
-# # KMC3
-# #######
-# message(STATUS "KMC3 will be built from source")
-# ExternalProject_Add(kmc
-#     GIT_REPOSITORY https://github.com/refresh-bio/KMC.git
-#     GIT_TAG d6c24dc88010508336d824bbffbf1ef3f49fddf8
-#     UPDATE_COMMAND ""
-#     BUILD_IN_SOURCE 1
-#     PATCH_COMMAND ""
-#     CONFIGURE_COMMAND ""
-#     BUILD_COMMAND make kmc
-#     INSTALL_COMMAND ""
-# )
-# ExternalProject_Get_Property(kmc SOURCE_DIR)
-# SET(KMC_SOURCE_DIR ${SOURCE_DIR})
-# SET(KMC_INCLUDE_DIR ${KMC_SOURCE_DIR})
-# add_library(KMC STATIC IMPORTED)
-# set_target_properties(KMC PROPERTIES IMPORTED_LOCATION ${KMC_INCLUDE_DIR}/bin/libkmc_core.a)
-# add_dependencies(KMC kmc)
-
 # abPOA
 ########
 SET(PATCH_CMD "")
-# if(DEFINED CONDAPREFIX OR HOLYBUILD)
-#   # we have to remove the -native flag
-#   message(STATUS "abpoa will be build from source (no -native)")
-#   SET(PATCH_CMD sed -i "/native/d" CMakeLists.txt)
-# else ()
-#   message(STATUS "abpoa will be build from source (with -native)")
-# endif ()
 ExternalProject_Add(abpoa
   GIT_REPOSITORY https://github.com/yangao07/abPOA.git
   GIT_TAG 138407dcf01d0a147a5b98931a96c6cfe6694775 # v1.5.3
@@ -111,23 +122,26 @@ SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
 ### final setup (includes and libraries) ###
 ############################################
 
-add_dependencies(pansv RB3 abpoa) # KMC cxxx
+add_dependencies(pansv RB3 abpoa ksw2) # gbwt)
 
 target_include_directories(pansv
-    # PRIVATE ${CXXG_INCLUDE_DIR}
     PRIVATE ${RB3_INCLUDE_DIR}
-    # PRIVATE ${KMC_INCLUDE_DIR}
+    # PRIVATE ${SDSL_INCLUDE_DIR}
+    # PRIVATE ${GBWT_INCLUDE_DIR}
+    PRIVATE ${KSW2_INCLUDE_DIR}
     PRIVATE ${ABPOA_INCLUDE_DIR}
     PRIVATE ${PROJECT_SOURCE_DIR}
 )
+# target_link_libraries(GBWT
+#   PUBLIC SDSL)
 
 target_link_libraries(pansv
-    # PUBLIC ${GFA_INCLUDE_DIR}/kalloc.o
-    # PUBLIC ${GFA_INCLUDE_DIR}/gfa-base.o
-    # PUBLIC ${GFA_INCLUDE_DIR}/gfa-io.o
+    PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz.o
+    PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz2_sse.o
     PUBLIC ${BINARY_DIR}/lib/libabpoa.a
+    # PUBLIC GBWT
+    # PUBLIC SDSL
     PUBLIC RB3
-    # PUBLIC KMC
     PUBLIC z
     PUBLIC pthread
     PUBLIC OpenMP::OpenMP_CXX

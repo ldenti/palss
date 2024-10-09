@@ -23,6 +23,85 @@ int GSK::get(uint64_t &kmer_d) {
   return x != sketch.end() ? x->second : -1;
 }
 
+vector<int> GSK::adj(int u) { return graph.at(u); }
+
+path_t *init_path(int c) {
+  path_t *path = (path_t *)malloc(1 * sizeof(path_t));
+  path->idx = (char *)malloc(128 * sizeof(char));
+  path->vertices = (int *)malloc(c * sizeof(int));
+  path->l = 0;
+  path->capacity = c;
+  return path;
+}
+
+void add_vertex(path_t *path, int v) {
+  if (path->l >= path->capacity) {
+    /*cerr << "Reallocating" << endl;*/
+    path->vertices =
+        (int *)realloc(path->vertices, path->capacity * 2 * sizeof(int));
+    path->capacity *= 2;
+  }
+  path->vertices[path->l] = v;
+  ++path->l;
+}
+
+void destroy_path(path_t *p) {
+  free(p->idx);
+  free(p->vertices);
+  free(p);
+}
+
+vector<path_t *> GSK::get_subpaths(int x, int y) {
+  vector<path_t *> subpaths(paths.size());
+  for (int p = 0; p < paths.size(); ++p) {
+    int f = 0, ok = 0;
+    subpaths[p] = init_path(y - x + 1);
+    strcpy(subpaths[p]->idx, paths[p]->idx);
+    for (int i = 0; i < paths[p]->l; ++i) {
+      if (paths[p]->vertices[i] == x)
+        f = 1;
+      if (paths[p]->vertices[i] == y)
+        ok = 1;
+      if (f)
+        add_vertex(subpaths[p], paths[p]->vertices[i]);
+      if (paths[p]->vertices[i] > y || ok)
+        break;
+    }
+    if (!ok)
+      destroy_path(subpaths[p]);
+  }
+  return subpaths;
+}
+
+int GSK::get_sequence(const path_t *path, char **pseq, int *pseq_c) {
+  int l = 0;
+  for (int i = 0; i < path->l; ++i)
+    l += vertices[path->vertices[i]].size();
+  if (l + 1 > *pseq_c) {
+    cerr << "--- Reallocating from " << *pseq_c << " to " << l + 1 << endl;
+    char *temp = (char *)realloc(*pseq, (l + 1) * sizeof(char));
+    if (temp == NULL) {
+      free(pseq);
+      cerr << "Error while reallocating memory for path string" << endl;
+      exit(2);
+    } else {
+      *pseq = temp;
+    }
+    *pseq_c = l + 1;
+  }
+  int p = 0;
+  for (int i = 0; i < path->l; ++i) {
+    l = vertices[path->vertices[i]].size();
+    strncpy(*pseq + p, vertices[path->vertices[i]].c_str(), l);
+    p += l;
+  }
+  (*pseq)[p] = '\0';
+
+  for (int i = 0; i < p; ++i)
+    (*pseq)[i] = to_int[(*pseq)[i]] - 1;
+  return p;
+}
+
 int GSK::build_graph() {
   kstring_t s = {0, 0, 0};
   int dret;
@@ -31,23 +110,35 @@ int GSK::build_graph() {
     return 0;
   kstream_t *ks = ks_init(fp);
 
-  link_t *link = (link_t *)malloc(1 * sizeof(link_t));
+  // link_t *link = (link_t *)malloc(1 * sizeof(link_t));
 
   cerr << "Graph has " << nvertices << " vertices" << endl;
-  graph = boost::adjacency_list<>(nvertices);
-  int edge_idx = 0;
+  // BOOST
+  graph = vector<vector<int>>(nvertices);
+  /*graph = boost::adjacency_list<>(nvertices);*/
+  /*int edge_idx = 0;*/
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-    if (s.s[0] == 'L') {
-      gfa_parse_L(s.s, link);
-      add_edge(link->idx1, link->idx2, graph);
+    if (s.s[0] == 'P') {
+      path_t *path = init_path(2048);
+      gfa_parse_P(s.s, path);
+      paths.push_back(path);
+      // graph[link->idx1].push_back(link->idx2);
+      /* add_edge(link->idx1, link->idx2, graph);*/
     }
   }
-  free(link);
+
+  /*free(link);*/
   free(s.s);
   ks_destroy(ks);
   gzclose(fp);
 
   return 0;
+}
+
+void GSK::destroy_graph() {
+  for (path_t *p : paths) {
+    destroy_path(p);
+  }
 }
 
 int GSK::build_sketch(int klen) {
@@ -70,7 +161,7 @@ int GSK::build_sketch(int klen) {
   seg->l = 0;
   // seg->idx = (char *)malloc(1024);
   seg->seq = (char *)malloc(4096);
-
+  nvertices = 0;
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
     if (s.s[0] == 'S') {
       ++nvertices;
@@ -118,6 +209,7 @@ void GSK::gfa_parse_S(char *s, seg_t *ret) {
         // strcpy(ret->idx, q);
       } else if (i == 1) {
         strcpy(ret->seq, q);
+        vertices[ret->idx] = ret->seq;
         ret->l = p - q;
         is_ok = 1, rest = c ? p + 1 : 0;
         break;
@@ -157,4 +249,41 @@ void GSK::gfa_parse_L(char *s, link_t *ret) {
     }
   }
   // return 0;
+}
+
+void GSK::gfa_parse_P(char *s, path_t *path) {
+  int x = 0;        // current index for insertion
+  int i;            // , oriv = -1, oriw = -1, is_ok = 0;
+  char *p, *q, *qq; //, *segv = 0, *segw = 0, *rest = 0;
+  // int32_t ov = INT32_MAX, ow = INT32_MAX;
+  for (i = 0, p = q = s + 2;; ++p) {
+    if (*p == 0 || *p == '\t') {
+      *p = 0;
+      if (i == 0) {
+        // TODO: check for duplicates
+        strcpy(path->idx, q);
+      } else if (i == 1) {
+        char strand = *(p - 1);
+        qq = q;
+        for (qq = q;; ++qq) {
+          if (*qq == 0 || *qq == ',') {
+            int c = *qq;
+            *qq = 0;
+            if (*(qq - 1) != strand) {
+              cerr << "Mixed +/- strands in path " << path->idx << endl;
+              exit(1);
+            }
+            *(qq - 1) = 0;
+            /*cerr << "Adding " << q << " to " << path->idx << endl;*/
+            add_vertex(path, stoi(q));
+            q = qq + 1;
+            if (c == 0)
+              break;
+          }
+        }
+        break;
+      }
+      ++i, q = p + 1;
+    }
+  }
 }
