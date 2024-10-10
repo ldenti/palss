@@ -21,6 +21,7 @@ using namespace std;
 
 struct anchor_t {
   int v = -1;        // vertex on graph
+  int offset = -1;   // offset on vertex
   int p = -1;        // position on query
   uint64_t seq = -1; // kmer
 };
@@ -41,6 +42,7 @@ struct sfs_t {
 struct cluster_t {
   vector<sfs_t> specifics;
   int va = -1, vb = -1;      // starting and ending vertices
+  int offa = -1, offb = -1;  // offsets on the two vertices
   uint64_t ka = -1, kb = -1; // starting and ending kmers
 };
 
@@ -103,9 +105,9 @@ int build_consensus(const vector<sfs_t> &specifics, char **cons, int *cons_c) {
   if (abc->n_cons > 0) {
     cons_l = abc->cons_len[0];
     if (cons_l + 1 > *cons_c) {
-      cerr << "--- Reallocating from " << *cons_c << " to " << cons_l + 1
+      cerr << "--- Reallocating from " << *cons_c << " to " << (cons_l + 1) * 2
            << endl;
-      char *temp = (char *)realloc(*cons, (cons_l + 1) * sizeof(char));
+      char *temp = (char *)realloc(*cons, (cons_l + 1) * 2 * sizeof(char));
       if (temp == NULL) {
         free(cons);
         cerr << "Error while reallocating memory for consensus string" << endl;
@@ -113,7 +115,7 @@ int build_consensus(const vector<sfs_t> &specifics, char **cons, int *cons_c) {
       } else {
         *cons = temp;
       }
-      *cons_c = cons_l + 1;
+      *cons_c = (cons_l + 1) * 2;
     }
     for (i = 0; i < cons_l; ++i)
       (*cons)[i] = abc->cons_base[0][i]; // "ACGTN"[abc->cons_base[0][i]];
@@ -205,7 +207,7 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
   vector<sfs_t> anchored_sfs;
   int k = gsk.k;
   int b, e;
-  int vx = -1;
+  pair<int, int> vx = make_pair(-1, -1);
   char *kmer = (char *)malloc((k + 1) * sizeof(char));
   kmer[k] = '\0';
   uint64_t kmer_d;       // kmer
@@ -226,8 +228,8 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
     ckmer_d = std::min(kmer_d, rckmer_d);
     vector<anchor_t> sanchors;
     while (b > 0 && sanchors.size() < N) {
-      if ((vx = gsk.get(ckmer_d)) != -1)
-        sanchors.push_back({vx, b, ckmer_d});
+      if ((vx = gsk.get(ckmer_d)).first != -1)
+        sanchors.push_back({vx.first, vx.second, b, ckmer_d});
       --b;
       c = P[b] < 5 ? P[b] - 1 : rand() % 4;
       kmer_d = rsprepend(kmer_d, c, k);
@@ -241,8 +243,8 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
     ckmer_d = std::min(kmer_d, rckmer_d);
     vector<anchor_t> eanchors;
     while (e < l - k + 1 && eanchors.size() < N) {
-      if ((vx = gsk.get(ckmer_d)) != -1)
-        eanchors.push_back({vx, e, ckmer_d});
+      if ((vx = gsk.get(ckmer_d)).first != -1)
+        eanchors.push_back({vx.first, vx.second, e, ckmer_d});
       ++e;
       c = P[e + k - 1] < 5 ? P[e + k - 1] - 1 : rand() % 4;
       kmer_d = lsappend(kmer_d, c, k);
@@ -277,14 +279,11 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
       for (int j = 0; j < eanchors.size(); ++j) {
         y = eanchors[j].v;
         xy.second = y;
-        cerr << "Checking " << x << ">" << y << endl;
         if ((hhit = memo.find(xy)) == memo.end()) {
           memo[xy] = gsk.compatible(sanchors[i].v, eanchors[j].v);
-          cerr << "Computing from graph: " << memo[xy] << endl;
           /*memo[make_pair(y, x)] = memo[xy];*/
         }
         comp = memo[xy];
-        cerr << "Comp: " << comp << endl;
         if (!comp)
           continue;
 
@@ -304,7 +303,7 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
     int b = sa.p;
     int l = ea.p + k - sa.p;
     int strand = 1;
-    if (sa.v > ea.v) {
+    if (sa.v > ea.v || (sa.v == ea.v && sa.offset > ea.offset)) {
       anchor_t tmp = sa;
       sa = ea;
       ea = tmp;
@@ -328,10 +327,12 @@ void add(cluster_t &c, const sfs_t &s) {
   c.specifics.push_back(s);
   if (c.va == -1 || s.a.v < c.va) {
     c.va = s.a.v;
+    c.offa = s.a.offset;
     c.ka = s.a.seq;
   }
   if (c.vb == -1 || s.b.v > c.vb) {
     c.vb = s.b.v;
+    c.offb = s.b.offset;
     c.kb = s.b.seq;
   }
 }
@@ -404,8 +405,9 @@ int main(int argc, char *argv[]) {
   char *fmd_fn = argv[2];
   char *fq_fn = argv[3];
   int k = stoi(argv[4]);
-  int w = 2;  // FIXME: hardcoded, minimum weight for clusters
-  int hd = 0; // FIXME: hardcoded, hamming distance for fixing anchors
+  int w = 2;     // FIXME: hardcoded, minimum weight for clusters
+  int hd = 0;    // FIXME: hardcoded, hamming distance for fixing anchors
+  int minl = 50; // FIXME: hardcoded, minimum SV length
 
   cerr << "Building graph sketch..." << endl;
   GSK gsk(gfa_fn);
@@ -433,22 +435,21 @@ int main(int argc, char *argv[]) {
   int strand;
   int n = 0;
   while ((l = kseq_read(seq)) >= 0) {
-    cout << seq->name.s << endl;
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
 
     S = ping_pong_search(&f, s, qidx, seq->seq.l);
     S = assemble(S);
-    cout << S.size() << " specific strings" << endl;
+    /*cerr << S.size() << " specific strings" << endl;*/
     S = anchor(S, s, l, gsk);
-    cout << S.size() << " anchored specific strings" << endl;
+    /*cerr << S.size() << " anchored specific strings" << endl;*/
 
     strands[0] = 0;
     strands[1] = 0;
     for (const auto &s : S)
       ++strands[s.strand];
     // FIXME: plus strand if tie
-    cout << strands[0] << "/" << strands[1] << endl;
+    /*cerr << strands[0] << "/" << strands[1] << endl;*/
     strand = 1;
     if (strands[0] > strands[1])
       strand = 0;
@@ -593,11 +594,11 @@ int main(int argc, char *argv[]) {
   kseq_destroy(seq);
   gzclose(fp);
 
-  char *pseq = (char *)malloc(4096 * sizeof(char));
-  int pseq_c = 4096;
+  char *pseq = (char *)malloc(8192 * sizeof(char));
+  int pseq_c = 8192;
   int pseq_l = 0;
-  char *cons = (char *)malloc(4096 * sizeof(char));
-  int cons_c = 4096;
+  char *cons = (char *)malloc(16384 * sizeof(char));
+  int cons_c = 16384;
   int cons_l = 0;
 
   // From minimap2 asm5
@@ -611,41 +612,107 @@ int main(int argc, char *argv[]) {
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
                     b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
   ksw_extz_t ez;
+  int vuidx = 0;
+  char *cigar = (char *)malloc(4096 * sizeof(char));
+  int cp, opl, op, qp, tp;
+
+  char *ins = (char *)malloc(15000); // FIXME: hardcoded
+  char *del = (char *)malloc(50000); // FIXME: hardcoded
 
   for (auto &c : Cs) {
     if (c.specifics.empty())
       continue;
 
-    cout << c.specifics.size() << " " << c.va << ">" << c.vb << " "
-         << (c.va - 1) * 32 << "-" << (c.vb) * 32 << " " << d2s(c.ka, k) << " "
-         << d2s(c.kb, k) << endl;
+    /*cout << c.specifics.size() << " " << c.va << ">" << c.vb << " "*/
+    /*     << (c.va - 1) * 32 << "-" << (c.vb) * 32 << " " << d2s(c.ka, k) << "
+     * "*/
+    /*     << d2s(c.kb, k) << endl;*/
+
     vector<path_t *> subpaths = gsk.get_subpaths(c.va, c.vb);
-    for (auto &s : c.specifics) {
-      /*  assert((s.good > 0 && s.seq != NULL) || (s.good == 0 && s.seq ==
-       * NULL));*/
-      cout << s.good << " " << qnames[s.qidx] << ":" << s.s << "-" << s.s + s.l
-           << " (" << s.l << ") " << s.strand << " " << s.a.v << ">" << s.b.v
-           << " " << d2s(s.a.seq, k) << " " << d2s(s.b.seq, k) << " "
-           << decode(s.seq, s.l, 0) << endl;
-    }
+
+    /*for (auto &s : c.specifics) {*/
+    /*   assert((s.good > 0 && s.seq != NULL) || (s.good == 0 && s.seq ==*/
+    /*   * NULL));*/
+    /*  cout << s.good << " " << qnames[s.qidx] << ":" << s.s << "-" << s.s +
+     * s.l*/
+    /*       << " (" << s.l << ") " << s.strand << " " << s.a.v << ">" <<
+     * s.b.v*/
+    /*       << " " << d2s(s.a.seq, k) << " " << d2s(s.b.seq, k) << " "*/
+    /*       << decode(s.seq, s.l, 0) << endl;*/
+    /*}*/
 
     cons_l = build_consensus(c.specifics, &cons, &cons_c);
-    cout << decode(cons, cons_l, 1) << endl;
-    cout << "Analyzing " << subpaths.size() << " subpaths" << endl;
-    for (const path_t *p : subpaths) {
+
+    for (path_t *p : subpaths) {
+      if (p == NULL)
+        continue;
       pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
-      cout << decode(pseq, pseq_l, 1) << endl;
 
       memset(&ez, 0, sizeof(ksw_extz_t));
-      ksw_extz2_sse(0, cons_l, (uint8_t *)cons, pseq_l, (uint8_t *)pseq, 5, mat,
-                    4, 2, -1, 200, 0, 0, &ez);
-      for (int i = 0; i < ez.n_cigar; ++i)
-        printf("%d%c", ez.cigar[i] >> 4, "MID"[ez.cigar[i] & 0xf]);
-      putchar('\n');
-      free(ez.cigar);
+      ksw_extz2_sse(0, cons_l, (uint8_t *)cons,
+                    pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
+                    (uint8_t *)(pseq + c.offa), 5, mat, 4, 2, -1, 200, 0, 0,
+                    &ez);
+
+      // OUTPUT
+      int opl;
+      int op;
+      int qp = 0;
+      int tp = 0;
+      cp = 0;
+      for (int i = 0; i < ez.n_cigar; ++i) {
+        opl = ez.cigar[i] >> 4;
+        cp += sprintf(cigar + cp, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
+      }
+      for (int i = 0; i < ez.n_cigar; ++i) {
+        l = ez.cigar[i] >> 4;
+        op = ez.cigar[i] & 0xf; // 0:M, 1:I, 2:D
+        if (op == 0) {
+          // M
+          qp += l;
+          tp += l;
+        } else if (op == 1) {
+          // I
+          if (l >= minl) {
+            cout << vuidx << "\t"
+                 << "INS"
+                 << "\t" << l << "\t" << p->idx << "\t";
+            cout << p->vertices[0];
+            for (int i = 1; i < p->l; ++i)
+              cout << ">" << p->vertices[i];
+            cout << "\t" << 100 << "\t"
+                 << "ACGT"[pseq[tp - 1]] << "\t";
+            memcpy(ins, cons + qp, l);
+            ins[l] = '\0';
+            cout << decode(ins, l, 1) << "\t" << tp << "\t" << cigar << endl;
+            ++vuidx;
+          }
+          qp += l;
+        } else if (op == 2) {
+          // D
+          if (l >= minl) {
+            cout << vuidx << "\t"
+                 << "DEL"
+                 << "\t" << l << "\t" << p->idx << "\t";
+            cout << p->vertices[0];
+            for (int i = 1; i < p->l; ++i)
+              cout << ">" << p->vertices[i];
+            memcpy(del, pseq + tp, l);
+            del[l] = '\0';
+            cout << "\t" << 100 << "\t" << decode(del, l, 1) << "\t";
+            cout << "ACGT"[cons[qp - 1]] << "\t" << tp << "\t" << cigar << endl;
+            ++vuidx;
+          }
+          tp += l;
+        }
+      }
+      gsk.destroy_path(p);
     }
-    cout << endl;
   }
+  free(ez.cigar);
+  free(ins);
+  free(del);
+  free(cigar);
   free(cons);
   free(pseq);
 

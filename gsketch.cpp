@@ -2,14 +2,14 @@
 
 GSK::GSK(char *fn) { gfa_fn = fn; }
 
-void GSK::add_kmer(uint64_t &kmer_d, int &idx) {
+void GSK::add_kmer(uint64_t kmer_d, int idx, int offset) {
   auto x = sketch.find(kmer_d);
   auto y = multi.find(kmer_d);
 
   // assert((x == sketch.end()) == (y == multi.end()) && y != multi.end());
   // we cannot have false false here
   if (x == sketch.end() && y == multi.end()) {
-    sketch[kmer_d] = idx;
+    sketch[kmer_d] = make_pair(idx, offset);
   } else {
     if (x != sketch.end()) {
       sketch.erase(x);
@@ -18,9 +18,9 @@ void GSK::add_kmer(uint64_t &kmer_d, int &idx) {
   }
 }
 
-int GSK::get(uint64_t &kmer_d) {
+pair<int, int> GSK::get(uint64_t &kmer_d) {
   auto x = sketch.find(kmer_d);
-  return x != sketch.end() ? x->second : -1;
+  return x != sketch.end() ? x->second : make_pair(-1, -1);
 }
 
 vector<int> GSK::adj(int u) { return graph.at(u); }
@@ -36,7 +36,6 @@ path_t *init_path(int c) {
 
 void add_vertex(path_t *path, int v) {
   if (path->l >= path->capacity) {
-    /*cerr << "Reallocating" << endl;*/
     path->vertices =
         (int *)realloc(path->vertices, path->capacity * 2 * sizeof(int));
     path->capacity *= 2;
@@ -45,7 +44,7 @@ void add_vertex(path_t *path, int v) {
   ++path->l;
 }
 
-void destroy_path(path_t *p) {
+void GSK::destroy_path(path_t *p) {
   free(p->idx);
   free(p->vertices);
   free(p);
@@ -67,19 +66,23 @@ vector<path_t *> GSK::get_subpaths(int x, int y) {
       if (paths[p]->vertices[i] > y || ok)
         break;
     }
-    if (!ok)
+    if (!ok) {
       destroy_path(subpaths[p]);
+      subpaths[p] = NULL;
+    }
   }
   return subpaths;
 }
 
+int GSK::get_vl(int v) { return vertices.at(v).size(); }
 int GSK::get_sequence(const path_t *path, char **pseq, int *pseq_c) {
   int l = 0;
   for (int i = 0; i < path->l; ++i)
     l += vertices[path->vertices[i]].size();
   if (l + 1 > *pseq_c) {
-    cerr << "--- Reallocating from " << *pseq_c << " to " << l + 1 << endl;
-    char *temp = (char *)realloc(*pseq, (l + 1) * sizeof(char));
+    cerr << "--- Reallocating from " << *pseq_c << " to " << (l + 1) * 2
+         << endl;
+    char *temp = (char *)realloc(*pseq, (l + 1) * 2 * sizeof(char));
     if (temp == NULL) {
       free(pseq);
       cerr << "Error while reallocating memory for path string" << endl;
@@ -87,7 +90,7 @@ int GSK::get_sequence(const path_t *path, char **pseq, int *pseq_c) {
     } else {
       *pseq = temp;
     }
-    *pseq_c = l + 1;
+    *pseq_c = (l + 1) * 2;
   }
   int p = 0;
   for (int i = 0; i < path->l; ++i) {
@@ -196,13 +199,13 @@ int GSK::build_sketch(int klen) {
       kmer_d = k2d(kmer, klen);
       rckmer_d = rc(kmer_d, klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
-      add_kmer(ckmer_d, seg->idx);
+      add_kmer(ckmer_d, seg->idx, 0);
       for (p = klen; p < seg->l; ++p) {
         c = to_int[seg->seq[p]] - 1; // A is 1 but it should be 0
         kmer_d = lsappend(kmer_d, c, klen);
         rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
-        add_kmer(ckmer_d, seg->idx);
+        add_kmer(ckmer_d, seg->idx, p - klen + 1);
       }
       // cout << ">" << seg->idx << " " << seg->l << "\n" << seg->seq << endl;
     }
@@ -325,7 +328,9 @@ void GSK::gfa_parse_W(char *s, path_t *path) {
       if (i == 0) {
         strcpy(path->idx, q);
         *(p + 2) = 0;
-        path->idx[p - q] = *(p + 1);
+        path->idx[p - q] = '#';
+        path->idx[p - q + 1] = *(p + 1);
+        path->idx[p - q + 2] = '\0';
       } else if (i == 5) {
         ++q;
         for (qq = q;; ++qq) {

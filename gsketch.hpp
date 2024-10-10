@@ -88,18 +88,20 @@ public:
   vector<vector<int>> graph;
   vector<path_t *> paths;    // TODO: sampling
   map<int, string> vertices; // make this an array assuming indices in [0,n]
-  map<uint64_t, uint64_t> sketch;
+  map<uint64_t, pair<int, int>> sketch; // sketch : (vertex, offset)
   int k;
   int nvertices; // number of vertices
   GSK(char *);
   int build_graph();
   void destroy_graph();
   int build_sketch(int l);
-  int get(uint64_t &);
+  pair<int, int> get(uint64_t &);
   vector<int> adj(int);
   vector<path_t *> get_subpaths(int, int);
   int get_sequence(const path_t *, char **, int *);
   int compatible(int, int);
+  int get_vl(int);
+  void destroy_path(path_t *p);
 
 private:
   char *gfa_fn;
@@ -111,7 +113,7 @@ private:
   void gfa_parse_W(char *, path_t *);
 
   void get_s();
-  void add_kmer(uint64_t &, int &);
+  void add_kmer(uint64_t, int, int);
 };
 
 #endif
