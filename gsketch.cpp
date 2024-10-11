@@ -115,7 +115,6 @@ int GSK::build_graph() {
 
   // link_t *link = (link_t *)malloc(1 * sizeof(link_t));
 
-  cerr << "Graph has " << nvertices << " vertices" << endl;
   // BOOST
   graph = vector<vector<int>>(nvertices);
   /*graph = boost::adjacency_list<>(nvertices);*/

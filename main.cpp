@@ -2,6 +2,7 @@
 #include <bit>
 #include <cstdint>
 #include <iostream>
+#include <sys/time.h>
 #include <vector>
 #include <zlib.h>
 
@@ -46,7 +47,25 @@ struct cluster_t {
   uint64_t ka = -1, kb = -1; // starting and ending kmers
 };
 
-int build_consensus(const vector<sfs_t> &specifics, char **cons, int *cons_c) {
+static inline double realtime() {
+  struct timeval tp;
+  struct timezone tzp;
+  gettimeofday(&tp, &tzp);
+  return (double)tp.tv_sec + (double)tp.tv_usec * 1e-6;
+}
+
+string decode(const char *s, int l, int shift) {
+  if (s == NULL)
+    return "";
+  char ds[l + 1];
+  for (int i = 0; i < l; ++i)
+    ds[i] = "NACGTN"[s[i] + shift];
+  ds[l] = '\0';
+  return ds;
+}
+
+int build_consensus(const vector<sfs_t *> &specifics, char **cons,
+                    int *cons_c) {
   // TODO: move this outside and init just once
   // INIT ABPOA
   abpoa_t *ab = abpoa_init();
@@ -59,6 +78,7 @@ int build_consensus(const vector<sfs_t> &specifics, char **cons, int *cons_c) {
   // abpt->is_diploid = 1; // TODO: maybe this works now
   abpt->progressive_poa = 1;
   abpt->amb_strand = 0;
+  abpt->wb = -1;
   abpoa_post_set_para(abpt);
   // abpt->match = 2;      // match score
   // abpt->mismatch = 4;   // mismatch penalty
@@ -72,33 +92,39 @@ int build_consensus(const vector<sfs_t> &specifics, char **cons, int *cons_c) {
   int *seq_lens = (int *)malloc(sizeof(int) * specifics.size());
   uint8_t **bseqs = (uint8_t **)malloc(sizeof(uint8_t *) * specifics.size());
   int goods = 0, i = 0;
-  for (const sfs_t &s : specifics) {
-    if (!s.good)
-      continue;
-    seq_lens[goods] = s.l;
-    bseqs[goods] = (uint8_t *)malloc(sizeof(uint8_t) * (s.l + 1));
-    for (i = 0; i < s.l; ++i)
-      bseqs[goods][i] = s.seq[i] - 1;
-    bseqs[goods][s.l] = '\0';
+  for (const sfs_t *s : specifics) {
+    assert(s->good);
+    /*if (!s.good)*/
+    /*  continue;*/
+    /*cerr << s.qidx << " " << s.l << " " << decode(s.seq, s.l, 0) << endl;*/
+    seq_lens[goods] = s->l;
+    bseqs[goods] = (uint8_t *)malloc(sizeof(uint8_t) * (s->l + 1));
+    for (i = 0; i < s->l; ++i)
+      bseqs[goods][i] = s->seq[i] - 1;
+    bseqs[goods][s->l] = '\0';
 
-    if (!s.strand) {
+    if (!s->strand) {
       // rc
-      for (i = 0; i < (s.l >> 1); ++i) {
-        int tmp = bseqs[goods][s.l - 1 - i];
+      for (i = 0; i < (s->l >> 1); ++i) {
+        int tmp = bseqs[goods][s->l - 1 - i];
         tmp = (tmp >= 0 && tmp <= 3) ? 3 - tmp : tmp;
-        bseqs[goods][s.l - 1 - i] =
+        bseqs[goods][s->l - 1 - i] =
             (bseqs[goods][i] >= 0 && bseqs[goods][i] <= 3) ? 3 - bseqs[goods][i]
                                                            : bseqs[goods][i];
         bseqs[goods][i] = tmp;
       }
-      if (s.l & 1)
+      if (s->l & 1)
         bseqs[goods][i] = (bseqs[goods][i] >= 0 && bseqs[goods][i] <= 3)
                               ? 3 - bseqs[goods][i]
                               : bseqs[goods][i];
     }
     ++goods;
   }
-
+  assert(goods > 0);
+  /*if (!goods) {*/
+  /*  (*cons)[0] = '\0';*/
+  /*  return 0;*/
+  /*}*/
   abpoa_msa(ab, abpt, goods, NULL, seq_lens, bseqs, NULL, NULL);
   abpoa_cons_t *abc = ab->abc;
   int cons_l = 0;
@@ -271,13 +297,15 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
     map<pair<int, int>, int> memo;
     map<pair<int, int>, int>::iterator hhit;
     int comp;
-    int x = 0, y = 0;
+    int x = 0, xoff = 0, y = 0, yoff = 0;
     pair<int, int> xy = {x, y};
     for (int i = 0; i < sanchors.size(); ++i) {
       x = sanchors[i].v;
+      xoff = sanchors[i].offset;
       xy.first = x;
       for (int j = 0; j < eanchors.size(); ++j) {
         y = eanchors[j].v;
+        yoff = eanchors[j].offset;
         xy.second = y;
         if ((hhit = memo.find(xy)) == memo.end()) {
           memo[xy] = gsk.compatible(sanchors[i].v, eanchors[j].v);
@@ -286,7 +314,9 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
         comp = memo[xy];
         if (!comp)
           continue;
-
+        if (x == y && (xoff == yoff || (xoff < yoff && xoff + k >= yoff) ||
+                       (xoff > yoff && yoff + k >= xoff)))
+          continue;
         d = abs(sanchors[i].v - eanchors[j].v);
         if (d < mind) {
           sax = i;
@@ -314,6 +344,10 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
   }
   free(kmer);
 
+  /*for (const auto &s : anchored_sfs) {*/
+  /*  cerr << s.qidx << " " << s.strand << " " << s.s << " " << s.l << " " <<
+   * s.a.v << ">" << s.b.v << endl;*/
+  /*}*/
   // CHECKME: specifics strings are already sorted by position on query
   // std::sort(extended_sfs.begin(), extended_sfs.end(),
   //           [](const sfs_t &a, const sfs_t &b) {
@@ -343,9 +377,14 @@ vector<cluster_t> cluster(const vector<sfs_t> SS, const GSK &gsk) {
   vector<cluster_t> clusters(1);
   add(clusters.back(), SS[0]);
   for (int i = 1; i < SS.size(); ++i) {
+    /*cerr << clusters.back().vb << " " << clusters.back().specifics.back().s <<
+     * " vs " << SS[i].a.v << " " << SS[i].s << " ";*/
     if (SS[i].a.v > clusters.back().vb) {
       // no overlap, so new cluster
+      /*cerr << "X" << endl;*/
       clusters.push_back({});
+    } else {
+      /*cerr << "O" << endl;*/
     }
     add(clusters.back(), SS[i]);
   }
@@ -361,7 +400,11 @@ void merge(cluster_t &C) {
   for (const auto &c : byread) {
     int mins = 100000, maxe = 0; // FIXME: assuming HiFi
     int first, last;
+    /*cerr << c.first << endl;*/
     for (int i = 0; i < c.second.size(); ++i) {
+      /*cerr << c.second[i].strand << " " << c.second[i].s << " " <<*/
+      /* c.second[i].l << " " << c.second[i].a.v << ">" << c.second[i].b.v <<*/
+      /* endl;*/
       if (c.second[i].s < mins) {
         mins = c.second[i].s;
         first = i;
@@ -371,15 +414,21 @@ void merge(cluster_t &C) {
         last = i;
       }
     }
+    /*printf("%d:%d > %d:%d\n", c.second[first].a.v, c.second[first].a.offset,
+     * c.second[first].b.v, c.second[first].b.offset);*/
+    /*printf("%d:%d > %d:%d\n", c.second[last].a.v, c.second[last].a.offset,
+     * c.second[last].b.v, c.second[last].b.offset);*/
     newC.push_back({c.first, c.second[first].s,
                     c.second[last].s + c.second[last].l - c.second[first].s,
                     c.second[0].strand ? c.second[first].a : c.second[last].a,
                     c.second[0].strand ? c.second[last].b : c.second[first].b,
                     c.second[first].strand});
     assert(newC.back().l > 0);
+    /*cerr << newC.back().a.v << " " << newC.back().b.v << endl;*/
     assert(newC.back().a.v <= newC.back().b.v);
   }
   C.specifics = newC;
+  /*cerr << "---" << endl;*/
 }
 
 string d2s(uint64_t kmer, int k) {
@@ -388,16 +437,6 @@ string d2s(uint64_t kmer, int k) {
     kk[i - 1] = "ACGT"[(kmer >> (k - i) * 2) & 3];
   kk[k] = '\0';
   return kk;
-}
-
-string decode(const char *s, int l, int shift) {
-  if (s == NULL)
-    return "";
-  char ds[l + 1];
-  for (int i = 0; i < l; ++i)
-    ds[i] = "NACGTN"[s[i] + shift];
-  ds[l] = '\0';
-  return ds;
 }
 
 int main(int argc, char *argv[]) {
@@ -409,20 +448,32 @@ int main(int argc, char *argv[]) {
   int hd = 0;    // FIXME: hardcoded, hamming distance for fixing anchors
   int minl = 50; // FIXME: hardcoded, minimum SV length
 
-  cerr << "Building graph sketch..." << endl;
+  double rt0, rt, rt1;
+  rt0 = realtime();
+  rt = rt0;
+
   GSK gsk(gfa_fn);
   gsk.build_sketch(k);
-  gsk.build_graph();
+  fprintf(stderr, "[M::%s] sketched graph with %d vertices in %.3f sec\n",
+          __func__, gsk.nvertices, realtime() - rt);
+  rt = realtime();
 
-  cerr << "Restoring FMD index..." << endl;
+  gsk.build_graph();
+  fprintf(stderr, "[M::%s] loaded %d paths in %.3f sec\n", __func__,
+          gsk.paths.size(), realtime() - rt);
+  rt = realtime();
+
   rb3_fmi_t f;
   rb3_fmi_restore(&f, fmd_fn, 0);
   if (f.e == 0 && f.r == 0) {
     cerr << "Error restoring index" << endl;
     return 1;
   }
+  fprintf(stderr, "[M::%s] restored FMD index in %.3f sec\n", __func__,
+          realtime() - rt);
+  rt = realtime();
+  rt1 = rt;
 
-  cerr << "Computing specific strings..." << endl;
   gzFile fp = gzopen(fq_fn, "r");
   kseq_t *seq = kseq_init(fp);
   int l;
@@ -441,8 +492,14 @@ int main(int argc, char *argv[]) {
     S = ping_pong_search(&f, s, qidx, seq->seq.l);
     S = assemble(S);
     /*cerr << S.size() << " specific strings" << endl;*/
+
+    for (int i = 0; i < S.size() - 1; ++i)
+      assert(S[i].s < S[i + 1].s);
+
     S = anchor(S, s, l, gsk);
     /*cerr << S.size() << " anchored specific strings" << endl;*/
+    for (int i = 0; i < S.size() - 1; ++i)
+      assert(S[i].s < S[i + 1].s);
 
     strands[0] = 0;
     strands[1] = 0;
@@ -459,6 +516,11 @@ int main(int argc, char *argv[]) {
 
     qnames.push_back(seq->name.s);
     ++qidx;
+    if (qidx % 1000 == 0) {
+      fprintf(stderr, "[M::%s] parsed %d reads %.3f sec\n", __func__, qidx,
+              realtime() - rt1);
+      rt1 = realtime();
+    }
   }
   for (const sfs_t &s : SS)
     assert(s.l > 0);
@@ -466,13 +528,22 @@ int main(int argc, char *argv[]) {
   gzclose(fp);
   rb3_fmi_free(&f);
 
-  cerr << "Sorting " << SS.size() << " specific strings..." << endl;
-  std::sort(SS.begin(), SS.end(),
-            [](const sfs_t &a, const sfs_t &b) { return a.a.v < b.b.v; });
-  cerr << "Clustering..." << endl;
-  vector<cluster_t> Cs = cluster(SS, gsk);
+  fprintf(stderr, "[M::%s] computed %d specific strings in %.3f sec\n",
+          __func__, SS.size(), realtime() - rt);
+  rt = realtime();
 
-  cerr << "Merging " << Cs.size() << " clusters" << endl;
+  std::sort(SS.begin(), SS.end(), [](const sfs_t &a, const sfs_t &b) {
+    return a.a.v < b.a.v || (a.a.v == b.a.v && a.a.offset < b.a.offset);
+  });
+  fprintf(stderr, "[M::%s] sorted specific strings in %.3f sec\n", __func__,
+          realtime() - rt);
+  rt = realtime();
+
+  vector<cluster_t> Cs = cluster(SS, gsk);
+  fprintf(stderr, "[M::%s] created %d clusters in %.3f sec\n", __func__,
+          Cs.size(), realtime() - rt);
+  rt = realtime();
+
   int lowsc_n = 0;
   int lowsc_am_n = 0;
   int sc_n = 0;
@@ -490,9 +561,10 @@ int main(int argc, char *argv[]) {
       }
     }
   }
-  cerr << lowsc_n << " clusters filtered" << endl;
-  cerr << lowsc_am_n << " clusters filtered after merging" << endl;
-  cerr << sc_n << " clusters will be analyzed" << endl;
+  fprintf(stderr,
+          "[M::%s] merged clusters in %.3f sec (%d+%d=%d clusters filtered)\n",
+          __func__, realtime() - rt, lowsc_n, lowsc_am_n, lowsc_n + lowsc_am_n);
+  rt = realtime();
 
   // checking if specifics start/end with "correct" kmers
   vector<vector<sfs_t *>> pspecifics(qnames.size());
@@ -581,7 +653,7 @@ int main(int argc, char *argv[]) {
           s->l += p + k - (s->s + s->l) + 1;
         }
       }
-
+      assert(s->good >= 0 && s->good <= 2);
       if (s->good > 0) {
         s->seq = (char *)malloc((s->l + 1) * sizeof(char));
         memcpy(s->seq, seq->seq.s + s->s, s->l);
@@ -593,6 +665,10 @@ int main(int argc, char *argv[]) {
   free(kmer);
   kseq_destroy(seq);
   gzclose(fp);
+  fprintf(stderr, "[M::%s] cleaned %d clusters in %.3f sec\n", __func__, sc_n,
+          realtime() - rt);
+  rt = realtime();
+  rt1 = rt;
 
   char *pseq = (char *)malloc(8192 * sizeof(char));
   int pseq_c = 8192;
@@ -612,103 +688,160 @@ int main(int argc, char *argv[]) {
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
                     b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
   ksw_extz_t ez;
+  memset(&ez, 0, sizeof(ksw_extz_t));
   int vuidx = 0;
   char *cigar = (char *)malloc(4096 * sizeof(char));
   int cp, opl, op, qp, tp;
 
   char *ins = (char *)malloc(15000); // FIXME: hardcoded
   char *del = (char *)malloc(50000); // FIXME: hardcoded
-
+  int cc = 0;
   for (auto &c : Cs) {
     if (c.specifics.empty())
       continue;
+    ++cc;
+    if (cc % 100 == 0) {
+      fprintf(stderr, "[M::%s] analyzed %d clusters (%d left) in %.3f sec\n",
+              __func__, cc, sc_n - cc, realtime() - rt1);
+      rt1 = realtime();
+    }
 
-    /*cout << c.specifics.size() << " " << c.va << ">" << c.vb << " "*/
+    /*cerr << c.specifics.size() << " " << c.va << ">" << c.vb << " "*/
     /*     << (c.va - 1) * 32 << "-" << (c.vb) * 32 << " " << d2s(c.ka, k) << "
      * "*/
     /*     << d2s(c.kb, k) << endl;*/
 
-    vector<path_t *> subpaths = gsk.get_subpaths(c.va, c.vb);
+    // split cluster based on strings length
+    vector<int> subclusters_l(1);
+    vector<vector<sfs_t *>> subclusters(1);
+    int i = 0;
+    while (i < c.specifics.size() && !c.specifics[i].good)
+      ++i;
+    if (i == c.specifics.size())
+      continue;
 
-    /*for (auto &s : c.specifics) {*/
-    /*   assert((s.good > 0 && s.seq != NULL) || (s.good == 0 && s.seq ==*/
-    /*   * NULL));*/
-    /*  cout << s.good << " " << qnames[s.qidx] << ":" << s.s << "-" << s.s +
-     * s.l*/
-    /*       << " (" << s.l << ") " << s.strand << " " << s.a.v << ">" <<
-     * s.b.v*/
-    /*       << " " << d2s(s.a.seq, k) << " " << d2s(s.b.seq, k) << " "*/
-    /*       << decode(s.seq, s.l, 0) << endl;*/
-    /*}*/
-
-    cons_l = build_consensus(c.specifics, &cons, &cons_c);
-
-    for (path_t *p : subpaths) {
-      if (p == NULL)
+    subclusters_l.back() = c.specifics[i].l;
+    subclusters.back().push_back(&c.specifics[i]);
+    for (; i < c.specifics.size(); ++i) {
+      if (!c.specifics[i].good)
         continue;
-      pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
-
-      memset(&ez, 0, sizeof(ksw_extz_t));
-      ksw_extz2_sse(0, cons_l, (uint8_t *)cons,
-                    pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
-                    (uint8_t *)(pseq + c.offa), 5, mat, 4, 2, -1, 200, 0, 0,
-                    &ez);
-
-      // OUTPUT
-      int opl;
-      int op;
-      int qp = 0;
-      int tp = 0;
-      cp = 0;
-      for (int i = 0; i < ez.n_cigar; ++i) {
-        opl = ez.cigar[i] >> 4;
-        cp += sprintf(cigar + cp, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
-      }
-      for (int i = 0; i < ez.n_cigar; ++i) {
-        l = ez.cigar[i] >> 4;
-        op = ez.cigar[i] & 0xf; // 0:M, 1:I, 2:D
-        if (op == 0) {
-          // M
-          qp += l;
-          tp += l;
-        } else if (op == 1) {
-          // I
-          if (l >= minl) {
-            cout << vuidx << "\t"
-                 << "INS"
-                 << "\t" << l << "\t" << p->idx << "\t";
-            cout << p->vertices[0];
-            for (int i = 1; i < p->l; ++i)
-              cout << ">" << p->vertices[i];
-            cout << "\t" << 100 << "\t"
-                 << "ACGT"[pseq[tp - 1]] << "\t";
-            memcpy(ins, cons + qp, l);
-            ins[l] = '\0';
-            cout << decode(ins, l, 1) << "\t" << tp << "\t" << cigar << endl;
-            ++vuidx;
-          }
-          qp += l;
-        } else if (op == 2) {
-          // D
-          if (l >= minl) {
-            cout << vuidx << "\t"
-                 << "DEL"
-                 << "\t" << l << "\t" << p->idx << "\t";
-            cout << p->vertices[0];
-            for (int i = 1; i < p->l; ++i)
-              cout << ">" << p->vertices[i];
-            memcpy(del, pseq + tp, l);
-            del[l] = '\0';
-            cout << "\t" << 100 << "\t" << decode(del, l, 1) << "\t";
-            cout << "ACGT"[cons[qp - 1]] << "\t" << tp << "\t" << cigar << endl;
-            ++vuidx;
-          }
-          tp += l;
+      int j = 0;
+      for (j = 0; j < subclusters.size(); ++j) {
+        if (min(c.specifics[i].l, subclusters_l[j]) /
+                (float)max(c.specifics[i].l, subclusters_l[j]) >=
+            0.9) { // FIXME: hardcoded
+          break;
         }
       }
-      gsk.destroy_path(p);
+      if (j == subclusters.size()) {
+        subclusters.push_back({&c.specifics[i]});
+        subclusters_l.push_back(c.specifics[i].l);
+      } else {
+        subclusters_l[j] =
+            (subclusters_l[j] * subclusters.size() + c.specifics[i].l) /
+            (subclusters.size() + 1);
+        subclusters[j].push_back(&c.specifics[i]);
+      }
+    }
+
+    sort(subclusters.begin(), subclusters.end(),
+         [](const vector<sfs_t *> &a, const vector<sfs_t *> &b) {
+           return a.size() > b.size();
+         });
+
+    vector<path_t *> subpaths = gsk.get_subpaths(c.va, c.vb);
+
+    for (int i = 0; i < (subclusters.size() == 1 ? 1 : 2); ++i) {
+      /*for (auto &s : c.specifics) {*/
+      /*   assert((s.good > 0 && s.seq != NULL) || (s.good == 0 && s.seq ==*/
+      /*   * NULL));*/
+      /*  cout << s.good << " " << qnames[s.qidx] << ":" << s.s << "-" << s.s +
+       * s.l*/
+      /*       << " (" << s.l << ") " << s.strand << " " << s.a.v << ">" <<
+       * s.b.v*/
+      /*       << " " << d2s(s.a.seq, k) << " " << d2s(s.b.seq, k) << " "*/
+      /*       <<  << endl;*/
+      /*}*/
+
+      cons_l = build_consensus(subclusters[i], &cons, &cons_c);
+      if (cons_l == 0)
+        continue;
+      for (path_t *p : subpaths) {
+        if (p == NULL)
+          continue;
+        pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
+
+        memset(&ez, 0, sizeof(ksw_extz_t));
+        ksw_extz2_sse(0, cons_l, (uint8_t *)cons,
+                      pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
+                      (uint8_t *)(pseq + c.offa), 5, mat, 4, 2, -1, 200, 0, 0,
+                      &ez);
+
+        // OUTPUT
+        int opl;
+        int op;
+        int qp = 0;
+        int tp = 0;
+        cp = 0;
+        for (int i = 0; i < ez.n_cigar; ++i) {
+          opl = ez.cigar[i] >> 4;
+          cp += sprintf(cigar + cp, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
+        }
+        for (int i = 0; i < ez.n_cigar; ++i) {
+          l = ez.cigar[i] >> 4;
+          op = ez.cigar[i] & 0xf; // 0:M, 1:I, 2:D
+          if (op == 0) {
+            // M
+            qp += l;
+            tp += l;
+          } else if (op == 1) {
+            // I
+            if (l >= minl) {
+              cout << vuidx << "\t"
+                   << "INS"
+                   << "\t" << l << "\t" << p->idx << "\t";
+              cout << p->vertices[0];
+              for (int i = 1; i < p->l; ++i)
+                cout << ">" << p->vertices[i];
+              cout << "\t" << 100 << "\t"
+                   << "ACGT"[pseq[tp - 1]] << "\t";
+              memcpy(ins, cons + qp, l);
+              ins[l] = '\0';
+              cout << decode(ins, l, 1) << "\t" << tp << "\t" << cigar << endl;
+              ++vuidx;
+            }
+            qp += l;
+          } else if (op == 2) {
+            // D
+            if (l >= minl) {
+              cout << vuidx << "\t"
+                   << "DEL"
+                   << "\t" << l << "\t" << p->idx << "\t";
+              cout << p->vertices[0];
+              for (int i = 1; i < p->l; ++i)
+                cout << ">" << p->vertices[i];
+              memcpy(del, pseq + tp, l);
+              del[l] = '\0';
+              cout << "\t" << 100 << "\t" << decode(del, l, 1) << "\t";
+              cout << "ACGT"[cons[qp - 1]] << "\t" << tp << "\t" << cigar
+                   << endl;
+              ++vuidx;
+            }
+            tp += l;
+          }
+        }
+      }
+    }
+    for (path_t *p : subpaths) {
+      if (p != NULL)
+        gsk.destroy_path(p);
     }
   }
+
+  fprintf(stderr, "[M::%s] called %d variations in %.3f sec\n", __func__, vuidx,
+          realtime() - rt);
+  rt = realtime();
+
   free(ez.cigar);
   free(ins);
   free(del);
@@ -717,6 +850,7 @@ int main(int argc, char *argv[]) {
   free(pseq);
 
   gsk.destroy_graph();
-  cerr << "END" << endl;
+  fprintf(stderr, "[M::%s] completed in %.3f sec\n", __func__,
+          realtime() - rt0);
   return 0;
 }
