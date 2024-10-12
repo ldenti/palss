@@ -1,15 +1,12 @@
 # panSSV
 
 ``` sh
+# Compile
 mkdir build ; cd build ; cmake .. ; make -j2 ; cd ..
 
-mamba create -c bioconda -c conda-forge -n pansv vg samtools bcftools tabix
-conda activate pansv
-
-hifiasm -t16 --write-ec --bin-only small.fq -o small
-./pansv chr19.gfa chr19.paths.fa.fmd small.ec.fa 27 > small.smooth.fq.sfs
-
-
+# Run the example
+./build/rb3-prefix/src/rb3/ropebwt3 build -d example/reference.paths.fa.gz > example/reference.paths.fa.fmd
+./pansv example/reference.gfa example/reference.paths.fa.fmd example/small.fa.gz 27 > example/calls.txt
 ```
 
 ### TODO
@@ -33,5 +30,7 @@ vg paths --extract-fasta -g reference.gbwt -x reference.xg > reference.paths.fa
 
 vg paths -a -d -v reference.vg | vg ids --compact --sort - > reference.ts.vg
 vg view reference.ts.vg > reference.ts.gfa
+
+hifiasm -t16 --write-ec --bin-only small.fq -o small
 
 ```
