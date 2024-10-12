@@ -6,7 +6,7 @@ mkdir build ; cd build ; cmake .. ; make -j2 ; cd ..
 
 # Run the example
 ./build/rb3-prefix/src/rb3/ropebwt3 build -d example/reference.paths.fa.gz > example/reference.paths.fa.fmd
-./pansv example/reference.gfa example/reference.paths.fa.fmd example/small.fa.gz 27 > example/calls.txt
+./pansv example/reference.gfa example/reference.paths.fa.fmd example/reads.fa.gz 27 > example/calls.txt
 ```
 
 ### TODO
