@@ -750,7 +750,30 @@ int main(int argc, char *argv[]) {
          });
 
     vector<path_t *> subpaths = gsk.get_subpaths(c.va, c.vb);
-
+    vector<pair<path_t *, string>> collapsed_subpaths;
+    for (path_t *p : subpaths) {
+      if (p == NULL)
+        continue;
+      int i = 0;
+      for (const auto &cp : collapsed_subpaths) {
+        if (p->l != cp.first->l)
+          continue;
+        int j = 0;
+        for (j = 0; i < p->l; ++j) {
+          if (p->vertices[j] != cp.first->vertices[j])
+            break;
+        }
+        if (j == p->l)
+          break;
+        ++i;
+      }
+      if (i == collapsed_subpaths.size())
+        collapsed_subpaths.push_back(make_pair(p, p->idx));
+      else
+        collapsed_subpaths[i].second += "," + string(p->idx);
+    }
+    /*cerr << "Collapsed " << subpaths.size() << " paths to " <<
+     * collapsed_subpaths.size() << endl;*/
     for (int i = 0; i < (subclusters.size() == 1 ? 1 : 2); ++i) {
       /*for (auto &s : c.specifics) {*/
       /*   assert((s.good > 0 && s.seq != NULL) || (s.good == 0 && s.seq ==*/
@@ -766,9 +789,10 @@ int main(int argc, char *argv[]) {
       cons_l = build_consensus(subclusters[i], &cons, &cons_c);
       if (cons_l == 0)
         continue;
-      for (path_t *p : subpaths) {
-        if (p == NULL)
-          continue;
+      for (pair<path_t *, string> collp : collapsed_subpaths) {
+        path_t *p = collp.first;
+        // if (p == NULL)
+        //   continue;
         pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
 
         memset(&ez, 0, sizeof(ksw_extz_t));
@@ -799,7 +823,7 @@ int main(int argc, char *argv[]) {
             if (l >= minl) {
               cout << vuidx << "\t"
                    << "INS"
-                   << "\t" << l << "\t" << p->idx << "\t";
+                   << "\t" << l << "\t" << collp.second << "\t";
               cout << p->vertices[0];
               for (int i = 1; i < p->l; ++i)
                 cout << ">" << p->vertices[i];
@@ -816,7 +840,7 @@ int main(int argc, char *argv[]) {
             if (l >= minl) {
               cout << vuidx << "\t"
                    << "DEL"
-                   << "\t" << l << "\t" << p->idx << "\t";
+                   << "\t" << l << "\t" << collp.second << "\t";
               cout << p->vertices[0];
               for (int i = 1; i < p->l; ++i)
                 cout << ">" << p->vertices[i];
