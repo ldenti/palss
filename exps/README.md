@@ -13,6 +13,12 @@ wget https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/a
 gunzip chm13v2.0.fa.gz
 samtools faidx chm13v2.0.fa
 
+# Get GIAB tiers
+wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.5/genome-stratifications-CHM13@all.tar.gz
+tar xvfz genome-stratifications-CHM13@all.tar.gz 
+gunzip CHM13@all/Union/CHM13_notinalldifficultregions.bed.gz
+gunzip CHM13@all/Union/CHM13_alldifficultregions.bed.gz
+
 # Get CHM13 tandem repeats
 wget https://raw.githubusercontent.com/PacificBiosciences/pbsv/master/annotations/human_chm13v2.0_maskedY_rCRS.trf.bed
 
@@ -30,8 +36,10 @@ mkdir 19
 samtools faidx chm13v2.0.fa chr19 > 19/reference.fa
 samtools faidx 19/reference.fa
 grep -P "^chr19\t" human_chm13v2.0_maskedY_rCRS.trf.bed > 19/trf.bed
-bcftools view -Oz hprc-v1.1-mc-chm13.vcfbub.a100k.wave.nonover.vcf.gz chr19 > pansv/19/variations.vcf.gz
-tabix -p vcf pansv/19/variations.vcf.gz
+bcftools view -Oz hprc-v1.1-mc-chm13.vcfbub.a100k.wave.nonover.vcf.gz chr19 > 19/variations.vcf.gz
+tabix -p vcf 19/variations.vcf.gz
+grep -P "^chr19\t" CHM13@all/Union/CHM13_notinalldifficultregions.bed > 19/easy.bed
+grep -P "^chr19\t" CHM13@all/Union/CHM13_alldifficultregions.bed > 19/hard.bed
 
 # edit config/config.yaml accordingly
 

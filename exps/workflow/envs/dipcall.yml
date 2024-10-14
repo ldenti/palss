@@ -1,0 +1,7 @@
+name: dipcall
+channels:
+  - bioconda
+dependencies:
+  - dipcall
+  - bcftools
+  - tabix

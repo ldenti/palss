@@ -8,32 +8,48 @@ WD = config["wd"]
 TRF = config["trf"]
 REALFQ = config["fq"]
 
-sample = "HG02723"
+SAMPLE = config["sample"]  # "HG02723"
+
+HAP1 = config["hap1"]
+HAP2 = config["hap2"]
+
+TIERS = {"full": "/dev/null"}
+for v in config["tiers"]:
+    TIERS[list(v.keys())[0]] = list(v.values())[0]
+
 seed = 23
 coverage = 5
 
-Ls = [32, 128, 512]  # vertices max size
+Ls = [256, 512, 1024]  # vertices max size
 Ks = [27]  # anchor size
 
 
 include: "rules/simulation.smk"
 include: "rules/callers.smk"
+include: "rules/callers-asm.smk"
 include: "rules/pansv.smk"
 include: "rules/gal.smk"
+include: "rules/analysis.smk"
 
 
 rule run:
     input:
-        pjoin(WD, sample, "cutesv", "variations-w2.vcf"),
-        pjoin(WD, sample, "sniffles", "variations.vcf"),
         expand(
-            pjoin(WD, sample, "pansv-l{l}", "{graph}-calls.k{k}.txt"),
+            pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}-calls.k{k}.vcf"),
             l=Ls,
             k=Ks,
             graph=["reference", "variations"],
         ),
-        expand(
-            pjoin(WD, sample, "graphaligner-l{l}", "{graph}.gaf"),
-            l=Ls,
-            graph=["reference", "variations"],
-        ),
+        # LR
+        pjoin(WD, SAMPLE, "cutesv.vcf.gz"),
+        pjoin(WD, SAMPLE, "sniffles2.vcf.gz"),
+        # ASM
+        pjoin(WD, SAMPLE, "dipcall.vcf.gz"),
+        pjoin(WD, SAMPLE, "cutesv-asm.vcf.gz"),
+        pjoin(WD, SAMPLE, "svim-asm.vcf.gz"),
+        # graph alignment
+        # expand(
+        #     pjoin(WD, SAMPLE, "graphaligner-l{l}", "{graph}.gaf"),
+        #     l=Ls,
+        #     graph=["reference", "variations"],
+        # ),

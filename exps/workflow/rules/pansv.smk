@@ -2,12 +2,12 @@ rule remove_sample:
     input:
         vcf=VCF,
     output:
-        vcf=pjoin(WD, sample, "variations.vcf.gz"),
+        vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
     conda:
         "../envs/bcftools.yml"
     shell:
         """
-        bcftools view -Oz --samples ^{sample} {input.vcf} > {output.vcf}
+        bcftools view -Oz --samples ^{SAMPLE} {input.vcf} > {output.vcf}
         tabix -p vcf {output.vcf}
         """
 
@@ -16,7 +16,7 @@ rule build_reference_graph:
     input:
         fa=FA,
     output:
-        gfa=pjoin(WD, sample, "pansv-l{l}", "reference.gfa"),
+        gfa=pjoin(WD, SAMPLE, "pansv-l{l}", "reference.gfa"),
     threads: workflow.cores
     conda:
         "../envs/vg.yml"
@@ -29,9 +29,9 @@ rule build_reference_graph:
 rule build_variation_graph:
     input:
         fa=FA,
-        vcf=pjoin(WD, sample, "variations.vcf.gz"),
+        vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
     output:
-        vg=pjoin(WD, sample, "pansv-l{l}", "variations.walts.vg"),
+        vg=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.walts.vg"),
     threads: workflow.cores
     conda:
         "../envs/vg.yml"
@@ -43,9 +43,9 @@ rule build_variation_graph:
 
 rule drop_alts:
     input:
-        vg=pjoin(WD, sample, "pansv-l{l}", "variations.walts.vg"),
+        vg=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.walts.vg"),
     output:
-        vg=pjoin(WD, sample, "pansv-l{l}", "variations.vg"),
+        vg=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.vg"),
     conda:
         "../envs/vg.yml"
     shell:
@@ -56,9 +56,9 @@ rule drop_alts:
 
 rule build_gbwt_referencepath:
     input:
-        vg=pjoin(WD, sample, "pansv-l{l}", "variations.vg"),
+        vg=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.vg"),
     output:
-        gbwt=pjoin(WD, sample, "pansv-l{l}", "referencepath.gbwt"),
+        gbwt=pjoin(WD, SAMPLE, "pansv-l{l}", "referencepath.gbwt"),
     threads: workflow.cores
     conda:
         "../envs/vg.yml"
@@ -70,11 +70,11 @@ rule build_gbwt_referencepath:
 
 rule build_gbwt:
     input:
-        vcf=pjoin(WD, sample, "variations.vcf.gz"),
-        vg=pjoin(WD, sample, "pansv-l{l}", "variations.walts.vg"),
+        vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
+        vg=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.walts.vg"),
     output:
-        gbwt=pjoin(WD, sample, "pansv-l{l}", "variations.gbwt"),
-        gbwtgraph=pjoin(WD, sample, "pansv-l{l}", "variations.gbwtgraph"),
+        gbwt=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.gbwt"),
+        gbwtgraph=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.gbwtgraph"),
     conda:
         "../envs/vg.yml"
     shell:
@@ -85,10 +85,10 @@ rule build_gbwt:
 
 rule merge_gbwt:
     input:
-        gbwt1=pjoin(WD, sample, "pansv-l{l}", "variations.gbwt"),
-        gbwt2=pjoin(WD, sample, "pansv-l{l}", "referencepath.gbwt"),
+        gbwt1=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.gbwt"),
+        gbwt2=pjoin(WD, SAMPLE, "pansv-l{l}", "referencepath.gbwt"),
     output:
-        gbwt=pjoin(WD, sample, "pansv-l{l}", "all.gbwt"),
+        gbwt=pjoin(WD, SAMPLE, "pansv-l{l}", "all.gbwt"),
     conda:
         "../envs/vg.yml"
     shell:
@@ -99,10 +99,10 @@ rule merge_gbwt:
 
 rule build_variation_graph_final:
     input:
-        gbwt=pjoin(WD, sample, "pansv-l{l}", "all.gbwt"),
-        gbwtgraph=pjoin(WD, sample, "pansv-l{l}", "variations.gbwtgraph"),
+        gbwt=pjoin(WD, SAMPLE, "pansv-l{l}", "all.gbwt"),
+        gbwtgraph=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.gbwtgraph"),
     output:
-        gfa=pjoin(WD, sample, "pansv-l{l}", "variations.gfa"),
+        gfa=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.gfa"),
     conda:
         "../envs/vg.yml"
     shell:
@@ -113,9 +113,9 @@ rule build_variation_graph_final:
 
 rule get_paths:
     input:
-        gfa=pjoin(WD, sample, "pansv-l{l}", "{graph}.gfa"),
+        gfa=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.gfa"),
     output:
-        fa=pjoin(WD, sample, "pansv-l{l}", "{graph}.paths.fa"),
+        fa=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.paths.fa"),
     conda:
         "../envs/vg.yml"
     shell:
@@ -126,29 +126,30 @@ rule get_paths:
 
 rule index_paths:
     input:
-        fa=pjoin(WD, sample, "pansv-l{l}", "{graph}.paths.fa"),
+        fa=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.paths.fa"),
     output:
-        fmd=pjoin(WD, sample, "pansv-l{l}", "{graph}.paths.fa.fmd"),
+        fmd=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.paths.fa.fmd"),
     log:
-        time=pjoin(WD, sample, "TIMES", "pansv-l{l}", "{graph}-index.time"),
+        time=pjoin(WD, SAMPLE, "TIMES", "pansv-l{l}", "{graph}-index.time"),
+    threads: workflow.cores
     shell:
         """
-        ../build/rb3-prefix/src/rb3/ropebwt3 build -m 2G -d {input.fa} > {output.fmd}
+        ../build/rb3-prefix/src/rb3/ropebwt3 build -t {threads} -d {input.fa} > {output.fmd}
         """
 
 
 rule pansv_ref:
     input:
-        fq=pjoin(WD, sample, "hifi.fq"),
+        fq=pjoin(WD, SAMPLE, "hifi.fq"),
     output:
-        fq=pjoin(WD, sample, "hifi.hifiasm.fq"),
+        fq=pjoin(WD, SAMPLE, "hifi.hifiasm.fq"),
     params:
-        prefix=pjoin(WD, sample, "hifi.hifiasm"),
+        prefix=pjoin(WD, SAMPLE, "hifi.hifiasm"),
     threads: workflow.cores
     conda:
         "../envs/hifiasm.yml"
     log:
-        time=pjoin(WD, sample, "TIMES", "hifiasm.time"),
+        time=pjoin(WD, SAMPLE, "TIMES", "hifiasm.time"),
     shell:
         """
         /usr/bin/time -v hifiasm -t{threads} --write-ec --bin-only {input.fq} -o {params.prefix}
@@ -157,16 +158,30 @@ rule pansv_ref:
 
 rule pansv:
     input:
-        gfa=pjoin(WD, sample, "pansv-l{l}", "{graph}.gfa"),
-        fmd=pjoin(WD, sample, "pansv-l{l}", "{graph}.paths.fa.fmd"),
-        fq=pjoin(WD, sample, "hifi.hifiasm.fq"),
+        gfa=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.gfa"),
+        fmd=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.paths.fa.fmd"),
+        fq=pjoin(WD, SAMPLE, "hifi.hifiasm.fq"),
     output:
-        txt=pjoin(WD, sample, "pansv-l{l}", "{graph}-calls.k{k}.txt"),
+        txt=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}-calls.k{k}.txt"),
     params:
         k="{k}",
     log:
-        time=pjoin(WD, sample, "TIMES", "pansv-l{l}", "{graph}-calling.k{k}.time"),
+        time=pjoin(WD, SAMPLE, "TIMES", "pansv-l{l}", "{graph}-calling.k{k}.time"),
     shell:
         """
         /usr/bin/time -vo {log.time} ../pansv {input.gfa} {input.fmd} {input.fq} {params.k} > {output.txt}
+        """
+
+
+rule pansv_convert:
+    input:
+        gfa=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.gfa"),
+        txt=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}-calls.k{k}.txt"),
+    output:
+        vcf=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}-calls.k{k}.vcf"),
+    log:
+        time=pjoin(WD, SAMPLE, "TIMES", "pansv-l{l}", "{graph}-converting.k{k}.time"),
+    shell:
+        """
+        /usr/bin/time -vo {log.time} python3 ../format_vcf.py {input.gfa} {input.txt} > {output.vcf}
         """

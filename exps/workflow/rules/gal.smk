@@ -1,14 +1,14 @@
 rule graphaligner:
     input:
-        gfa=pjoin(WD, sample, "pansv-l{l}", "{graph}.gfa"),
-        fq=pjoin(WD, sample, "hifi.fq"),
+        gfa=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.gfa"),
+        fq=pjoin(WD, SAMPLE, "hifi.fq"),
     output:
-        gaf=pjoin(WD, sample, "graphaligner-l{l}", "{graph}.gaf"),
+        gaf=pjoin(WD, SAMPLE, "graphaligner-l{l}", "{graph}.gaf"),
     threads: workflow.cores
     conda:
         "../envs/graphaligner.yml"
     log:
-        time=pjoin(WD, sample, "TIMES", "graphaligner-l{l}", "{graph}.time"),
+        time=pjoin(WD, SAMPLE, "TIMES", "graphaligner-l{l}", "{graph}.time"),
     shell:
         """
         /usr/bin/time -vo {log.time} GraphAligner -g {input.gfa} -f {input.fq} -a {output.gaf} -x vg --threads {threads}
@@ -17,10 +17,10 @@ rule graphaligner:
 
 # rule graphchainer:
 #     input:
-#         gfa=pjoin(WD, sample, "pansv-l{l}", "{graph}.gfa"),
-#         fq=pjoin(WD, sample, "hifi.fq"),
+#         gfa=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.gfa"),
+#         fq=pjoin(WD, SAMPLE, "hifi.fq"),
 #     output:
-#         gaf=pjoin(WD, sample, "graphchainer-l{l}", "{graph}.gaf"),
+#         gaf=pjoin(WD, SAMPLE, "graphchainer-l{l}", "{graph}.gaf"),
 #     threads: workflow.cores
 #     conda:
 #         "."

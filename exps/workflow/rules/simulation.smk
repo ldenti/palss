@@ -3,23 +3,23 @@ rule get_haplotype:
         fa=FA,
         vcf=VCF,
     output:
-        fa=pjoin(WD, sample, "hap{h}.fa"),
+        fa=pjoin(WD, SAMPLE, "hap{h}.fa"),
     conda:
         "../envs/bcftools.yml"
     shell:
         """
-        bcftools consensus -s {sample} -H {wildcards.h} --fasta-ref {input.fa} {input.vcf} > {output.fa}
+        bcftools consensus -s {SAMPLE} -H {wildcards.h} --fasta-ref {input.fa} {input.vcf} > {output.fa}
         """
 
 
 rule pbsim3:
     input:
-        fa=pjoin(WD, sample, "hap{h}.fa"),
+        fa=pjoin(WD, SAMPLE, "hap{h}.fa"),
         fq=REALFQ,
     output:
-        bam=pjoin(WD, sample, "pbsim3", "hap{h}_0001.fastq"),
+        bam=pjoin(WD, SAMPLE, "pbsim3", "hap{h}_0001.fastq"),
     params:
-        oprefix=pjoin(WD, sample, "pbsim3", "hap{h}"),
+        oprefix=pjoin(WD, SAMPLE, "pbsim3", "hap{h}"),
         cov=coverage,
     conda:
         "../envs/pbsim3.yml"
@@ -31,9 +31,9 @@ rule pbsim3:
 
 # rule ccs:
 #     input:
-#         bam=pjoin(WD, sample, "reads", "hap{h}.bam"),
+#         bam=pjoin(WD, SAMPLE, "reads", "hap{h}.bam"),
 #     output:
-#         fq=pjoin(WD, sample, "reads", "hap{h}.fq.gz"),
+#         fq=pjoin(WD, SAMPLE, "reads", "hap{h}.fq.gz"),
 #     threads: workflow.cores
 #     conda:
 #         "envs/css.yml"
@@ -45,9 +45,9 @@ rule pbsim3:
 
 rule combine:
     input:
-        expand(pjoin(WD, sample, "pbsim3", "hap{h}_0001.fastq"), h=[1, 2]),
+        expand(pjoin(WD, SAMPLE, "pbsim3", "hap{h}_0001.fastq"), h=[1, 2]),
     output:
-        pjoin(WD, sample, "hifi.fq"),
+        pjoin(WD, SAMPLE, "hifi.fq"),
     shell:
         """
         cat {input} > {output}
