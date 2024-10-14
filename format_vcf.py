@@ -4,24 +4,25 @@ import sys
 def main():
     gfa_fn = sys.argv[1]
     pgcf_fn = sys.argv[2]
-    PP = 0  # which path to use as reference
+    # PP = 0 # sys.argv[3]  # which path to use as reference
 
     vertices = {}
     name = ""
     pathl = 0
     path = []
-    p = 0
+    # p = 0
     for line in open(gfa_fn):
         if line.startswith("S"):
             _, idx, seq, *_ = line.strip("\n").split("\t")
             vertices[idx] = len(seq)
         elif line[0] in ["W", "P"]:
-            if p == PP:
+            if True:  # p == PP:
                 if line[0] == "W":
-                    _, name, hap, chrom, _, _, path, *_ = line.strip("\n").split("\t")
-                    name = name + "#" + hap
-                    s = path[0]
-                    path = path[1:].split(s)
+                    pass
+                    # _, name, hap, chrom, _, _, path, *_ = line.strip("\n").split("\t")
+                    # name = name + "#" + hap
+                    # s = path[0]
+                    # path = path[1:].split(s)
                     # CHECKME: do we need to reverse the path if < ?
                 else:
                     _, name, path, *_ = line.strip("\n").split("\t")
@@ -30,7 +31,7 @@ def main():
                     if not s:
                         path = path[::-1]
                 pathl = sum([vertices[x] for x in path])
-            p = +1
+            # p += 1
 
     print("##fileformat=VCFv4.2")
     print('##FILTER=<ID=PASS,Description="All filters passed">')
