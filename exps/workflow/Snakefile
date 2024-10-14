@@ -10,7 +10,10 @@ REALFQ = config["fq"]
 
 sample = "HG02723"
 seed = 23
-coverage = 2.5
+coverage = 5
+
+Ls = [32, 128, 512]  # vertices max size
+Ks = [27]  # anchor size
 
 
 include: "rules/simulation.smk"
@@ -25,12 +28,12 @@ rule run:
         pjoin(WD, sample, "sniffles", "variations.vcf"),
         expand(
             pjoin(WD, sample, "pansv-l{l}", "{graph}-calls.k{k}.txt"),
-            l=[32, 128, 512],
-            k=[27],
+            l=Ls,
+            k=Ks,
             graph=["reference", "variations"],
         ),
         expand(
             pjoin(WD, sample, "graphaligner-l{l}", "{graph}.gaf"),
-            l=[32, 128, 512],
+            l=Ls,
             graph=["reference", "variations"],
         ),
