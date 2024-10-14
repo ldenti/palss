@@ -399,7 +399,7 @@ void merge(cluster_t &C) {
 
   for (const auto &c : byread) {
     int mins = 100000, maxe = 0; // FIXME: assuming HiFi
-    int first, last;
+    int first = -1, last = -1;
     /*cerr << c.first << endl;*/
     for (int i = 0; i < c.second.size(); ++i) {
       /*cerr << c.second[i].strand << " " << c.second[i].s << " " <<*/
@@ -413,6 +413,10 @@ void merge(cluster_t &C) {
         maxe = c.second[i].s + c.second[i].l;
         last = i;
       }
+    }
+    if (first == -1 || last == -1) {
+      assert(false);
+      continue;
     }
     /*printf("%d:%d > %d:%d\n", c.second[first].a.v, c.second[first].a.offset,
      * c.second[first].b.v, c.second[first].b.offset);*/
@@ -459,7 +463,7 @@ int main(int argc, char *argv[]) {
   rt = realtime();
 
   gsk.build_graph();
-  fprintf(stderr, "[M::%s] loaded %d paths in %.3f sec\n", __func__,
+  fprintf(stderr, "[M::%s] loaded %ld paths in %.3f sec\n", __func__,
           gsk.paths.size(), realtime() - rt);
   rt = realtime();
 
@@ -484,7 +488,6 @@ int main(int argc, char *argv[]) {
   vector<string> qnames;
   vector<int> strands(2);
   int strand;
-  int n = 0;
   while ((l = kseq_read(seq)) >= 0) {
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
@@ -528,7 +531,7 @@ int main(int argc, char *argv[]) {
   gzclose(fp);
   rb3_fmi_free(&f);
 
-  fprintf(stderr, "[M::%s] computed %d specific strings in %.3f sec\n",
+  fprintf(stderr, "[M::%s] computed %ld specific strings in %.3f sec\n",
           __func__, SS.size(), realtime() - rt);
   rt = realtime();
 
@@ -540,7 +543,7 @@ int main(int argc, char *argv[]) {
   rt = realtime();
 
   vector<cluster_t> Cs = cluster(SS, gsk);
-  fprintf(stderr, "[M::%s] created %d clusters in %.3f sec\n", __func__,
+  fprintf(stderr, "[M::%s] created %ld clusters in %.3f sec\n", __func__,
           Cs.size(), realtime() - rt);
   rt = realtime();
 
@@ -691,7 +694,7 @@ int main(int argc, char *argv[]) {
   memset(&ez, 0, sizeof(ksw_extz_t));
   int vuidx = 0;
   char *cigar = (char *)malloc(4096 * sizeof(char));
-  int cp, opl, op, qp, tp;
+  int cp;
 
   char *ins = (char *)malloc(15000); // FIXME: hardcoded
   char *del = (char *)malloc(50000); // FIXME: hardcoded
@@ -798,7 +801,7 @@ int main(int argc, char *argv[]) {
         memset(&ez, 0, sizeof(ksw_extz_t));
         ksw_extz2_sse(0, cons_l, (uint8_t *)cons,
                       pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
-                      (uint8_t *)(pseq + c.offa), 5, mat, 4, 2, -1, 200, 0, 0,
+                      (uint8_t *)(pseq + c.offa), 5, mat, gapo, gape, -1, 200, 0, 0,
                       &ez);
 
         // OUTPUT

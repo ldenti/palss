@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 project(PANSV VERSION 1.0.0)
 add_executable(pansv gsketch.cpp main.cpp)
 set_target_properties(pansv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
+target_compile_options(pansv PRIVATE) # -Wall -Wextra -Wpedantic -Werror)
 
 # gfatools
 ############
