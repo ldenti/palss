@@ -7,5 +7,5 @@ sample: ""
 hap1: ""
 hap2: ""
 tiers:
-  - easy: "1"
-  - hard: "2"
+  - easy: ""
+  - hard: ""

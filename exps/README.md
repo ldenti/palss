@@ -41,6 +41,11 @@ tabix -p vcf 19/variations.vcf.gz
 grep -P "^chr19\t" CHM13@all/Union/CHM13_notinalldifficultregions.bed > 19/easy.bed
 grep -P "^chr19\t" CHM13@all/Union/CHM13_alldifficultregions.bed > 19/hard.bed
 
+# Get full assemblies
+curl -o HPRC-yr1.agc https://zenodo.org/record/5826274/files/HPRC-yr1.agc?download=1
+agc getset HPRC-yr1.agc HG02723.1 > hap1.fa
+agc getset HPRC-yr1.agc HG02723.2 > hap2.fa
+
 # edit config/config.yaml accordingly
 
 snakemake -c 16 --configfile config/config.yml --use-conda [-n]
