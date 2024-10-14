@@ -1,11 +1,11 @@
-fa: ""
-vcf: ""
-wd: ""
-trf: ""
-fq: ""
-sample: ""
-hap1: ""
-hap2: ""
+sample: HG02723
+fa: /nfs/projects6/svdss2/chr21/reference.fa
+vcf: /nfs/projects6/svdss2/chr21/variations.vcf.gz
+trf: /nfs/projects6/svdss2/chr21/trf.bed
+fq: /nfs/projects6/svdss2/hg007/HG007_230654_115437_2fl_DC_hifi_reads.fastq
+wd: /nfs/projects6/svdss2/chr21-OUT
+hap1: "/nfs/projects6/svdss2/HG02723.1.fa"
+hap2: "/nfs/projects6/svdss2/HG02723.2.fa"
 tiers:
-  - easy: ""
-  - hard: ""
+  - easy: "/nfs/projects6/svdss2/chr21/easy.bed"
+  - hard: "/nfs/projects6/svdss2/chr21/hard.bed"

@@ -7,7 +7,7 @@ rule remove_sample:
         "../envs/bcftools.yml"
     shell:
         """
-        bcftools view -Oz --samples ^{SAMPLE} {input.vcf} > {output.vcf}
+        $CONDA_PREFIX/bin/bcftools view -Oz --samples ^{sample} {input.vcf} > {output.vcf}
         tabix -p vcf {output.vcf}
         """
 
@@ -142,7 +142,7 @@ rule pansv_ref:
     input:
         fq=pjoin(WD, SAMPLE, "hifi.fq"),
     output:
-        fq=pjoin(WD, SAMPLE, "hifi.hifiasm.fq"),
+        fq=pjoin(WD, SAMPLE, "hifi.hifiasm.ec.fa"),
     params:
         prefix=pjoin(WD, SAMPLE, "hifi.hifiasm"),
     threads: workflow.cores
@@ -160,7 +160,7 @@ rule pansv:
     input:
         gfa=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.gfa"),
         fmd=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}.paths.fa.fmd"),
-        fq=pjoin(WD, SAMPLE, "hifi.hifiasm.fq"),
+        fq=pjoin(WD, SAMPLE, "hifi.hifiasm.ec.fa"),
     output:
         txt=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}-calls.k{k}.txt"),
     params:
