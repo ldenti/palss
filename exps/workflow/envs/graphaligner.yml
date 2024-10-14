@@ -1,0 +1,5 @@
+name: graphaligner
+channels:
+  - bioconda
+dependencies:
+  - graphaligner=1.0.19

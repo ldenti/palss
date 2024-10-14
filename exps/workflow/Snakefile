@@ -1,0 +1,36 @@
+from os.path import join as pjoin
+
+# configfile: "config/config.yaml"
+
+FA = config["fa"]
+VCF = config["vcf"]
+WD = config["wd"]
+TRF = config["trf"]
+REALFQ = config["fq"]
+
+sample = "HG02723"
+seed = 23
+coverage = 2.5
+
+
+include: "rules/simulation.smk"
+include: "rules/callers.smk"
+include: "rules/pansv.smk"
+include: "rules/gal.smk"
+
+
+rule run:
+    input:
+        pjoin(WD, sample, "cutesv", "variations-w2.vcf"),
+        pjoin(WD, sample, "sniffles", "variations.vcf"),
+        expand(
+            pjoin(WD, sample, "pansv-l{l}", "{graph}-calls.k{k}.txt"),
+            l=[32, 128, 512],
+            k=[27],
+            graph=["reference", "variations"],
+        ),
+        expand(
+            pjoin(WD, sample, "graphaligner-l{l}", "{graph}.gaf"),
+            l=[32, 128, 512],
+            graph=["reference", "variations"],
+        ),

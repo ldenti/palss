@@ -1,0 +1,5 @@
+name: hifiasm
+channels:
+  - bioconda
+dependencies:
+  - hifiasm=0.19.9
