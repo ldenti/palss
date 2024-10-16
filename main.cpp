@@ -2,7 +2,6 @@
 #include <bit>
 #include <cstdint>
 #include <iostream>
-#include <sys/time.h>
 #include <vector>
 #include <zlib.h>
 
@@ -12,6 +11,9 @@
 #include "ksw2.h"
 
 #include "gsketch.hpp"
+#include "utils.h"
+
+/*int main_index(int argc, char *argv[]);*/
 
 // KSEQ_INIT(gzFile, gzread) // we already init kstream in gsketch
 __KSEQ_TYPE(gzFile)
@@ -21,7 +23,7 @@ __KSEQ_READ(static)
 using namespace std;
 
 struct anchor_t {
-  int v = -1;        // vertex on graph
+  int64_t v = -1;    // vertex on graph
   int offset = -1;   // offset on vertex
   int p = -1;        // position on query
   uint64_t seq = -1; // kmer
@@ -47,13 +49,6 @@ struct cluster_t {
   uint64_t ka = -1, kb = -1; // starting and ending kmers
 };
 
-static inline double realtime() {
-  struct timeval tp;
-  struct timezone tzp;
-  gettimeofday(&tp, &tzp);
-  return (double)tp.tv_sec + (double)tp.tv_usec * 1e-6;
-}
-
 string decode(const char *s, int l, int shift) {
   if (s == NULL)
     return "";
@@ -64,31 +59,9 @@ string decode(const char *s, int l, int shift) {
   return ds;
 }
 
-int build_consensus(const vector<sfs_t *> &specifics, char **cons,
+int build_consensus(abpoa_t *ab, abpoa_para_t *abpt,
+                    const vector<sfs_t *> &specifics, char **cons,
                     int *cons_c) {
-  // TODO: move this outside and init just once
-  // INIT ABPOA
-  abpoa_t *ab = abpoa_init();
-  abpoa_para_t *abpt = abpoa_init_para();
-  abpt->disable_seeding = 0;
-  abpt->align_mode = 0; // global
-  abpt->out_msa = 0;
-  abpt->out_cons = 1;
-  abpt->out_gfa = 0;
-  // abpt->is_diploid = 1; // TODO: maybe this works now
-  abpt->progressive_poa = 1;
-  abpt->amb_strand = 0;
-  abpt->wb = -1;
-  abpoa_post_set_para(abpt);
-  // abpt->match = 2;      // match score
-  // abpt->mismatch = 4;   // mismatch penalty
-  // abpt->gap_mode = ABPOA_CONVEX_GAP; // gap penalty mode
-  // abpt->gap_open1 = 4;  // gap open penalty #1
-  // abpt->gap_ext1 = 2;   // gap extension penalty #1
-  // abpt->gap_open2 = 24; // gap open penalty #2
-  // abpt->gap_ext2 = 1;   // gap extension penalty #2
-  // gap_penalty = min{gap_open1 + gap_len*gap_ext1, gap_open2+gap_len*gap_ext2}
-
   int *seq_lens = (int *)malloc(sizeof(int) * specifics.size());
   uint8_t **bseqs = (uint8_t **)malloc(sizeof(uint8_t *) * specifics.size());
   int goods = 0, i = 0;
@@ -124,18 +97,23 @@ int build_consensus(const vector<sfs_t *> &specifics, char **cons,
   /*  (*cons)[0] = '\0';*/
   /*  return 0;*/
   /*}*/
-
+  /*for (int i = 0; i < goods; ++i) {*/
+  /*  cout << seq_lens[i] << " " << decode((char *)bseqs[i], seq_lens[i], 1)*/
+  /*       << endl;*/
+  /*}*/
   abpoa_msa(ab, abpt, goods, NULL, seq_lens, bseqs, NULL, NULL);
   abpoa_cons_t *abc = ab->abc;
   int cons_l = 0;
   if (abc->n_cons > 0) {
     cons_l = abc->cons_len[0];
     if (cons_l + 1 > *cons_c) {
-      fprintf(stderr, "--- Reallocating from %d to %d\n", *cons_c, (cons_l + 1) * 2);
+      fprintf(stderr, "--- Reallocating from %d to %d\n", *cons_c,
+              (cons_l + 1) * 2);
       char *temp = (char *)realloc(*cons, (cons_l + 1) * 2 * sizeof(char));
       if (temp == NULL) {
         free(cons);
-        fprintf(stderr, "Error while reallocating memory for consensus string\n");
+        fprintf(stderr,
+                "Error while reallocating memory for consensus string\n");
         exit(2);
       } else {
         *cons = temp;
@@ -151,8 +129,6 @@ int build_consensus(const vector<sfs_t *> &specifics, char **cons,
     free(bseqs[i]);
   free(bseqs);
   free(seq_lens);
-  abpoa_free(ab);
-  abpoa_free_para(abpt);
 
   return cons_l;
 }
@@ -228,11 +204,12 @@ vector<sfs_t> ping_pong_search(const rb3_fmi_t *index, uint8_t *P, int qidx,
 }
 
 /* Anchor specific strings on graph using graph sketch */
-vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
+vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
+                     GSK &gsk) {
   vector<sfs_t> anchored_sfs;
-  int k = gsk.k;
+  int k = gsk.klen;
   int b, e;
-  pair<int, int> vx = make_pair(-1, -1);
+  pair<int64_t, uint16_t> vx = make_pair(-1, -1);
   char *kmer = (char *)malloc((k + 1) * sizeof(char));
   kmer[k] = '\0';
   uint64_t kmer_d;       // kmer
@@ -240,13 +217,11 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, GSK &gsk) {
   uint64_t ckmer_d = 0;  // canonical kmer
   int c;                 // current char
 
-  uint N = 20; // FIXME: hardcoded
-
   for (const sfs_t &s : sfs) {
     b = s.s - k;
     b = b < 0 ? 0 : b;
     e = s.s + s.l;
-    e = e > l - k + 1 ? l - k + 1 : e;
+    e = e > l - k ? l - k : e;
 
     memcpy(kmer, P + b, k);
     kmer_d = k2d(kmer, k);
@@ -415,21 +390,61 @@ string d2s(uint64_t kmer, int k) {
   return kk;
 }
 
+int align(char *tseq, char *qseq) {
+  int sc_mch = 2, sc_mis = -4, gapo = 6, gape = 1;
+  int i;
+  int8_t a = sc_mch, b = sc_mis < 0 ? sc_mis : -sc_mis; // a>0 and b<0
+  int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
+                    b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
+  int tl = strlen(tseq), ql = strlen(qseq);
+  uint8_t *ts, *qs, c[256];
+  ksw_extz_t ez;
+
+  memset(&ez, 0, sizeof(ksw_extz_t));
+  memset(c, 4, 256);
+  c['A'] = c['a'] = 0;
+  c['C'] = c['c'] = 1;
+  c['G'] = c['g'] = 2;
+  c['T'] = c['t'] = 3; // build the encoding table
+  ts = (uint8_t *)malloc(tl);
+  qs = (uint8_t *)malloc(ql);
+  for (i = 0; i < tl; ++i)
+    ts[i] = c[(uint8_t)tseq[i]]; // encode to 0/1/2/3
+  for (i = 0; i < ql; ++i)
+    qs[i] = c[(uint8_t)qseq[i]];
+  // ksw_extz(0, ql, qs, tl, ts, 5, mat, gapo, gape, -1, -1, 0, &ez);
+
+  ksw_extz2_sse(0, ql, qs, tl, ts, 5, mat, gapo, gape, -1, -1, 0, 0, &ez);
+
+  for (i = 0; i < ez.n_cigar; ++i) // print CIGAR
+    printf("%d%c", ez.cigar[i] >> 4, "MID"[ez.cigar[i] & 0xf]);
+  putchar('\n');
+  free(ez.cigar);
+  free(ts);
+  free(qs);
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
+  if (strcmp(argv[1], "align") == 0)
+    return 1; // main_index(argc-1, argv+1);
+  else if (strcmp(argv[1], "align") == 0)
+    return align(argv[2], argv[3]);
   char *gfa_fn = argv[1];
   char *fmd_fn = argv[2];
   char *fq_fn = argv[3];
   int k = stoi(argv[4]);
-  int w = 0;     // FIXME: hardcoded, minimum weight for clusters
+  int w = 2;     // FIXME: hardcoded, minimum weight for clusters
   int hd = 0;    // FIXME: hardcoded, hamming distance for fixing anchors
   int minl = 50; // FIXME: hardcoded, minimum SV length
-
+  int N = 20;    // FIXME: hardcoded, number of kmers to check for anchoring
   double rt0, rt, rt1;
   rt0 = realtime();
   rt = rt0;
 
-  GSK gsk(gfa_fn);
-  gsk.build_sketch(k);
+  // Graph sketching and path extraction
+  GSK gsk(gfa_fn, k);
+  gsk.build_sketch();
   fprintf(stderr, "[M::%s] sketched graph with %d vertices in %.3f sec\n",
           __func__, gsk.nvertices, realtime() - rt);
   rt = realtime();
@@ -438,7 +453,9 @@ int main(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] loaded %ld paths in %.3f sec\n", __func__,
           gsk.paths.size(), realtime() - rt);
   rt = realtime();
+  // ---
 
+  // FMD-index loading
   rb3_fmi_t f;
   rb3_fmi_restore(&f, fmd_fn, 0);
   if (f.e == 0 && f.r == 0) {
@@ -449,7 +466,9 @@ int main(int argc, char *argv[]) {
           realtime() - rt);
   rt = realtime();
   rt1 = rt;
+  // ---
 
+  // Specific strings computation and anchoring
   gzFile fp = gzopen(fq_fn, "r");
   kseq_t *seq = kseq_init(fp);
   int l;
@@ -467,11 +486,11 @@ int main(int argc, char *argv[]) {
     S = ping_pong_search(&f, s, qidx, seq->seq.l);
     S = assemble(S);
 
-    for (int i = 0; i < S.size() - 1; ++i)
+    for (int i = 0; i < (int)S.size() - 1; ++i)
       assert(S[i].s < S[i + 1].s);
 
-    S = anchor(S, s, l, gsk);
-    for (int i = 0; i < S.size() - 1; ++i)
+    S = anchor(S, s, l, N, gsk);
+    for (int i = 0; i < (int)S.size() - 1; ++i)
       assert(S[i].s < S[i + 1].s);
 
     strands[0] = 0;
@@ -510,7 +529,9 @@ int main(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] sorted specific strings in %.3f sec\n", __func__,
           realtime() - rt);
   rt = realtime();
+  // ---
 
+  // Clustering
   vector<cluster_t> Cs = cluster(SS, gsk);
   fprintf(stderr, "[M::%s] created %ld clusters in %.3f sec\n", __func__,
           Cs.size(), realtime() - rt);
@@ -537,8 +558,9 @@ int main(int argc, char *argv[]) {
           "[M::%s] merged clusters in %.3f sec (%d+%d=%d clusters filtered)\n",
           __func__, realtime() - rt, lowsc_n, lowsc_am_n, lowsc_n + lowsc_am_n);
   rt = realtime();
+  // ---
 
-  // checking if specifics start/end with "correct" kmers
+  // Specific strings cleaning (make sure they start/end with "correct" kmers)
   vector<vector<sfs_t *>> pspecifics(qnames.size());
   for (auto &c : Cs) {
     if (c.specifics.empty())
@@ -547,9 +569,11 @@ int main(int argc, char *argv[]) {
       assert(s.l > 0);
     for (auto &s : c.specifics) {
       if (s.a.seq == c.ka && s.b.seq == c.kb) {
+        s.good = 1;
         s.esk = c.ka;
         s.eek = c.kb;
       } else {
+        s.good = 0;
         if (s.strand) {
           s.esk = c.ka;
           s.eek = c.kb;
@@ -578,8 +602,7 @@ int main(int argc, char *argv[]) {
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
     for (sfs_t *s : pspecifics[qidx]) {
-      if (s->a.seq != s->esk) {
-        s->good = 2;
+      if (s->a.seq != s->esk && s->s > 0) {
         p = s->s - 1;
         memcpy(kmer, seq->seq.s + p, k);
         kmer_d = k2d(kmer, k);
@@ -602,7 +625,7 @@ int main(int argc, char *argv[]) {
           s->s = p;
         }
       }
-      if (s->b.seq != s->eek) {
+      if (s->b.seq != s->eek && s->s + s->l <= l - k) {
         p = s->s + s->l;
         memcpy(kmer, seq->seq.s + p, k);
         kmer_d = k2d(kmer, k);
@@ -625,6 +648,7 @@ int main(int argc, char *argv[]) {
           s->l += p + k - (s->s + s->l);
         }
       }
+      s->good = s->a.seq == s->esk && s->b.seq == s->eek;
       assert(s->good >= 0 && s->good <= 2);
       if (s->good > 0) {
         s->seq = (char *)malloc((s->l + 1) * sizeof(char));
@@ -641,7 +665,9 @@ int main(int argc, char *argv[]) {
           realtime() - rt);
   rt = realtime();
   rt1 = rt;
+  // ---
 
+  // Calling SVs
   char *pseq = (char *)malloc(8192 * sizeof(char));
   int pseq_c = 8192;
   int pseq_l = 0;
@@ -649,25 +675,40 @@ int main(int argc, char *argv[]) {
   int cons_c = 16384;
   int cons_l = 0;
 
-  // From minimap2 asm5
-  // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L141
-  // int a, b, q, e, q2, e2; // matching score, mismatch, gap-open and gap-ext
-  // penalties mo->a = 1, mo->b = 19, mo->q = 39, mo->q2 = 81, mo->e = 3, mo->e2
-  // = 1, mo->zdrop = mo->zdrop_inv = 200;
-  int sc_mch = 1, sc_mis = -9, gapo = 81, gape = 1;
+  int sc_mch = 2, sc_mis = -4, gapo = 6, gape = 1;
   int8_t a = (int8_t)sc_mch,
          b = sc_mis < 0 ? (int8_t)sc_mis : -(int8_t)sc_mis; // a>0 and b<0
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
                     b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
-  ksw_extz_t ez;
-  memset(&ez, 0, sizeof(ksw_extz_t));
-  int vuidx = 0;
-  char *cigar = (char *)malloc(4096 * sizeof(char));
-  int cp;
 
-  char *ins = (char *)malloc(15000); // FIXME: hardcoded
-  char *del = (char *)malloc(50000); // FIXME: hardcoded
-  int cc = 0;
+  // INIT ABPOA
+  abpoa_t *ab = abpoa_init();
+  abpoa_para_t *abpt = abpoa_init_para();
+  abpt->disable_seeding = 1;
+  abpt->align_mode = 0; // global
+  abpt->out_msa = 0;
+  abpt->out_cons = 1;
+  abpt->out_gfa = 0;
+  // abpt->is_diploid = 1; // TODO: maybe this works now
+  abpt->progressive_poa = 1;
+  abpt->amb_strand = 0;
+  abpt->wb = -1;
+  abpt->max_n_cons = 1; // to generate 1 consensus sequences
+  // abpt->match = 2;      // match score
+  // abpt->mismatch = 4;   // mismatch penalty
+  // abpt->gap_mode = ABPOA_CONVEX_GAP; // gap penalty mode
+  // abpt->gap_open1 = 4;  // gap open penalty #1
+  // abpt->gap_ext1 = 2;   // gap extension penalty #1
+  // abpt->gap_open2 = 24; // gap open penalty #2
+  // abpt->gap_ext2 = 1;   // gap extension penalty #2
+  // gap_penalty = min{gap_open1 + gap_len*gap_ext1, gap_open2+gap_len*gap_ext2}
+  abpoa_post_set_para(abpt);
+
+  int vuidx = 0;
+  char *cigar = (char *)malloc(16384 * sizeof(char)); // FIXME: hardcoded
+  char *ins = (char *)malloc(100000 * sizeof(char));  // FIXME: hardcoded
+  char *del = (char *)malloc(100000 * sizeof(char));  // FIXME: hardcoded
+  int cp, cc = 0;
   for (auto &c : Cs) {
     if (c.specifics.empty())
       continue;
@@ -677,6 +718,12 @@ int main(int argc, char *argv[]) {
               __func__, cc, sc_n - cc, realtime() - rt1);
       rt1 = realtime();
     }
+    /*cout << c.specifics.size() << " " << c.va << ">" << c.vb << " "*/
+    /*     << (c.va - 1) * 512 << "-" << (c.vb) * 512 << endl;*/
+    /*for (const auto &s : c.specifics)*/
+    /*  if (s.good)*/
+    /*    cout << qnames[s.qidx] << " " << s.s << " " << s.l << " "*/
+    /*         << decode(s.seq, s.l, 0) << endl;*/
 
     // split cluster based on strings length
     vector<int> subclusters_l(1);
@@ -740,7 +787,7 @@ int main(int argc, char *argv[]) {
         collapsed_subpaths[i].second += "," + string(p->idx);
     }
     for (int i = 0; i < (subclusters.size() == 1 ? 1 : 2); ++i) {
-      cons_l = build_consensus(subclusters[i], &cons, &cons_c);
+      cons_l = build_consensus(ab, abpt, subclusters[i], &cons, &cons_c);
       if (cons_l == 0)
         continue;
       for (pair<path_t *, string> collp : collapsed_subpaths) {
@@ -748,12 +795,19 @@ int main(int argc, char *argv[]) {
         // if (p == NULL)
         //   continue;
         pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
-
+        /*cout << cons_l << " " << cons_l << " " << decode(cons, cons_l, 1)*/
+        /*     << endl;*/
+        /*cout << pseq_l << " "*/
+        /*     << pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k) << " "*/
+        /*     << decode(pseq + c.offa,*/
+        /*               pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k), 1)*/
+        /*     << endl;*/
+        ksw_extz_t ez;
         memset(&ez, 0, sizeof(ksw_extz_t));
         ksw_extz2_sse(0, cons_l, (uint8_t *)cons,
                       pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
-                      (uint8_t *)(pseq + c.offa), 5, mat, gapo, gape, -1, 200,
-                      0, 0, &ez);
+                      (uint8_t *)(pseq + c.offa), 5, mat, gapo, gape, -1, -1, 0,
+                      0, &ez);
 
         // OUTPUT
         int opl;
@@ -765,6 +819,7 @@ int main(int argc, char *argv[]) {
           opl = ez.cigar[i] >> 4;
           cp += sprintf(cigar + cp, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
         }
+
         for (int i = 0; i < ez.n_cigar; ++i) {
           l = ez.cigar[i] >> 4;
           op = ez.cigar[i] & 0xf; // 0:M, 1:I, 2:D
@@ -808,19 +863,29 @@ int main(int argc, char *argv[]) {
             tp += l;
           }
         }
+        free(ez.cigar);
       }
     }
     for (path_t *p : subpaths) {
       if (p != NULL)
-        gsk.destroy_path(p);
+        destroy_path(p);
     }
   }
 
   fprintf(stderr, "[M::%s] called %d variations in %.3f sec\n", __func__, vuidx,
           realtime() - rt);
   rt = realtime();
+  // ---
 
-  free(ez.cigar);
+  // Cleaning up
+  for (auto &c : Cs) {
+    for (const sfs_t s : c.specifics) {
+      if (s.seq != NULL)
+        free(s.seq);
+    }
+  }
+  abpoa_free(ab);
+  abpoa_free_para(abpt);
   free(ins);
   free(del);
   free(cigar);
@@ -830,5 +895,7 @@ int main(int argc, char *argv[]) {
   gsk.destroy_graph();
   fprintf(stderr, "[M::%s] completed in %.3f sec\n", __func__,
           realtime() - rt0);
+  // ---
+
   return 0;
 }
