@@ -93,14 +93,7 @@ int build_consensus(abpoa_t *ab, abpoa_para_t *abpt,
     ++goods;
   }
   assert(goods > 0);
-  /*if (!goods) {*/
-  /*  (*cons)[0] = '\0';*/
-  /*  return 0;*/
-  /*}*/
-  /*for (int i = 0; i < goods; ++i) {*/
-  /*  cout << seq_lens[i] << " " << decode((char *)bseqs[i], seq_lens[i], 1)*/
-  /*       << endl;*/
-  /*}*/
+
   abpoa_msa(ab, abpt, goods, NULL, seq_lens, bseqs, NULL, NULL);
   abpoa_cons_t *abc = ab->abc;
   int cons_l = 0;
@@ -326,10 +319,17 @@ void add(cluster_t &c, const sfs_t &s) {
     c.offa = s.a.offset;
     c.ka = s.a.seq;
   }
-  if (c.vb == -1 || s.b.v > c.vb) {
-    c.vb = s.b.v;
-    c.offb = s.b.offset;
-    c.kb = s.b.seq;
+  if (c.vb == -1 || s.b.v >= c.vb) {
+    if (s.b.v == c.vb) {
+      if (s.b.offset > c.offb) {
+        c.offb = s.b.offset;
+        c.kb = s.b.seq;
+      }
+    } else {
+      c.vb = s.b.v;
+      c.offb = s.b.offset;
+      c.kb = s.b.seq;
+    }
   }
 }
 
@@ -391,7 +391,8 @@ string d2s(uint64_t kmer, int k) {
 }
 
 int align(char *tseq, char *qseq) {
-  int sc_mch = 2, sc_mis = -4, gapo = 6, gape = 1;
+  // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
+  int sc_mch = 4, sc_mis = -9, gapo = 41, gape = 1;
   int i;
   int8_t a = sc_mch, b = sc_mis < 0 ? sc_mis : -sc_mis; // a>0 and b<0
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
@@ -426,7 +427,7 @@ int align(char *tseq, char *qseq) {
 }
 
 int main(int argc, char *argv[]) {
-  if (strcmp(argv[1], "align") == 0)
+  if (strcmp(argv[1], "index") == 0)
     return 1; // main_index(argc-1, argv+1);
   else if (strcmp(argv[1], "align") == 0)
     return align(argv[2], argv[3]);
@@ -501,9 +502,12 @@ int main(int argc, char *argv[]) {
     strand = 1;
     if (strands[0] > strands[1])
       strand = 0;
-    for (const auto &s : S)
+    for (const auto &s : S) {
+      cerr << seq->name.s << " " << s.s << " " << s.l << " " << s.strand << " "
+           << (s.strand == strand) << endl;
       if (s.strand == strand)
         SS.push_back(s);
+    }
 
     qnames.push_back(seq->name.s);
     ++qidx;
@@ -675,7 +679,8 @@ int main(int argc, char *argv[]) {
   int cons_c = 16384;
   int cons_l = 0;
 
-  int sc_mch = 2, sc_mis = -4, gapo = 6, gape = 1;
+  // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
+  int sc_mch = 1, sc_mis = -9, gapo = 41, gape = 1;
   int8_t a = (int8_t)sc_mch,
          b = sc_mis < 0 ? (int8_t)sc_mis : -(int8_t)sc_mis; // a>0 and b<0
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
@@ -718,12 +723,12 @@ int main(int argc, char *argv[]) {
               __func__, cc, sc_n - cc, realtime() - rt1);
       rt1 = realtime();
     }
-    /*cout << c.specifics.size() << " " << c.va << ">" << c.vb << " "*/
-    /*     << (c.va - 1) * 512 << "-" << (c.vb) * 512 << endl;*/
-    /*for (const auto &s : c.specifics)*/
-    /*  if (s.good)*/
-    /*    cout << qnames[s.qidx] << " " << s.s << " " << s.l << " "*/
-    /*         << decode(s.seq, s.l, 0) << endl;*/
+
+    fprintf(stderr, "\n\n%d %d>%d %d-%d\n", c.specifics.size(), c.va, c.vb,
+            (c.va - 1) * 512, c.vb * 512);
+    for (const auto &s : c.specifics)
+      cerr << s.good << " " << qnames[s.qidx] << " " << s.s << " " << s.l
+           << endl;
 
     // split cluster based on strings length
     vector<int> subclusters_l(1);
@@ -786,8 +791,15 @@ int main(int argc, char *argv[]) {
       else
         collapsed_subpaths[i].second += "," + string(p->idx);
     }
-    for (int i = 0; i < (subclusters.size() == 1 ? 1 : 2); ++i) {
-      cons_l = build_consensus(ab, abpt, subclusters[i], &cons, &cons_c);
+    fprintf(stderr, "We have %d subclusters\n",
+            subclusters.size() == 1 ? 1 : 2);
+    for (int sci = 0; sci < (subclusters.size() == 1 ? 1 : 2); ++sci) {
+      fprintf(stderr, "%d: %d\n", sci, subclusters[sci].size());
+      cons_l = build_consensus(ab, abpt, subclusters[sci], &cons, &cons_c);
+
+      for (sfs_t *s : subclusters[sci])
+        cerr << qnames[s->qidx] << ":" << s->s << "-" << s->s + s->l << endl;
+
       if (cons_l == 0)
         continue;
       for (pair<path_t *, string> collp : collapsed_subpaths) {
@@ -795,13 +807,11 @@ int main(int argc, char *argv[]) {
         // if (p == NULL)
         //   continue;
         pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
-        /*cout << cons_l << " " << cons_l << " " << decode(cons, cons_l, 1)*/
-        /*     << endl;*/
-        /*cout << pseq_l << " "*/
-        /*     << pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k) << " "*/
-        /*     << decode(pseq + c.offa,*/
-        /*               pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k), 1)*/
-        /*     << endl;*/
+        cerr << cons_l << " " << decode(cons, cons_l, 1) << endl;
+        cerr << pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k) << " "
+             << decode(pseq + c.offa,
+                       pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k), 1)
+             << endl;
         ksw_extz_t ez;
         memset(&ez, 0, sizeof(ksw_extz_t));
         ksw_extz2_sse(0, cons_l, (uint8_t *)cons,
@@ -818,7 +828,9 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < ez.n_cigar; ++i) {
           opl = ez.cigar[i] >> 4;
           cp += sprintf(cigar + cp, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
+          fprintf(stderr, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
         }
+        fprintf(stderr, "\n");
 
         for (int i = 0; i < ez.n_cigar; ++i) {
           l = ez.cigar[i] >> 4;
@@ -830,7 +842,7 @@ int main(int argc, char *argv[]) {
           } else if (op == 1) {
             // I
             if (l >= minl) {
-              cout << vuidx << "\t"
+              cout << vuidx << "\t" << sci << "\t"
                    << "INS"
                    << "\t" << l << "\t" << collp.second << "\t";
               cout << p->vertices[0];
@@ -847,7 +859,7 @@ int main(int argc, char *argv[]) {
           } else if (op == 2) {
             // D
             if (l >= minl) {
-              cout << vuidx << "\t"
+              cout << vuidx << "\t" << sci << "\t"
                    << "DEL"
                    << "\t" << l << "\t" << collp.second << "\t";
               cout << p->vertices[0];
