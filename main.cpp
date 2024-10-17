@@ -927,7 +927,7 @@ int main(int argc, char *argv[]) {
                    << "ACGT"[pseq[tp - 1]] << "\t";
               memcpy(ins, cons + qp, l);
               ins[l] = '\0';
-              cout << decode(ins, l, 1) << "\t" << tp << "\t" << cigar << endl;
+              cout << decode(ins, l, 1) << "\t" << c.offa + tp << "\t" << cigar << endl;
               ++vuidx;
             }
             qp += l;
@@ -943,7 +943,7 @@ int main(int argc, char *argv[]) {
               memcpy(del, pseq + tp, l);
               del[l] = '\0';
               cout << "\t" << 100 << "\t" << decode(del, l, 1) << "\t";
-              cout << "ACGT"[cons[qp - 1]] << "\t" << tp << "\t" << cigar
+              cout << "ACGT"[cons[qp - 1]] << "\t" << c.offa + tp << "\t" << cigar
                    << endl;
               ++vuidx;
             }
