@@ -795,7 +795,7 @@ int main(int argc, char *argv[]) {
               __func__, cc, sc_n - cc, realtime() - rt1);
       rt1 = realtime();
     }
-    fprintf(stderr, "\n\n%d %d>%d %d-%d\n", c.specifics.size(), c.va, c.vb,
+    fprintf(stderr, "\n\n%ld %d>%d %d-%d\n", c.specifics.size(), c.va, c.vb,
             (c.va - 1) * 512, c.vb * 512);
 
     if (clusters_f != NULL)
@@ -867,7 +867,7 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "We have %d subclusters\n",
             subclusters.size() == 1 ? 1 : 2);
     for (int sci = 0; sci < (subclusters.size() == 1 ? 1 : 2); ++sci) {
-      fprintf(stderr, "%d: %d\n", sci, subclusters[sci].size());
+      fprintf(stderr, "%d: %ld\n", sci, subclusters[sci].size());
       cons_l = build_consensus(ab, abpt, subclusters[sci], &cons, &cons_c);
 
       for (sfs_t *s : subclusters[sci])
