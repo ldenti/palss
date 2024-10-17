@@ -7,7 +7,7 @@ rule get_truth:
         "../envs/bcftools.yml"
     shell:
         """
-        bcftools view -Oz -v indels -i '(ILEN <= -50 || ILEN >= 50)' {input.vcf} > {output.vcf}
+        bcftools view -Oz -s {SAMPLE} -v indels -i '(ILEN <= -50 || ILEN >= 50)' {input.vcf} > {output.vcf}
         tabix -p vcf {output.vcf}
         """
 
@@ -17,10 +17,12 @@ rule gzip:
         "{x}.vcf",
     output:
         "{x}.vcf.gz",
+    conda:
+        "../envs/bcftools.yml"
     shell:
         """
-        bgzip -k {input.vcf}
-        tabix -p vcf {output.vcf}
+        $CONDA_PREFIX/bin/bgzip -k {input}
+        tabix -p vcf {output}
         """
 
 

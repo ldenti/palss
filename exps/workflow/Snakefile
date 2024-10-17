@@ -34,19 +34,21 @@ include: "rules/analysis.smk"
 
 rule run:
     input:
+        pjoin(WD, SAMPLE, "truth.vcf.gz"),
         expand(
             pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}-calls.k{k}.vcf"),
             l=Ls,
             k=Ks,
-            graph=["reference", "variations"],
+            graph=["reference"],
+            # graph=["reference", "variations"],
         ),
         # LR
         pjoin(WD, SAMPLE, "cutesv.vcf.gz"),
         pjoin(WD, SAMPLE, "sniffles2.vcf.gz"),
         # ASM
-        pjoin(WD, SAMPLE, "dipcall.vcf.gz"),
-        pjoin(WD, SAMPLE, "cutesv-asm.vcf.gz"),
-        pjoin(WD, SAMPLE, "svim-asm.vcf.gz"),
+        # pjoin(WD, SAMPLE, "dipcall.vcf.gz"),
+        # pjoin(WD, SAMPLE, "cutesv-asm.vcf.gz"),
+        # pjoin(WD, SAMPLE, "svim-asm.vcf.gz"),
         # graph alignment
         # expand(
         #     pjoin(WD, SAMPLE, "graphaligner-l{l}", "{graph}.gaf"),

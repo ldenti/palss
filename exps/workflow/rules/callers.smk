@@ -56,5 +56,5 @@ rule cutesv:
     shell:
         """
         mkdir -p {params.tmp}
-        cuteSV --genotype --min_size 50 --min_mapq 20 --min_support {wildcards.w} --max_cluster_bias_INS 1000 --diff_ratio_merging_INS 0.9 --max_cluster_bias_DEL 1000 --diff_ratio_merging_DEL 0.5 {input.bam} {input.fa} {output.vcf} {params.tmp}
+        cuteSV --genotype --min_size 50 --min_mapq 20 --min_support 2 --max_cluster_bias_INS 1000 --diff_ratio_merging_INS 0.9 --max_cluster_bias_DEL 1000 --diff_ratio_merging_DEL 0.5 {input.bam} {input.fa} {output.vcf} {params.tmp}
         """

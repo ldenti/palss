@@ -7,7 +7,7 @@ rule remove_sample:
         "../envs/bcftools.yml"
     shell:
         """
-        $CONDA_PREFIX/bin/bcftools view -Oz --samples ^{sample} {input.vcf} > {output.vcf}
+        $CONDA_PREFIX/bin/bcftools view -Oz --samples ^{SAMPLE} {input.vcf} > {output.vcf}
         tabix -p vcf {output.vcf}
         """
 
