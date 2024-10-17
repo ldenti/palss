@@ -2,8 +2,8 @@ rule dipcall:
     input:
         fa=FA,
         # bed=PARBED,
-        hap1=HAP1,
-        hap2=HAP2,
+        hap1=pjoin(WD, SAMPLE, "hap1.fa"),
+        hap2=pjoin(WD, SAMPLE, "hap2.fa"),
     output:
         vcf=pjoin(WD, SAMPLE, "dipcall", "prefix.dip.vcf.gz"),
         bed=pjoin(WD, SAMPLE, "dipcall", "prefix.dip.bed"),

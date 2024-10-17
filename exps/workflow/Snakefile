@@ -10,17 +10,18 @@ REALFQ = config["fq"]
 
 SAMPLE = config["sample"]  # "HG02723"
 
-HAP1 = config["hap1"]
-HAP2 = config["hap2"]
+# HAP1 = config["hap1"]
+# HAP2 = config["hap2"]
 
 TIERS = {"full": "/dev/null"}
 for v in config["tiers"]:
     TIERS[list(v.keys())[0]] = list(v.values())[0]
 
 seed = 23
-coverage = 5
+coverage = 5 # per haplotype
 
 Ls = [256, 512, 1024]  # vertices max size
+Ls = [512]
 Ks = [27]  # anchor size
 
 
@@ -43,10 +44,10 @@ rule run:
             # graph=["reference", "variations"],
         ),
         # LR
-        pjoin(WD, SAMPLE, "cutesv.vcf.gz"),
+        # pjoin(WD, SAMPLE, "cutesv.vcf.gz"),
         pjoin(WD, SAMPLE, "sniffles2.vcf.gz"),
         # ASM
-        # pjoin(WD, SAMPLE, "dipcall.vcf.gz"),
+        pjoin(WD, SAMPLE, "dipcall.vcf.gz"),
         # pjoin(WD, SAMPLE, "cutesv-asm.vcf.gz"),
         # pjoin(WD, SAMPLE, "svim-asm.vcf.gz"),
         # graph alignment
