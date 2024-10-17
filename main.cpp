@@ -7,6 +7,7 @@
 
 #include "abpoa.h"
 #include "fm-index.h"
+#include "ketopt.h"
 #include "kseq.h"
 #include "ksw2.h"
 
@@ -390,9 +391,32 @@ string d2s(uint64_t kmer, int k) {
   return kk;
 }
 
-int align(char *tseq, char *qseq) {
+int align(int argc, char *argv[]) {
   // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
   int sc_mch = 4, sc_mis = -9, gapo = 41, gape = 1;
+  int zdrop = -1;
+  int flag = 0x40;
+  static ko_longopt_t longopts[] = {};
+  ketopt_t opt = KETOPT_INIT;
+  int _c;
+  while ((_c = ketopt(&opt, argc, argv, 1, "m:x:o:e:z:g", longopts)) >= 0) {
+    if (_c == 'm')
+      sc_mch = atoi(opt.arg);
+    else if (_c == 'x')
+      sc_mis = -atoi(opt.arg);
+    else if (_c == 'o')
+      gapo = atoi(opt.arg);
+    else if (_c == 'e')
+      gape = atoi(opt.arg);
+    else if (_c == 'z')
+      zdrop = atoi(opt.arg);
+    else if (_c == 'g')
+      flag = 0;
+  }
+
+  char *tseq = argv[opt.ind++];
+  char *qseq = argv[opt.ind++];
+
   int i;
   int8_t a = sc_mch, b = sc_mis < 0 ? sc_mis : -sc_mis; // a>0 and b<0
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
@@ -415,11 +439,14 @@ int align(char *tseq, char *qseq) {
     qs[i] = c[(uint8_t)qseq[i]];
   // ksw_extz(0, ql, qs, tl, ts, 5, mat, gapo, gape, -1, -1, 0, &ez);
 
-  ksw_extz2_sse(0, ql, qs, tl, ts, 5, mat, gapo, gape, -1, -1, 0, 0, &ez);
+  ksw_extz2_sse(0, ql, qs, tl, ts, 5, mat, gapo, gape, -1, -1, zdrop, flag,
+                &ez);
 
   for (i = 0; i < ez.n_cigar; ++i) // print CIGAR
     printf("%d%c", ez.cigar[i] >> 4, "MID"[ez.cigar[i] & 0xf]);
   putchar('\n');
+
+  printf("%d\n", ez.score);
   free(ez.cigar);
   free(ts);
   free(qs);
@@ -430,15 +457,50 @@ int main(int argc, char *argv[]) {
   if (strcmp(argv[1], "index") == 0)
     return 1; // main_index(argc-1, argv+1);
   else if (strcmp(argv[1], "align") == 0)
-    return align(argv[2], argv[3]);
-  char *gfa_fn = argv[1];
-  char *fmd_fn = argv[2];
-  char *fq_fn = argv[3];
-  int k = stoi(argv[4]);
-  int w = 2;     // FIXME: hardcoded, minimum weight for clusters
-  int hd = 0;    // FIXME: hardcoded, hamming distance for fixing anchors
-  int minl = 50; // FIXME: hardcoded, minimum SV length
-  int N = 20;    // FIXME: hardcoded, number of kmers to check for anchoring
+    return align(argc - 1, argv + 1);
+
+  int k = 27;      // kmer size
+  int w = 2;       // minimum weight for clusters
+  int hd = 0;      // hamming distance for fixing anchors
+  int minl = 50;   // minimum SV length
+  int N = 20;      // number of kmers to check for anchoring
+  float lp = 0.97; // ratio to split clusters into haplotypes
+  char *sfs_fn = NULL;
+  char *clusters_fn = NULL;
+
+  static ko_longopt_t longopts[] = {/*  { "foo", ko_no_argument,       301 },*/
+                                    {"specifics", ko_required_argument, 301},
+                                    {"clusters", ko_required_argument, 302},
+                                    {NULL, 0, 0}};
+  ketopt_t opt = KETOPT_INIT;
+  int _c;
+  while ((_c = ketopt(&opt, argc, argv, 1, "k:w:d:l:a:r:", longopts)) >= 0) {
+    if (_c == 'k')
+      k = atoi(opt.arg);
+    else if (_c == 'w')
+      w = atoi(opt.arg);
+    else if (_c == 'd')
+      hd = atoi(opt.arg);
+    else if (_c == 'l')
+      minl = atoi(opt.arg);
+    else if (_c == 'a')
+      N = atoi(opt.arg);
+    else if (_c == 'r')
+      lp = atof(opt.arg);
+    else if (_c == 301)
+      sfs_fn = opt.arg;
+    else if (_c == 302)
+      clusters_fn = opt.arg;
+  }
+
+  if (argc - opt.ind != 3) {
+    fprintf(stderr, "Argh");
+    return 1;
+  }
+  char *gfa_fn = argv[opt.ind++];
+  char *fmd_fn = argv[opt.ind++];
+  char *fq_fn = argv[opt.ind++];
+
   double rt0, rt, rt1;
   rt0 = realtime();
   rt = rt0;
@@ -470,6 +532,11 @@ int main(int argc, char *argv[]) {
   // ---
 
   // Specific strings computation and anchoring
+
+  FILE *sfs_f = NULL;
+  if (sfs_fn != NULL)
+    sfs_f = fopen(sfs_fn, "w");
+
   gzFile fp = gzopen(fq_fn, "r");
   kseq_t *seq = kseq_init(fp);
   int l;
@@ -503,12 +570,12 @@ int main(int argc, char *argv[]) {
     if (strands[0] > strands[1])
       strand = 0;
     for (const auto &s : S) {
-      cerr << seq->name.s << " " << s.s << " " << s.l << " " << s.strand << " "
-           << (s.strand == strand) << endl;
+      if (sfs_f != NULL)
+        fprintf(sfs_f, "%s:%d-%d %d %d %d\n", seq->name.s, s.s, s.s + s.l, s.l,
+                s.strand, s.strand == strand);
       if (s.strand == strand)
         SS.push_back(s);
     }
-
     qnames.push_back(seq->name.s);
     ++qidx;
     if (qidx % 10000 == 0) {
@@ -522,7 +589,8 @@ int main(int argc, char *argv[]) {
   kseq_destroy(seq);
   gzclose(fp);
   rb3_fmi_free(&f);
-
+  if (sfs_f != NULL)
+    fclose(sfs_f);
   fprintf(stderr, "[M::%s] computed %ld specific strings in %.3f sec\n",
           __func__, SS.size(), realtime() - rt);
   rt = realtime();
@@ -654,11 +722,11 @@ int main(int argc, char *argv[]) {
       }
       s->good = s->a.seq == s->esk && s->b.seq == s->eek;
       assert(s->good >= 0 && s->good <= 2);
-      if (s->good > 0) {
-        s->seq = (char *)malloc((s->l + 1) * sizeof(char));
-        memcpy(s->seq, seq->seq.s + s->s, s->l);
-        s->seq[s->l] = '\0';
-      }
+      /*if (s->good > 0) {*/
+      s->seq = (char *)malloc((s->l + 1) * sizeof(char));
+      memcpy(s->seq, seq->seq.s + s->s, s->l);
+      s->seq[s->l] = '\0';
+      /*}*/
     }
     ++qidx;
   }
@@ -709,6 +777,10 @@ int main(int argc, char *argv[]) {
   // gap_penalty = min{gap_open1 + gap_len*gap_ext1, gap_open2+gap_len*gap_ext2}
   abpoa_post_set_para(abpt);
 
+  FILE *clusters_f = NULL;
+  if (clusters_fn != NULL)
+    clusters_f = fopen(clusters_fn, "w");
+  // if (fptr == NULL)
   int vuidx = 0;
   char *cigar = (char *)malloc(16384 * sizeof(char)); // FIXME: hardcoded
   char *ins = (char *)malloc(100000 * sizeof(char));  // FIXME: hardcoded
@@ -723,12 +795,13 @@ int main(int argc, char *argv[]) {
               __func__, cc, sc_n - cc, realtime() - rt1);
       rt1 = realtime();
     }
-
     fprintf(stderr, "\n\n%d %d>%d %d-%d\n", c.specifics.size(), c.va, c.vb,
             (c.va - 1) * 512, c.vb * 512);
-    for (const auto &s : c.specifics)
-      cerr << s.good << " " << qnames[s.qidx] << " " << s.s << " " << s.l
-           << endl;
+
+    if (clusters_f != NULL)
+      for (const auto &s : c.specifics)
+        fprintf(clusters_f, ">%s:%d-%d.%d.C%d.%d\n%s\n", qnames[s.qidx].c_str(),
+                s.s, s.s + s.l, s.l, cc, s.good, decode(s.seq, s.l, 0).c_str());
 
     // split cluster based on strings length
     vector<int> subclusters_l(1);
@@ -748,7 +821,7 @@ int main(int argc, char *argv[]) {
       for (j = 0; j < subclusters.size(); ++j) {
         if (min(c.specifics[i].l, subclusters_l[j]) /
                 (float)max(c.specifics[i].l, subclusters_l[j]) >=
-            0.9) { // FIXME: hardcoded
+            lp) {
           break;
         }
       }
@@ -798,7 +871,8 @@ int main(int argc, char *argv[]) {
       cons_l = build_consensus(ab, abpt, subclusters[sci], &cons, &cons_c);
 
       for (sfs_t *s : subclusters[sci])
-        cerr << qnames[s->qidx] << ":" << s->s << "-" << s->s + s->l << endl;
+        fprintf(stderr, "%s:%d-%d %d\n", qnames[s->qidx].c_str(), s->s,
+                s->s + s->l, s->l);
 
       if (cons_l == 0)
         continue;
@@ -807,17 +881,18 @@ int main(int argc, char *argv[]) {
         // if (p == NULL)
         //   continue;
         pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
-        cerr << cons_l << " " << decode(cons, cons_l, 1) << endl;
-        cerr << pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k) << " "
-             << decode(pseq + c.offa,
+        fprintf(stderr, "C %d %s\n", cons_l, decode(cons, cons_l, 1).c_str());
+        fprintf(stderr, "P %d %s\n",
+                pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
+                decode(pseq + c.offa,
                        pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k), 1)
-             << endl;
+                    .c_str());
         ksw_extz_t ez;
         memset(&ez, 0, sizeof(ksw_extz_t));
         ksw_extz2_sse(0, cons_l, (uint8_t *)cons,
                       pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
-                      (uint8_t *)(pseq + c.offa), 5, mat, gapo, gape, -1, -1, 0,
-                      0, &ez);
+                      (uint8_t *)(pseq + c.offa), 5, mat, gapo, gape, -1, -1,
+                      200, 0x40, &ez);
 
         // OUTPUT
         int opl;
@@ -883,7 +958,8 @@ int main(int argc, char *argv[]) {
         destroy_path(p);
     }
   }
-
+  if (clusters_f != NULL)
+    fclose(clusters_f);
   fprintf(stderr, "[M::%s] called %d variations in %.3f sec\n", __func__, vuidx,
           realtime() - rt);
   rt = realtime();
