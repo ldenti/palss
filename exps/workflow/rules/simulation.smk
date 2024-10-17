@@ -1,7 +1,22 @@
+rule get_sample_vcf:
+    input:
+        vcf=VCF,
+    output:
+        vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
+    shell:
+        """
+        $CONDA_PREFIX/bin/bcftools view -s {SAMPLE} {input.vcf} | \
+            $CONDA_PREFIX/bin/bcftools view -c 1 | \
+            $CONDA_PREFIX/bin/bcftools +$CONDA_PREFIX/libexec/bcftools/missing2ref | \
+            $CONDA_PREFIX/bin/bcftools +$CONDA_PREFIX/libexec/bcftools/remove-overlaps.so -Oz> {output.vcf}
+        tabix -p vcf {output.vcf}
+        """
+
+
 rule get_haplotype:
     input:
         fa=FA,
-        vcf=VCF,
+        vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
     output:
         fa=pjoin(WD, SAMPLE, "hap{h}.fa"),
     conda:

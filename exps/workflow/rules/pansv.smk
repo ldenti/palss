@@ -1,8 +1,9 @@
+# TODO: FIX THIS
 rule remove_sample:
     input:
         vcf=VCF,
     output:
-        vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
+        vcf=pjoin(WD, SAMPLE, "variations-1out.vcf.gz"),
     conda:
         "../envs/bcftools.yml"
     shell:
@@ -29,7 +30,7 @@ rule build_reference_graph:
 rule build_variation_graph:
     input:
         fa=FA,
-        vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
+        vcf=pjoin(WD, SAMPLE, "variations-1out.vcf.gz"),
     output:
         vg=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.walts.vg"),
     threads: workflow.cores
@@ -70,7 +71,7 @@ rule build_gbwt_referencepath:
 
 rule build_gbwt:
     input:
-        vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
+        vcf=pjoin(WD, SAMPLE, "variations-1out.vcf.gz"),
         vg=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.walts.vg"),
     output:
         gbwt=pjoin(WD, SAMPLE, "pansv-l{l}", "variations.gbwt"),

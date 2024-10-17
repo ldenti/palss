@@ -1,13 +1,13 @@
 rule get_truth:
     input:
-        vcf=VCF,
+        vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
     output:
         vcf=pjoin(WD, SAMPLE, "truth.vcf.gz"),
     conda:
         "../envs/bcftools.yml"
     shell:
         """
-        bcftools view -Oz -s {SAMPLE} -v indels -i '(ILEN <= -50 || ILEN >= 50)' {input.vcf} > {output.vcf}
+        bcftools view -Oz -v indels -i '(ILEN <= -50 || ILEN >= 50)' {input.vcf} > {output.vcf}
         tabix -p vcf {output.vcf}
         """
 
