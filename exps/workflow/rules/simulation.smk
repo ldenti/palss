@@ -3,11 +3,13 @@ rule get_sample_vcf:
         vcf=VCF,
     output:
         vcf=pjoin(WD, SAMPLE, "variations.vcf.gz"),
+    conda:
+        "../envs/bcftools.yml"
     shell:
         """
         $CONDA_PREFIX/bin/bcftools view -s {SAMPLE} {input.vcf} | \
             $CONDA_PREFIX/bin/bcftools view -c 1 | \
-            $CONDA_PREFIX/bin/bcftools +$CONDA_PREFIX/libexec/bcftools/missing2ref | \
+            $CONDA_PREFIX/bin/bcftools +$CONDA_PREFIX/libexec/bcftools/missing2ref.so | \
             $CONDA_PREFIX/bin/bcftools +$CONDA_PREFIX/libexec/bcftools/remove-overlaps.so -Oz> {output.vcf}
         tabix -p vcf {output.vcf}
         """

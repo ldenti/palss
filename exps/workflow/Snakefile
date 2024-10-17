@@ -44,7 +44,7 @@ rule run:
             # graph=["reference", "variations"],
         ),
         # LR
-        # pjoin(WD, SAMPLE, "cutesv.vcf.gz"),
+        pjoin(WD, SAMPLE, "cutesv.vcf.gz"),
         pjoin(WD, SAMPLE, "sniffles2.vcf.gz"),
         # ASM
         pjoin(WD, SAMPLE, "dipcall.vcf.gz"),
@@ -56,3 +56,12 @@ rule run:
         #     l=Ls,
         #     graph=["reference", "variations"],
         # ),
+        expand(pjoin(WD, SAMPLE, "truvari", "{mode}", "pansv-l{l}.k{k}.{graph}"),
+            mode=["full"],
+            l=Ls,
+            k=Ks,
+            graph=["reference"],
+        ),
+        expand(pjoin(WD, SAMPLE, "truvari", "{mode}", "{caller}"),
+            mode=["full"],
+            caller=["cutesv", "sniffles2", "dipcall"]),

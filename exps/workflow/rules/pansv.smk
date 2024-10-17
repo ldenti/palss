@@ -168,9 +168,10 @@ rule pansv:
         k="{k}",
     log:
         time=pjoin(WD, SAMPLE, "TIMES", "pansv-l{l}", "{graph}-calling.k{k}.time"),
+        log=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}-calling.k{k}.log"),
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv {input.gfa} {input.fmd} {input.fq} {params.k} > {output.txt}
+        /usr/bin/time -vo {log.time} ../pansv -k {params.k} {input.gfa} {input.fmd} {input.fq} > {output.txt} 2> {log.log}
         """
 
 
@@ -184,5 +185,5 @@ rule pansv_convert:
         time=pjoin(WD, SAMPLE, "TIMES", "pansv-l{l}", "{graph}-converting.k{k}.time"),
     shell:
         """
-        /usr/bin/time -vo {log.time} python3 ../format_vcf.py {input.gfa} {input.txt} > {output.vcf}
+        /usr/bin/time -vo {log.time} python3 ../format_vcf.py {input.gfa} {input.txt} | bcftools sort > {output.vcf}
         """

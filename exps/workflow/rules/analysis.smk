@@ -29,7 +29,7 @@ rule gzip:
 rule truvari_pansv:
     input:
         fa=FA,
-        vcf=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}-calls.k{k}.vcf"),
+        vcf=pjoin(WD, SAMPLE, "pansv-l{l}", "{graph}-calls.k{k}.vcf.gz"),
         truth=pjoin(WD, SAMPLE, "truth.vcf.gz"),
         bed=lambda wildcards: TIERS[wildcards.mode],
     output:
@@ -38,18 +38,22 @@ rule truvari_pansv:
         bed_flag=lambda wildcards: (
             "" if wildcards.mode == "full" else "--includebed " + modes[wildcards.mode]
         ),
+        tmp=pjoin(WD, SAMPLE, "truvari", "{mode}", "pansv-l{l}.k{k}.{graph}.tmp"),
     conda:
         "../envs/truvari.yml"
     shell:
         """
-        truvari bench -b {input.truth} -c {input.vcf} -o {output} -f {input.fa} --includebed {input.bed} --passonly
+        mkdir -p {params.tmp}
+        export TMPDIR="{params.tmp}"
+        truvari bench -b {input.truth} -c {input.vcf} -o {output} --passonly {params.bed_flag}
+        rm -rf {params.tmp}
         """
 
 
 rule truvari_others:
     input:
         fa=FA,
-        vcf=pjoin(WD, SAMPLE, "{caller}", "variations.vcf"),
+        vcf=pjoin(WD, SAMPLE, "{caller}.vcf.gz"),
         truth=pjoin(WD, SAMPLE, "truth.vcf.gz"),
         bed=lambda wildcards: TIERS[wildcards.mode],
     output:
@@ -58,11 +62,15 @@ rule truvari_others:
         bed_flag=lambda wildcards: (
             "" if wildcards.mode == "full" else "--includebed " + modes[wildcards.mode]
         ),
+        tmp=pjoin(WD, SAMPLE, "truvari", "{mode}", "{caller}.tmp")
     conda:
         "../envs/truvari.yml"
     shell:
         """
-        truvari bench -b {input.truth} -c {input.vcf} -o {output} -f {input.fa} --includebed {input.bed} --passonly
+        mkdir -p {params.tmp}
+        export TMPDIR="{params.tmp}"
+        truvari bench -b {input.truth} -c {input.vcf} -o {output} --passonly {params.bed_flag}
+        rm -rf {params.tmp}
         """
 
 
