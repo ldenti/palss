@@ -892,7 +892,7 @@ int main(int argc, char *argv[]) {
         ksw_extz2_sse(0, cons_l, (uint8_t *)cons,
                       pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
                       (uint8_t *)(pseq + c.offa), 5, mat, gapo, gape, -1, -1,
-                      200, 0x40, &ez);
+                      200, 0 /*0x40*/, &ez);
 
         // OUTPUT
         int opl;
