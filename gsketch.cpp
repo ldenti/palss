@@ -51,25 +51,12 @@ int GSK::build_sketch() {
   ks_destroy(ks);
   gzclose(fp);
 
-  multi.clear();
-
   return 0;
 }
 
 void GSK::add_kmer(uint64_t kmer_d, uint64_t v, uint16_t offset) {
   auto x = sketch.find(kmer_d);
-  auto y = multi.find(kmer_d);
-
-  // assert((x == sketch.end()) == (y == multi.end()) && y != multi.end());
-  // we cannot have false false here
-  if (x == sketch.end() && y == multi.end()) {
-    sketch[kmer_d] = encode(v, offset);
-  } else {
-    if (x != sketch.end()) {
-      multi.insert(x->first);
-      sketch.erase(x);
-    }
-  }
+  sketch[kmer_d] = encode(v, offset, x == sketch.end());
 }
 
 /*int GSK::store(char *f) {*/
@@ -79,9 +66,10 @@ void GSK::add_kmer(uint64_t kmer_d, uint64_t v, uint16_t offset) {
 
 pair<int64_t, int16_t> GSK::get(uint64_t &kmer_d) {
   auto x = sketch.find(kmer_d);
-  return x != sketch.end()
-             ? make_pair(decode_v(x->second), decode_off(x->second))
-             : make_pair((int64_t)-1, (int16_t)-1);
+  pair<int64_t, int16_t> hit = make_pair((int64_t)-1, (int16_t)-1);
+  if (x != sketch.end() && decode_unique(x->second))
+    hit = make_pair(decode_v(x->second), decode_off(x->second));
+  return hit;
 }
 
 int GSK::build_graph() {
