@@ -43,16 +43,18 @@ public:
   uint8_t klen;
   int nvertices;                  // number of vertices
   map<uint64_t, uint64_t> sketch; // sketch : (47[vertex, 16[offset, 1[unique)
-  vector<vector<int>> graph;
-  vector<path_t *> paths;    // TODO: sampling
+  vector<path_t *> paths;         // TODO: sampling
   map<int, string> vertices; // make this an array assuming indices in [0,n]
 
   GSK(char *, uint8_t);
-  int build_graph();
-  void destroy_graph();
   int build_sketch();
+  int store_sketch(FILE *);
+  int load_sketch(char *);
+  int load_vertices();
+  int load_paths();
+  void destroy_paths();
   pair<int64_t, int16_t> get(uint64_t &);
-  vector<int> adj(int);
+  /*vector<int> adj(int);*/
   vector<path_t *> get_subpaths(int, int);
   int get_sequence(const path_t *, char **, int *);
   int compatible(int, int);

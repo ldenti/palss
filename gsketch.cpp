@@ -54,15 +54,62 @@ int GSK::build_sketch() {
   return 0;
 }
 
+int GSK::load_sketch(char *fn) {
+  FILE *f = fopen(fn, "rb");
+  uint64_t x, y;
+  while (!feof(f)) {
+    fread(&x, sizeof(uint64_t), 1, f);
+    fread(&y, sizeof(uint64_t), 1, f);
+    sketch[x] = y;
+  }
+  fclose(f);
+  return 0;
+}
+
+int GSK::load_vertices() {
+  kstring_t s = {0, 0, 0};
+  int dret;
+  gzFile fp = gzopen(gfa_fn, "r");
+  if (fp == 0)
+    return 0;
+  kstream_t *ks = ks_init(fp);
+
+  seg_t *seg = (seg_t *)malloc(1 * sizeof(seg_t));
+  seg->l = 0;
+  seg->seq = (char *)malloc(4096 * sizeof(char));
+  seg->c = 4096;
+  nvertices = 0;
+  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
+    if (s.s[0] == 'S') {
+      ++nvertices;
+      gfa_parse_S(s.s, seg);
+      vertices[seg->idx] = seg->seq;
+    }
+  }
+  free(seg->seq);
+  free(seg);
+  free(s.s);
+  ks_destroy(ks);
+  gzclose(fp);
+  return 0;
+}
+
 void GSK::add_kmer(uint64_t kmer_d, uint64_t v, uint16_t offset) {
   auto x = sketch.find(kmer_d);
   sketch[kmer_d] = encode(v, offset, x == sketch.end());
 }
 
-/*int GSK::store(char *f) {*/
-/**/
-/*  return 0;*/
-/*}*/
+int GSK::store_sketch(FILE *f) {
+  for (auto &it : sketch) {
+    if (!decode_unique(it.second))
+      continue;
+    if (fwrite(&it.first, sizeof(uint64_t), 1, f) != 1)
+      return 1;
+    if (fwrite(&it.second, sizeof(uint64_t), 1, f) != 1)
+      return 1;
+  }
+  return 0;
+}
 
 pair<int64_t, int16_t> GSK::get(uint64_t &kmer_d) {
   auto x = sketch.find(kmer_d);
@@ -72,7 +119,7 @@ pair<int64_t, int16_t> GSK::get(uint64_t &kmer_d) {
   return hit;
 }
 
-int GSK::build_graph() {
+int GSK::load_paths() {
   kstring_t s = {0, 0, 0};
   int dret;
   gzFile fp = gzopen(gfa_fn, "r");
@@ -80,7 +127,6 @@ int GSK::build_graph() {
     return 0;
   kstream_t *ks = ks_init(fp);
 
-  graph = vector<vector<int>>(nvertices);
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
     if (s.s[0] == 'P' || s.s[0] == 'W') {
       path_t *path = init_path(2048);
@@ -100,14 +146,14 @@ int GSK::build_graph() {
   return 0;
 }
 
-void GSK::destroy_graph() {
+void GSK::destroy_paths() {
   for (path_t *p : paths) {
     destroy_path(p);
   }
 }
 
-// operations on graph
-vector<int> GSK::adj(int u) { return graph.at(u); }
+// Operations on graph
+/*vector<int> GSK::adj(int u) { return graph.at(u); }*/
 
 vector<path_t *> GSK::get_subpaths(int x, int y) {
   vector<path_t *> subpaths(paths.size());
@@ -199,7 +245,6 @@ void GSK::gfa_parse_S(char *s, seg_t *ret) {
         // TODO: reallocate if vertex is longer than 4096
         // right now we assume to have a vg chopped graph
         strcpy(ret->seq, q);
-        vertices[ret->idx] = ret->seq;
         ret->l = p - q;
         is_ok = 1, rest = c ? p + 1 : 0;
         break;

@@ -14,7 +14,7 @@
 #include "gsketch.hpp"
 #include "utils.h"
 
-/*int main_index(int argc, char *argv[]);*/
+int main_sketch(int argc, char *argv[]);
 
 // KSEQ_INIT(gzFile, gzread) // we already init kstream in gsketch
 __KSEQ_TYPE(gzFile)
@@ -56,12 +56,6 @@ string d2s(uint64_t kmer, int k) {
     kk[i - 1] = "ACGT"[(kmer >> (k - i) * 2) & 3];
   kk[k] = '\0';
   return kk;
-}
-
-void d23(uint64_t kmer, int k, char *kk) {
-  for (int i = 1; i <= k; ++i)
-    kk[i - 1] = ((kmer >> (k - i) * 2) & 3) + 1;
-  kk[k] = '\0';
 }
 
 string decode(const char *s, int l, int shift) {
@@ -202,21 +196,6 @@ vector<sfs_t> assemble_2(const vector<sfs_t> &sfs, int strand) {
   return assembled_sfs;
 }
 
-/* Backward search */
-int search(const rb3_fmi_t *index, char *kmer, int k) {
-  rb3_sai_t ik;
-  int begin = k - 1;
-  rb3_fmd_set_intv(index, kmer[begin], &ik);
-  while (ik.size != 0 && begin > 0) {
-    --begin;
-    rb3_sai_t ok[RB3_ASIZE]; // output SA intervals (one for each symbol
-                             // between 0 and 5)
-    rb3_fmd_extend(index, &ik, ok, 1);
-    ik = ok[kmer[begin]];
-  }
-  return ik.size;
-}
-
 /* Compute SFS strings from P and store them into solutions */
 vector<sfs_t> ping_pong_search(const rb3_fmi_t *index, uint8_t *P, int qidx,
                                int l) {
@@ -317,6 +296,17 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
       // extended_sfs.push_back({b, e + k + 1 - b, -1, -1, 0});
       continue;
 
+    /*fprintf(stderr, "%s:%d-%d %d\t", qname.c_str(), s.s, s.s + s.l, s.l);*/
+    /*for (const auto &sa : sanchors) {*/
+    /*  fprintf(stderr, "%d.%d/%d.%s ", sa.v, sa.offset, sa.p,*/
+    /*          d2s(sa.seq, k).c_str());*/
+    /*}*/
+    /*fprintf(stderr, "\t");*/
+    /*for (const auto &ea : eanchors) {*/
+    /*  fprintf(stderr, "%d.%d/%d.%s ", ea.v, ea.offset, ea.p,*/
+    /*          d2s(ea.seq, k).c_str());*/
+    /*}*/
+    /*fprintf(stderr, "\n");*/
     int mind = 100;
     int d;
     int sax = -1, eax = -1; // index for selected anchors
@@ -512,18 +502,19 @@ int align(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
-  if (strcmp(argv[1], "index") == 0)
-    return 1; // main_index(argc-1, argv+1);
+  if (strcmp(argv[1], "sketch") == 0)
+    return main_sketch(argc - 1, argv + 1);
   else if (strcmp(argv[1], "align") == 0)
     return align(argc - 1, argv + 1);
 
-  int k = 27;      // kmer size
+  int k = 27; // kmer size
+  int hd = 0; // hamming distance for fixing anchors
+  int N = 20; // number of kmers to check for anchoring
+
   int w = 2;       // minimum weight for clusters
-  int hd = 0;      // hamming distance for fixing anchors
   int minl = 50;   // minimum SV length
-  int N = 20;      // number of kmers to check for anchoring
   float lp = 0.97; // ratio to split clusters into haplotypes
-  int G = 1;       // expected number of genomes
+
   char *sfs_fn = NULL;
   char *clusters_fn = NULL;
 
@@ -533,7 +524,6 @@ int main(int argc, char *argv[]) {
                                     {NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
-  // TODO: add G
   while ((_c = ketopt(&opt, argc, argv, 1, "k:w:d:l:a:r:", longopts)) >= 0) {
     if (_c == 'k')
       k = atoi(opt.arg);
@@ -553,11 +543,12 @@ int main(int argc, char *argv[]) {
       clusters_fn = opt.arg;
   }
 
-  if (argc - opt.ind != 3) {
+  if (argc - opt.ind != 4) {
     fprintf(stderr, "Argh");
     return 1;
   }
   char *gfa_fn = argv[opt.ind++];
+  char *skt_fn = argv[opt.ind++];
   char *fmd_fn = argv[opt.ind++];
   char *fq_fn = argv[opt.ind++];
 
@@ -567,12 +558,17 @@ int main(int argc, char *argv[]) {
 
   // Graph sketching and path extraction
   GSK gsk(gfa_fn, k);
-  gsk.build_sketch();
-  fprintf(stderr, "[M::%s] sketched graph with %d vertices in %.3f sec\n",
-          __func__, gsk.nvertices, realtime() - rt);
+  gsk.load_vertices();
+  fprintf(stderr, "[M::%s] loaded %d vertices in %.3f sec\n", __func__,
+          gsk.nvertices, realtime() - rt);
   rt = realtime();
 
-  gsk.build_graph();
+  gsk.load_sketch(skt_fn);
+  fprintf(stderr, "[M::%s] loaded %d sketches in %.3f sec\n", __func__,
+          gsk.sketch.size(), realtime() - rt);
+  rt = realtime();
+
+  gsk.load_paths();
   fprintf(stderr, "[M::%s] loaded %ld paths in %.3f sec\n", __func__,
           gsk.paths.size(), realtime() - rt);
   rt = realtime();
@@ -588,32 +584,10 @@ int main(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] restored FMD index in %.3f sec\n", __func__,
           realtime() - rt);
   rt = realtime();
-  // ---
-
-  // Retain only really unique kmers (wrt genomes)
-  /*uint64_t kd;*/
-  char *kmer = (char *)malloc((k + 1) * sizeof(char));
-  kmer[k] = '\0';
-  int hits;
-  int not_unique = 0;
-  for (auto &it : gsk.sketch) {
-    d23(it.first, k, kmer);
-    hits = search(&f, kmer, k);
-    assert(hits > 0);
-    if (hits != G) {
-      it.second = it.second & ~1;
-      ++not_unique;
-    }
-  }
-  fprintf(stderr,
-          "[M::%s] backward searched %d kmers (%d not unique) in %.3f sec\n",
-          __func__, gsk.sketch.size(), not_unique, realtime() - rt);
-  rt = realtime();
   rt1 = rt;
   // ---
 
   // Specific strings computation and anchoring
-
   FILE *sfs_f = NULL;
   if (sfs_fn != NULL)
     sfs_f = fopen(sfs_fn, "w");
@@ -639,7 +613,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < (int)S.size() - 1; ++i)
       assert(S[i].s < S[i + 1].s);
 
-    S = anchor(S, s, l, N, gsk, seq->name.s);
+    S = anchor(S, s, l, N, gsk);
     for (int i = 0; i < (int)S.size() - 1; ++i)
       assert(S[i].s < S[i + 1].s);
 
@@ -746,8 +720,8 @@ int main(int argc, char *argv[]) {
   seq = kseq_init(fp);
   qidx = 0;
 
-  /*char *kmer = (char *)malloc((k + 1) * sizeof(char));*/
-  /*kmer[k] = '\0';*/
+  char *kmer = (char *)malloc((k + 1) * sizeof(char));
+  kmer[k] = '\0';
   uint64_t kmer_d;       // kmer
   uint64_t rckmer_d = 0; // reverse and complemented kmer
   uint64_t ckmer_d = 0;  // canonical kmer
@@ -879,8 +853,8 @@ int main(int argc, char *argv[]) {
               __func__, cc, sc_n - cc, realtime() - rt1);
       rt1 = realtime();
     }
-    fprintf(stderr, "\n\n%ld %d>%d %d-%d\n", c.specifics.size(), c.va, c.vb,
-            (c.va - 1) * 512, c.vb * 512);
+    // fprintf(stderr, "\n\n%ld %d>%d %d-%d\n", c.specifics.size(), c.va, c.vb,
+    //         (c.va - 1) * 512, c.vb * 512);
 
     if (clusters_f != NULL)
       for (const auto &s : c.specifics)
@@ -948,29 +922,29 @@ int main(int argc, char *argv[]) {
       else
         collapsed_subpaths[i].second += "," + string(p->idx);
     }
-    fprintf(stderr, "We have %d subclusters\n",
-            subclusters.size() == 1 ? 1 : 2);
+    // fprintf(stderr, "We have %d subclusters\n",
+    //         subclusters.size() == 1 ? 1 : 2);
     for (int sci = 0; sci < (subclusters.size() == 1 ? 1 : 2); ++sci) {
-      fprintf(stderr, "%d: %ld\n", sci, subclusters[sci].size());
+      // fprintf(stderr, "%d: %ld\n", sci, subclusters[sci].size());
       cons_l = build_consensus(ab, abpt, subclusters[sci], &cons, &cons_c);
 
       for (sfs_t *s : subclusters[sci])
-        fprintf(stderr, "%s:%d-%d %d\n", qnames[s->qidx].c_str(), s->s,
-                s->s + s->l, s->l);
+        // fprintf(stderr, "%s:%d-%d %d\n", qnames[s->qidx].c_str(), s->s,
+        //         s->s + s->l, s->l);
 
-      if (cons_l == 0)
-        continue;
+        if (cons_l == 0)
+          continue;
       for (pair<path_t *, string> collp : collapsed_subpaths) {
         path_t *p = collp.first;
         // if (p == NULL)
         //   continue;
         pseq_l = gsk.get_sequence(p, &pseq, &pseq_c);
-        fprintf(stderr, "C %d %s\n", cons_l, decode(cons, cons_l, 1).c_str());
-        fprintf(stderr, "P %d %s\n",
-                pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
-                decode(pseq + c.offa,
-                       pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k), 1)
-                    .c_str());
+        // fprintf(stderr, "C %d %s\n", cons_l, decode(cons, cons_l,
+        // 1).c_str()); fprintf(stderr, "P %d %s\n",
+        //         pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k),
+        //         decode(pseq + c.offa,
+        //                pseq_l - c.offa - (gsk.get_vl(c.vb) - c.offb - k), 1)
+        //             .c_str());
         ksw_extz_t ez;
         memset(&ez, 0, sizeof(ksw_extz_t));
         ksw_extz2_sse(0, cons_l, (uint8_t *)cons,
@@ -987,9 +961,9 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < ez.n_cigar; ++i) {
           opl = ez.cigar[i] >> 4;
           cp += sprintf(cigar + cp, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
-          fprintf(stderr, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
+          // fprintf(stderr, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
         }
-        fprintf(stderr, "\n");
+        // fprintf(stderr, "\n");
 
         for (int i = 0; i < ez.n_cigar; ++i) {
           l = ez.cigar[i] >> 4;
@@ -1065,7 +1039,7 @@ int main(int argc, char *argv[]) {
   free(cons);
   free(pseq);
 
-  gsk.destroy_graph();
+  gsk.destroy_paths();
   fprintf(stderr, "[M::%s] completed in %.3f sec\n", __func__,
           realtime() - rt0);
   // ---
