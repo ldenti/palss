@@ -50,6 +50,12 @@ struct cluster_t {
   uint64_t ka = -1, kb = -1; // starting and ending kmers
 };
 
+void d23(uint64_t kmer, int k, char *kk) {
+  for (int i = 1; i <= k; ++i)
+    kk[i - 1] = ((kmer >> (k - i) * 2) & 3) + 1;
+  kk[k] = '\0';
+}
+
 string decode(const char *s, int l, int shift) {
   if (s == NULL)
     return "";
@@ -149,6 +155,21 @@ vector<sfs_t> assemble(const vector<sfs_t> &sfs) {
     }
   }
   return assembled_sfs;
+}
+
+/* Backward search */
+int search(const rb3_fmi_t *index, char *kmer, int k) {
+  rb3_sai_t ik;
+  int begin = k - 1;
+  rb3_fmd_set_intv(index, kmer[begin], &ik);
+  while (ik.size != 0 && begin > 0) {
+    --begin;
+    rb3_sai_t ok[RB3_ASIZE]; // output SA intervals (one for each symbol
+                             // between 0 and 5)
+    rb3_fmd_extend(index, &ik, ok, 1);
+    ik = ok[kmer[begin]];
+  }
+  return ik.size;
 }
 
 /* Compute SFS strings from P and store them into solutions */
@@ -465,6 +486,7 @@ int main(int argc, char *argv[]) {
   int minl = 50;   // minimum SV length
   int N = 20;      // number of kmers to check for anchoring
   float lp = 0.97; // ratio to split clusters into haplotypes
+  int G = 1;       // expected number of genomes
   char *sfs_fn = NULL;
   char *clusters_fn = NULL;
 
@@ -474,6 +496,7 @@ int main(int argc, char *argv[]) {
                                     {NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
+  // TODO: add G
   while ((_c = ketopt(&opt, argc, argv, 1, "k:w:d:l:a:r:", longopts)) >= 0) {
     if (_c == 'k')
       k = atoi(opt.arg);
@@ -527,6 +550,27 @@ int main(int argc, char *argv[]) {
   }
   fprintf(stderr, "[M::%s] restored FMD index in %.3f sec\n", __func__,
           realtime() - rt);
+  rt = realtime();
+  // ---
+
+  // Retain only really unique kmers (wrt genomes)
+  /*uint64_t kd;*/
+  char *kmer = (char *)malloc((k + 1) * sizeof(char));
+  kmer[k] = '\0';
+  int hits;
+  int not_unique = 0;
+  for (auto &it : gsk.sketch) {
+    d23(it.first, k, kmer);
+    hits = search(&f, kmer, k);
+    assert(hits > 0);
+    if (hits != G) {
+      it.second = it.second & ~1;
+      ++not_unique;
+    }
+  }
+  fprintf(stderr,
+          "[M::%s] backward searched %d kmers (%d not unique) in %.3f sec\n",
+          __func__, gsk.sketch.size(), not_unique, realtime() - rt);
   rt = realtime();
   rt1 = rt;
   // ---
@@ -662,8 +706,8 @@ int main(int argc, char *argv[]) {
   seq = kseq_init(fp);
   qidx = 0;
 
-  char *kmer = (char *)malloc((k + 1) * sizeof(char));
-  kmer[k] = '\0';
+  /*char *kmer = (char *)malloc((k + 1) * sizeof(char));*/
+  /*kmer[k] = '\0';*/
   uint64_t kmer_d;       // kmer
   uint64_t rckmer_d = 0; // reverse and complemented kmer
   uint64_t ckmer_d = 0;  // canonical kmer
@@ -927,7 +971,8 @@ int main(int argc, char *argv[]) {
                    << "ACGT"[pseq[tp - 1]] << "\t";
               memcpy(ins, cons + qp, l);
               ins[l] = '\0';
-              cout << decode(ins, l, 1) << "\t" << c.offa + tp << "\t" << cigar << endl;
+              cout << decode(ins, l, 1) << "\t" << c.offa + tp << "\t" << cigar
+                   << endl;
               ++vuidx;
             }
             qp += l;
@@ -943,8 +988,8 @@ int main(int argc, char *argv[]) {
               memcpy(del, pseq + tp, l);
               del[l] = '\0';
               cout << "\t" << 100 << "\t" << decode(del, l, 1) << "\t";
-              cout << "ACGT"[cons[qp - 1]] << "\t" << c.offa + tp << "\t" << cigar
-                   << endl;
+              cout << "ACGT"[cons[qp - 1]] << "\t" << c.offa + tp << "\t"
+                   << cigar << endl;
               ++vuidx;
             }
             tp += l;
