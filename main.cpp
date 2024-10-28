@@ -50,6 +50,14 @@ struct cluster_t {
   uint64_t ka = -1, kb = -1; // starting and ending kmers
 };
 
+string d2s(uint64_t kmer, int k) {
+  char kk[k + 1];
+  for (int i = 1; i <= k; ++i)
+    kk[i - 1] = "ACGT"[(kmer >> (k - i) * 2) & 3];
+  kk[k] = '\0';
+  return kk;
+}
+
 void d23(uint64_t kmer, int k, char *kk) {
   for (int i = 1; i <= k; ++i)
     kk[i - 1] = ((kmer >> (k - i) * 2) & 3) + 1;
@@ -152,6 +160,43 @@ vector<sfs_t> assemble(const vector<sfs_t> &sfs) {
       int l = sfs[j + 1].s + sfs[j + 1].l - sfs[i].s;
       assembled_sfs.push_back({sfs[i].qidx, sfs[i].s, l});
       i = j;
+    }
+  }
+  return assembled_sfs;
+}
+
+/* Merge specifics strings that are too close on the same read */
+vector<sfs_t> assemble_2(const vector<sfs_t> &sfs, int strand) {
+  vector<sfs_t> assembled_sfs;
+  int i = 0; // sfs.size() - 1;
+  while (i < sfs.size()) {
+    if (sfs[i].strand != strand) {
+      ++i;
+      continue;
+    }
+    int j;
+    for (j = i + 1; j < sfs.size(); ++j) {
+      if (sfs[j].strand != strand)
+        continue;
+
+      if (sfs[j - 1].s + sfs[j - 1].l <= sfs[j].s) {
+        // non-overlapping
+        int l = sfs[j - 1].s + sfs[j - 1].l - sfs[i].s;
+        assembled_sfs.push_back({sfs[i].qidx, sfs[i].s, l,
+                                 strand ? sfs[i].a : sfs[j - 1].a,
+                                 strand ? sfs[j - 1].b : sfs[i].b, strand});
+        i = j;
+        break;
+      }
+    }
+    if (j == sfs.size()) {
+      while (j - 1 >= i && sfs[j - 1].strand != strand)
+        --j;
+      int l = sfs[j - 1].s + sfs[j - 1].l - sfs[i].s;
+      assembled_sfs.push_back({sfs[i].qidx, sfs[i].s, l,
+                               strand ? sfs[i].a : sfs[j - 1].a,
+                               strand ? sfs[j - 1].b : sfs[i].b, strand});
+      i = sfs.size();
     }
   }
   return assembled_sfs;
@@ -404,14 +449,6 @@ void merge(cluster_t &C) {
   C.specifics = newC;
 }
 
-string d2s(uint64_t kmer, int k) {
-  char kk[k + 1];
-  for (int i = 1; i <= k; ++i)
-    kk[i - 1] = "ACGT"[(kmer >> (k - i) * 2) & 3];
-  kk[k] = '\0';
-  return kk;
-}
-
 int align(int argc, char *argv[]) {
   // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
   int sc_mch = 4, sc_mis = -9, gapo = 41, gape = 1;
@@ -596,12 +633,13 @@ int main(int argc, char *argv[]) {
     rb3_char2nt6(seq->seq.l, s);
 
     S = ping_pong_search(&f, s, qidx, seq->seq.l);
+    // strings are sorted on wrt their position on read (inverse)
     S = assemble(S);
-
+    // strings are now sorted wrt their position on read
     for (int i = 0; i < (int)S.size() - 1; ++i)
       assert(S[i].s < S[i + 1].s);
 
-    S = anchor(S, s, l, N, gsk);
+    S = anchor(S, s, l, N, gsk, seq->name.s);
     for (int i = 0; i < (int)S.size() - 1; ++i)
       assert(S[i].s < S[i + 1].s);
 
@@ -613,12 +651,14 @@ int main(int argc, char *argv[]) {
     strand = 1;
     if (strands[0] > strands[1])
       strand = 0;
+
+    S = assemble_2(S, strand);
     for (const auto &s : S) {
       if (sfs_f != NULL)
         fprintf(sfs_f, "%s:%d-%d %d %d %d\n", seq->name.s, s.s, s.s + s.l, s.l,
                 s.strand, s.strand == strand);
-      if (s.strand == strand)
-        SS.push_back(s);
+      /*if (s.strand == strand)*/
+      SS.push_back(s);
     }
     qnames.push_back(seq->name.s);
     ++qidx;
