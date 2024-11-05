@@ -222,7 +222,7 @@ int GSK::compatible(int x, int y) {
     for (int i = 0; i < paths[p]->l; ++i) {
       if (paths[p]->vertices[i] == x)
         f = 1;
-      if (paths[p]->vertices[i] == y)
+      if (f && paths[p]->vertices[i] == y)
         return f;
     }
   }
