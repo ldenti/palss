@@ -84,21 +84,6 @@ int build_consensus(abpoa_t *ab, abpoa_para_t *abpt,
       bseqs[goods][i] = s->seq[i] - 1;
     bseqs[goods][s->l] = '\0';
 
-    if (!s->strand) {
-      // rc
-      for (i = 0; i < (s->l >> 1); ++i) {
-        int tmp = bseqs[goods][s->l - 1 - i];
-        tmp = (tmp >= 0 && tmp <= 3) ? 3 - tmp : tmp;
-        bseqs[goods][s->l - 1 - i] =
-            (bseqs[goods][i] >= 0 && bseqs[goods][i] <= 3) ? 3 - bseqs[goods][i]
-                                                           : bseqs[goods][i];
-        bseqs[goods][i] = tmp;
-      }
-      if (s->l & 1)
-        bseqs[goods][i] = (bseqs[goods][i] >= 0 && bseqs[goods][i] <= 3)
-                              ? 3 - bseqs[goods][i]
-                              : bseqs[goods][i];
-    }
     ++goods;
   }
   assert(goods > 0);
@@ -244,10 +229,10 @@ vector<sfs_t> ping_pong_search(const rb3_fmi_t *index, uint8_t *P, int qidx,
 
 /* Anchor specific strings on graph using graph sketch */
 vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
-                     GSK &gsk) {
+                     GSK &gsk, char *qname) {
   vector<sfs_t> anchored_sfs;
   int k = gsk.klen;
-  int b, e;
+  int beg, end, ext = 0;
   pair<int64_t, uint16_t> vx = make_pair(-1, -1);
   char *kmer = (char *)malloc((k + 1) * sizeof(char));
   kmer[k] = '\0';
@@ -257,36 +242,42 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
   int c;                 // current char
 
   for (const sfs_t &s : sfs) {
-    b = s.s - k;
-    b = b < 0 ? 0 : b;
-    e = s.s + s.l;
-    e = e > l - k ? l - k : e;
+    // Finding anchors in flanking regions
+    // Do we want anchors overlapping the string?
+    beg = s.s - k;
+    beg = beg < 0 ? 0 : beg;
+    end = s.s + s.l;
+    end = end > l - k ? l - k : end;
 
-    memcpy(kmer, P + b, k);
+    memcpy(kmer, P + beg, k);
     kmer_d = k2d(kmer, k);
     rckmer_d = rc(kmer_d, k);
     ckmer_d = std::min(kmer_d, rckmer_d);
     vector<anchor_t> sanchors;
-    while (b > 0 && sanchors.size() < N) {
+    // CHECKME: do we want at least one anchor?
+    while (beg > 0 && (sanchors.size() < N /*|| sanchors.empty()*/)) {
       if ((vx = gsk.get(ckmer_d)).first != -1)
-        sanchors.push_back({vx.first, vx.second, b, ckmer_d});
-      --b;
-      c = P[b] < 5 ? P[b] - 1 : rand() % 4;
+        sanchors.push_back({vx.first, vx.second, beg, ckmer_d});
+      --beg;
+      ++ext;
+      c = P[beg] < 5 ? P[beg] - 1 : rand() % 4;
       kmer_d = rsprepend(kmer_d, c, k);
       rckmer_d = lsappend(rckmer_d, reverse_char(c), k);
       ckmer_d = std::min(kmer_d, rckmer_d);
     }
-
-    memcpy(kmer, P + e, k);
+    ext = 0;
+    memcpy(kmer, P + end, k);
     kmer_d = k2d(kmer, k);
     rckmer_d = rc(kmer_d, k);
     ckmer_d = std::min(kmer_d, rckmer_d);
     vector<anchor_t> eanchors;
-    while (e < l - k + 1 && eanchors.size() < N) {
+    // CHECKME: do we want at least one anchor?
+    while (end < l - k + 1 && (eanchors.size() < N /*|| eanchors.empty()*/)) {
       if ((vx = gsk.get(ckmer_d)).first != -1)
-        eanchors.push_back({vx.first, vx.second, e, ckmer_d});
-      ++e;
-      c = P[e + k - 1] < 5 ? P[e + k - 1] - 1 : rand() % 4;
+        eanchors.push_back({vx.first, vx.second, end, ckmer_d});
+      ++end;
+      ++ext;
+      c = P[end + k - 1] < 5 ? P[end + k - 1] - 1 : rand() % 4;
       kmer_d = lsappend(kmer_d, c, k);
       rckmer_d = rsprepend(rckmer_d, reverse_char(c), k);
       ckmer_d = std::min(kmer_d, rckmer_d);
@@ -296,17 +287,7 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
       // extended_sfs.push_back({b, e + k + 1 - b, -1, -1, 0});
       continue;
 
-    /*fprintf(stderr, "%s:%d-%d %d\t", qname.c_str(), s.s, s.s + s.l, s.l);*/
-    /*for (const auto &sa : sanchors) {*/
-    /*  fprintf(stderr, "%d.%d/%d.%s ", sa.v, sa.offset, sa.p,*/
-    /*          d2s(sa.seq, k).c_str());*/
-    /*}*/
-    /*fprintf(stderr, "\t");*/
-    /*for (const auto &ea : eanchors) {*/
-    /*  fprintf(stderr, "%d.%d/%d.%s ", ea.v, ea.offset, ea.p,*/
-    /*          d2s(ea.seq, k).c_str());*/
-    /*}*/
-    /*fprintf(stderr, "\n");*/
+    // Finding best pair of anchors
     int mind = 100;
     int d;
     int sax = -1, eax = -1; // index for selected anchors
@@ -344,6 +325,7 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
     if (sax == -1 || eax == -1)
       continue;
 
+    // Assigning the anchors
     anchor_t sa = sanchors[sax];
     anchor_t ea = eanchors[eax];
     int b = sa.p;
@@ -360,11 +342,6 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
   }
   free(kmer);
 
-  // CHECKME: specifics strings are already sorted by position on query
-  // std::sort(extended_sfs.begin(), extended_sfs.end(),
-  //           [](const sfs_t &a, const sfs_t &b) {
-  //             return a.s < b.s;
-  //           });
   return anchored_sfs;
 }
 
@@ -428,11 +405,13 @@ void merge(cluster_t &C) {
       assert(false);
       continue;
     }
-    newC.push_back({c.first, c.second[first].s,
-                    c.second[last].s + c.second[last].l - c.second[first].s,
-                    c.second[0].strand ? c.second[first].a : c.second[last].a,
-                    c.second[0].strand ? c.second[last].b : c.second[first].b,
-                    c.second[first].strand});
+    newC.push_back(
+        {c.first, c.second[first].s,
+         c.second[last].s + c.second[last].l - c.second[first].s,
+         c.second[first].a, c.second[last].b,
+         /*c.second[0].strand ? c.second[first].a : c.second[last].a,*/
+         /*c.second[0].strand ? c.second[last].b : c.second[first].b,*/
+         c.second[first].strand});
     assert(newC.back().l > 0);
     assert(newC.back().a.v <= newC.back().b.v);
   }
@@ -602,6 +581,9 @@ int main(int argc, char *argv[]) {
   vector<string> qnames;
   vector<int> strands(2);
   int strand;
+
+  int specifics_n = 0;
+  int anchored_n = 0;
   while ((l = kseq_read(seq)) >= 0) {
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
@@ -612,8 +594,14 @@ int main(int argc, char *argv[]) {
     // strings are now sorted wrt their position on read
     for (int i = 0; i < (int)S.size() - 1; ++i)
       assert(S[i].s < S[i + 1].s);
+    specifics_n += S.size();
 
-    S = anchor(S, s, l, N, gsk);
+    /*for (const auto &s : S)*/
+    /*  fprintf(stderr, "%s:%d-%d %d\n", seq->name.s, s.s, s.s + s.l, s.l);*/
+
+    S = anchor(S, s, l, N, gsk, seq->name.s);
+    anchored_n += S.size();
+
     for (int i = 0; i < (int)S.size() - 1; ++i)
       assert(S[i].s < S[i + 1].s);
 
@@ -626,13 +614,18 @@ int main(int argc, char *argv[]) {
     if (strands[0] > strands[1])
       strand = 0;
 
-    S = assemble_2(S, strand);
-    for (const auto &s : S) {
+    /*S = assemble_2(S, strand);*/
+    for (sfs_t &s : S) {
+      assert(s.l > 0);
       if (sfs_f != NULL)
         fprintf(sfs_f, "%s:%d-%d %d %d %d\n", seq->name.s, s.s, s.s + s.l, s.l,
                 s.strand, s.strand == strand);
-      /*if (s.strand == strand)*/
-      SS.push_back(s);
+      if (!s.strand)
+        // reverse
+        s.s = l - (s.s + s.l);
+
+      if (s.strand == strand)
+        SS.push_back(s);
     }
     qnames.push_back(seq->name.s);
     ++qidx;
@@ -642,8 +635,11 @@ int main(int argc, char *argv[]) {
       rt1 = realtime();
     }
   }
-  for (const sfs_t &s : SS)
-    assert(s.l > 0);
+  /*At this point, specific strings are anchored. Anchors follow + strand on
+   * graph. If read was on -, we have reversed the specific strings so that
+   * everything is on + strand*/
+  fprintf(stderr, "%d specific strings, %d anchored strings (lost: %d)\n",
+          specifics_n, anchored_n, specifics_n - anchored_n);
   kseq_destroy(seq);
   gzclose(fp);
   rb3_fmi_free(&f);
@@ -704,13 +700,13 @@ int main(int argc, char *argv[]) {
         s.eek = c.kb;
       } else {
         s.good = 0;
-        if (s.strand) {
-          s.esk = c.ka;
-          s.eek = c.kb;
-        } else {
-          s.esk = c.kb;
-          s.eek = c.ka;
-        }
+        // if (s.strand) {
+        s.esk = c.ka;
+        s.eek = c.kb;
+        // } else {
+        //   s.esk = c.kb;
+        //   s.eek = c.ka;
+        // }
       }
       pspecifics[s.qidx].push_back(&s);
     }
@@ -731,6 +727,18 @@ int main(int argc, char *argv[]) {
   while ((l = kseq_read(seq)) >= 0) {
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
+    if (!pspecifics[qidx][0]->strand) {
+      int i;
+      // Reverse and complement the sequence
+      for (i = 0; i < (l >> 1); ++i) {
+        int tmp = s[l - 1 - i];
+        tmp = (tmp >= 1 && tmp <= 4) ? 5 - tmp : tmp;
+        s[l - 1 - i] = (s[i] >= 1 && s[i] <= 4) ? 5 - s[i] : s[i];
+        s[i] = tmp;
+      }
+      if (l & 1)
+        s[i] = (s[i] >= 1 && s[i] <= 4) ? 5 - s[i] : s[i];
+    }
     for (sfs_t *s : pspecifics[qidx]) {
       if (s->a.seq != s->esk && s->s > 0) {
         p = s->s - 1;
@@ -858,8 +866,9 @@ int main(int argc, char *argv[]) {
 
     if (clusters_f != NULL)
       for (const auto &s : c.specifics)
-        fprintf(clusters_f, ">%s:%d-%d.%d.C%d.%d\n%s\n", qnames[s.qidx].c_str(),
-                s.s, s.s + s.l, s.l, cc, s.good, decode(s.seq, s.l, 0).c_str());
+        fprintf(clusters_f, ">%s:%d-%d.%d.C%d.%d-%d\n%s\n",
+                qnames[s.qidx].c_str(), s.s, s.s + s.l, s.l, cc, s.strand,
+                s.good, decode(s.seq, s.l, 0).c_str());
 
     // split cluster based on strings length
     vector<int> subclusters_l(1);
@@ -928,12 +937,12 @@ int main(int argc, char *argv[]) {
       // fprintf(stderr, "%d: %ld\n", sci, subclusters[sci].size());
       cons_l = build_consensus(ab, abpt, subclusters[sci], &cons, &cons_c);
 
-      for (sfs_t *s : subclusters[sci])
-        // fprintf(stderr, "%s:%d-%d %d\n", qnames[s->qidx].c_str(), s->s,
-        //         s->s + s->l, s->l);
+      // for (sfs_t *s : subclusters[sci])
+      //   fprintf(stderr, "%s:%d-%d %d\n", qnames[s->qidx].c_str(), s->s,
+      //           s->s + s->l, s->l);
 
-        if (cons_l == 0)
-          continue;
+      if (cons_l == 0)
+        continue;
       for (pair<path_t *, string> collp : collapsed_subpaths) {
         path_t *p = collp.first;
         // if (p == NULL)
