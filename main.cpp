@@ -382,12 +382,13 @@ vector<cluster_t> cluster(const vector<sfs_t> SS, const GSK &gsk) {
   return clusters;
 }
 
-void merge(cluster_t &C) {
+int merge(cluster_t &C) {
   vector<sfs_t> newC;
   map<int, vector<sfs_t>> byread;
   for (const sfs_t &s : C.specifics)
     byread[s.qidx].push_back(s);
 
+  int skipped = 0;
   for (const auto &c : byread) {
     int mins = 100000, maxe = 0; // FIXME: assuming HiFi
     int first = -1, last = -1;
@@ -402,20 +403,24 @@ void merge(cluster_t &C) {
       }
     }
     if (first == -1 || last == -1) {
-      assert(false);
-      continue;
+      exit(1);
     }
-    newC.push_back(
-        {c.first, c.second[first].s,
-         c.second[last].s + c.second[last].l - c.second[first].s,
-         c.second[first].a, c.second[last].b,
-         /*c.second[0].strand ? c.second[first].a : c.second[last].a,*/
-         /*c.second[0].strand ? c.second[last].b : c.second[first].b,*/
-         c.second[first].strand});
-    assert(newC.back().l > 0);
-    assert(newC.back().a.v <= newC.back().b.v);
+    /*printf("%d %d\n\n", first, last);*/
+
+    if (c.second[first].a.v < c.second[last].b.v ||
+        (c.second[first].a.v == c.second[last].b.v &&
+         c.second[first].a.offset < c.second[last].b.offset))
+      newC.push_back({c.first, c.second[first].s,
+                      c.second[last].s + c.second[last].l - c.second[first].s,
+                      c.second[first].a, c.second[last].b,
+                      c.second[first].strand});
+    else {
+      // TODO
+      ++skipped;
+    }
   }
   C.specifics = newC;
+  return skipped;
 }
 
 int align(int argc, char *argv[]) {
@@ -602,9 +607,6 @@ int main(int argc, char *argv[]) {
     S = anchor(S, s, l, N, gsk, seq->name.s);
     anchored_n += S.size();
 
-    for (int i = 0; i < (int)S.size() - 1; ++i)
-      assert(S[i].s < S[i + 1].s);
-
     strands[0] = 0;
     strands[1] = 0;
     for (const auto &s : S)
@@ -666,12 +668,15 @@ int main(int argc, char *argv[]) {
   int lowsc_n = 0;
   int lowsc_am_n = 0;
   int sc_n = 0;
+  int total = 0;
+  int skipped = 0;
   for (auto &c : Cs) {
     if (c.specifics.size() < w) {
       ++lowsc_n;
       c.specifics.clear();
     } else {
-      merge(c);
+      total += c.specifics.size();
+      skipped += merge(c);
       if (c.specifics.size() < w) {
         c.specifics.clear();
         ++lowsc_am_n;
@@ -681,8 +686,10 @@ int main(int argc, char *argv[]) {
     }
   }
   fprintf(stderr,
-          "[M::%s] merged clusters in %.3f sec (%d+%d=%d clusters filtered)\n",
-          __func__, realtime() - rt, lowsc_n, lowsc_am_n, lowsc_n + lowsc_am_n);
+          "[M::%s] merged clusters in %.3f sec (%d+%d=%d clusters filtered - "
+          "%d/%d strings skipped\n",
+          __func__, realtime() - rt, lowsc_n, lowsc_am_n, lowsc_n + lowsc_am_n,
+          skipped, total);
   rt = realtime();
   // ---
 
@@ -725,6 +732,10 @@ int main(int argc, char *argv[]) {
   int p;
   int pc;
   while ((l = kseq_read(seq)) >= 0) {
+    if (pspecifics[qidx].empty()) {
+      ++qidx;
+      continue;
+    }
     s = (uint8_t *)seq->seq.s;
     rb3_char2nt6(seq->seq.l, s);
     if (!pspecifics[qidx][0]->strand) {
@@ -846,7 +857,7 @@ int main(int argc, char *argv[]) {
   FILE *clusters_f = NULL;
   if (clusters_fn != NULL)
     clusters_f = fopen(clusters_fn, "w");
-  // if (fptr == NULL)
+
   int vuidx = 0;
   char *cigar = (char *)malloc(16384 * sizeof(char)); // FIXME: hardcoded
   char *ins = (char *)malloc(100000 * sizeof(char));  // FIXME: hardcoded
