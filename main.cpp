@@ -121,13 +121,13 @@ int build_consensus(abpoa_t *ab, abpoa_para_t *abpt,
 }
 
 /* Merge specifics strings that are too close on the same read */
-vector<sfs_t> assemble(const vector<sfs_t> &sfs) {
+vector<sfs_t> assemble(const vector<sfs_t> &sfs, int d) {
   vector<sfs_t> assembled_sfs;
   int i = sfs.size() - 1;
   while (i >= 0) {
     int j;
     for (j = i - 1; j >= 0; --j) {
-      if (sfs[j + 1].s + sfs[j + 1].l <= sfs[j].s - 200) { // FIXME hardcoded
+      if (sfs[j + 1].s + sfs[j + 1].l <= sfs[j].s - d) {
         // non-overlapping
         int l = sfs[j + 1].s + sfs[j + 1].l - sfs[i].s;
         assembled_sfs.push_back({sfs[i].qidx, sfs[i].s, l});
@@ -322,8 +322,10 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
         }
       }
     }
-    if (sax == -1 || eax == -1)
+    if (sax == -1 || eax == -1) {
+      // fprintf(stderr, "Lost (II) %s:%d-%d\n", qname, s.s, s.s+s.l);
       continue;
+    }
 
     // Assigning the anchors
     anchor_t sa = sanchors[sax];
@@ -393,6 +395,9 @@ int merge(cluster_t &C) {
     int mins = 100000, maxe = 0; // FIXME: assuming HiFi
     int first = -1, last = -1;
     for (int i = 0; i < c.second.size(); ++i) {
+      /*printf("%d\t%d.%d %d:%d %d:%d\n", c.first, c.second[i].s, c.second[i].l,
+       * c.second[i].a.v, c.second[i].a.offset, c.second[i].b.v,
+       * c.second[i].b.offset);*/
       if (c.second[i].s < mins) {
         mins = c.second[i].s;
         first = i;
@@ -491,9 +496,10 @@ int main(int argc, char *argv[]) {
   else if (strcmp(argv[1], "align") == 0)
     return align(argc - 1, argv + 1);
 
-  int k = 27; // kmer size
-  int hd = 0; // hamming distance for fixing anchors
-  int N = 20; // number of kmers to check for anchoring
+  int k = 27;  // kmer size
+  int d = 100; // merge specific strings this close
+  int hd = 0;  // hamming distance for fixing anchors
+  int N = 20;  // number of kmers to check for anchoring
 
   int w = 2;       // minimum weight for clusters
   int minl = 50;   // minimum SV length
@@ -508,9 +514,11 @@ int main(int argc, char *argv[]) {
                                     {NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
-  while ((_c = ketopt(&opt, argc, argv, 1, "k:w:d:l:a:r:", longopts)) >= 0) {
+  while ((_c = ketopt(&opt, argc, argv, 1, "k:d:w:d:l:a:r:", longopts)) >= 0) {
     if (_c == 'k')
       k = atoi(opt.arg);
+    else if (_c == 'd')
+      d = atoi(opt.arg);
     else if (_c == 'w')
       w = atoi(opt.arg);
     else if (_c == 'd')
@@ -595,7 +603,7 @@ int main(int argc, char *argv[]) {
 
     S = ping_pong_search(&f, s, qidx, seq->seq.l);
     // strings are sorted on wrt their position on read (inverse)
-    S = assemble(S);
+    S = assemble(S, d);
     // strings are now sorted wrt their position on read
     for (int i = 0; i < (int)S.size() - 1; ++i)
       assert(S[i].s < S[i + 1].s);
@@ -620,8 +628,8 @@ int main(int argc, char *argv[]) {
     for (sfs_t &s : S) {
       assert(s.l > 0);
       if (sfs_f != NULL)
-        fprintf(sfs_f, "%s:%d-%d %d %d %d\n", seq->name.s, s.s, s.s + s.l, s.l,
-                s.strand, s.strand == strand);
+        fprintf(sfs_f, "%s:%d-%d %d %d %d %ld>%ld\n", seq->name.s, s.s, s.s + s.l, s.l,
+                s.strand, s.strand == strand, s.a.v, s.b.v);
       if (!s.strand)
         // reverse
         s.s = l - (s.s + s.l);
@@ -687,7 +695,7 @@ int main(int argc, char *argv[]) {
   }
   fprintf(stderr,
           "[M::%s] merged clusters in %.3f sec (%d+%d=%d clusters filtered - "
-          "%d/%d strings skipped\n",
+          "%d/%d strings skipped)\n",
           __func__, realtime() - rt, lowsc_n, lowsc_am_n, lowsc_n + lowsc_am_n,
           skipped, total);
   rt = realtime();
@@ -877,9 +885,9 @@ int main(int argc, char *argv[]) {
 
     if (clusters_f != NULL)
       for (const auto &s : c.specifics)
-        fprintf(clusters_f, ">%s:%d-%d.%d.C%d.%d-%d\n%s\n",
+        fprintf(clusters_f, ">%s:%d-%d.%d.C%d.%d-%d%d\n%s\n",
                 qnames[s.qidx].c_str(), s.s, s.s + s.l, s.l, cc, s.strand,
-                s.good, decode(s.seq, s.l, 0).c_str());
+                s.a.seq == s.esk, s.b.seq == s.eek, decode(s.seq, s.l, 0).c_str());
 
     // split cluster based on strings length
     vector<int> subclusters_l(1);
@@ -945,7 +953,9 @@ int main(int argc, char *argv[]) {
     // fprintf(stderr, "We have %d subclusters\n",
     //         subclusters.size() == 1 ? 1 : 2);
     for (int sci = 0; sci < (subclusters.size() == 1 ? 1 : 2); ++sci) {
-      // fprintf(stderr, "%d: %ld\n", sci, subclusters[sci].size());
+      // if (subclusters[sci].size() < 2)
+      //   continue;
+      fprintf(stderr, "%d.%d: %ld\n", cc, sci, subclusters[sci].size());
       cons_l = build_consensus(ab, abpt, subclusters[sci], &cons, &cons_c);
 
       // for (sfs_t *s : subclusters[sci])
@@ -981,9 +991,9 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < ez.n_cigar; ++i) {
           opl = ez.cigar[i] >> 4;
           cp += sprintf(cigar + cp, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
-          // fprintf(stderr, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
+          fprintf(stderr, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
         }
-        // fprintf(stderr, "\n");
+        fprintf(stderr, "\n");
 
         for (int i = 0; i < ez.n_cigar; ++i) {
           l = ez.cigar[i] >> 4;
