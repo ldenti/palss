@@ -986,7 +986,7 @@ int main(int argc, char *argv[]) {
         int opl;
         int op;
         int qp = 0;
-        int tp = 0;
+        int tp = c.offa;
         cp = 0;
         for (int i = 0; i < ez.n_cigar; ++i) {
           opl = ez.cigar[i] >> 4;
