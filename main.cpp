@@ -50,14 +50,6 @@ struct cluster_t {
   uint64_t ka = -1, kb = -1; // starting and ending kmers
 };
 
-string d2s(uint64_t kmer, int k) {
-  char kk[k + 1];
-  for (int i = 1; i <= k; ++i)
-    kk[i - 1] = "ACGT"[(kmer >> (k - i) * 2) & 3];
-  kk[k] = '\0';
-  return kk;
-}
-
 string decode(const char *s, int l, int shift) {
   if (s == NULL)
     return "";

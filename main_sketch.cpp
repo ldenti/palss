@@ -25,14 +25,17 @@ int search(const rb3_fmi_t *index, char *kmer, int k) {
 int main_sketch(int argc, char *argv[]) {
   int k = 27; // kmer size
   int G = 1;  // expected number of genomes
+  int fa = 0; // fasta output
   static ko_longopt_t longopts[] = {{NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
-  while ((_c = ketopt(&opt, argc, argv, 1, "k:g:", longopts)) >= 0) {
+  while ((_c = ketopt(&opt, argc, argv, 1, "k:g:f", longopts)) >= 0) {
     if (_c == 'k')
       k = atoi(opt.arg);
     else if (_c == 'g')
       G = atoi(opt.arg);
+    else if (_c == 'f')
+      fa = 1;
   }
 
   if (argc - opt.ind != 2) {
@@ -80,7 +83,7 @@ int main_sketch(int argc, char *argv[]) {
           __func__, gsk.sketch.size(), not_unique, realtime() - rt);
   rt = realtime();
 
-  gsk.store_sketch(stdout);
+  gsk.store_sketch(stdout, fa);
   fprintf(stderr, "[M::%s] dumped sketch (%d unique kmers) in %.3f sec\n",
           __func__, gsk.sketch.size() - not_unique, realtime() - rt);
 

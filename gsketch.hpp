@@ -48,7 +48,7 @@ public:
 
   GSK(char *, uint8_t);
   int build_sketch();
-  int store_sketch(FILE *);
+  int store_sketch(FILE *, int fa);
   int load_sketch(char *);
   int load_vertices();
   int load_paths();

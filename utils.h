@@ -2,6 +2,7 @@
 #define PSUTILS_HPP
 
 #include <sys/time.h>
+#include <string>
 
 static const uint8_t to_int[128] = {0, 0, 1, 2, 3, 0, 0, 0, 0, 0, // 0
                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 10
@@ -23,6 +24,14 @@ inline void d23(uint64_t kmer, int k, char *kk) {
   for (int i = 1; i <= k; ++i)
     kk[i - 1] = ((kmer >> (k - i) * 2) & 3) + 1;
   kk[k] = '\0';
+}
+
+inline std::string d2s(uint64_t kmer, int k) {
+  char kk[k + 1];
+  for (int i = 1; i <= k; ++i)
+    kk[i - 1] = "ACGT"[(kmer >> (k - i) * 2) & 3];
+  kk[k] = '\0';
+  return kk;
 }
 
 inline uint64_t k2d(char *kmer, uint8_t k) {

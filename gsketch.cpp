@@ -99,14 +99,18 @@ void GSK::add_kmer(uint64_t kmer_d, uint64_t v, uint16_t offset) {
   sketch[kmer_d] = encode(v, offset, x == sketch.end());
 }
 
-int GSK::store_sketch(FILE *f) {
+int GSK::store_sketch(FILE *f, int fa) {
   for (auto &it : sketch) {
     if (!decode_unique(it.second))
       continue;
-    if (fwrite(&it.first, sizeof(uint64_t), 1, f) != 1)
-      return 1;
-    if (fwrite(&it.second, sizeof(uint64_t), 1, f) != 1)
-      return 1;
+    if (!fa) {
+      if (fwrite(&it.first, sizeof(uint64_t), 1, f) != 1)
+        return 1;
+      if (fwrite(&it.second, sizeof(uint64_t), 1, f) != 1)
+        return 1;
+    } else {
+      fprintf(f, ">%ld.%ld\n%s\n", decode_v(it.second), decode_off(it.second), d2s(it.first, klen).c_str());
+    }
   }
   return 0;
 }
