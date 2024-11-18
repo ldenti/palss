@@ -15,6 +15,7 @@
 #include "utils.h"
 
 int main_sketch(int argc, char *argv[]);
+int main_map(int argc, char *argv[]);
 
 // KSEQ_INIT(gzFile, gzread) // we already init kstream in gsketch
 __KSEQ_TYPE(gzFile)
@@ -485,6 +486,8 @@ int align(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   if (strcmp(argv[1], "sketch") == 0)
     return main_sketch(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "map") == 0)
+    return main_map(argc - 1, argv + 1);
   else if (strcmp(argv[1], "align") == 0)
     return align(argc - 1, argv + 1);
 

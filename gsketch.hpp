@@ -53,6 +53,7 @@ public:
   int load_vertices();
   int load_paths();
   void destroy_paths();
+  map<int, int> get_positions(char *) const;
   pair<int64_t, int16_t> get(uint64_t &);
   /*vector<int> adj(int);*/
   vector<path_t *> get_subpaths(int, int);

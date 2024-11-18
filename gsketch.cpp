@@ -156,6 +156,23 @@ void GSK::destroy_paths() {
   }
 }
 
+/* Get positions of vertices in a given path with name pidx */
+map<int, int> GSK::get_positions(char *pidx) const {
+  map<int, int> positions;
+  int cp = 0;
+  int get_first = strcmp(pidx, "") == 0;
+  for (const path_t *path : paths) {
+    if (get_first || strcmp(path->idx, pidx) == 0) {
+      for (int i = 0; i < path->l; ++i) {
+        positions[path->vertices[i]] = cp;
+        cp += vertices.at(path->vertices[i]).size();
+      }
+      break;
+    }
+  }
+  return positions;
+}
+
 // Operations on graph
 /*vector<int> GSK::adj(int u) { return graph.at(u); }*/
 
