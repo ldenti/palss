@@ -95,10 +95,14 @@ int main_map(int argc, char *argv[]) {
 
     p1 = gsk.get(k1_d);
     v1 = p1.first;
-    pos1 = positions.at(v1) + p1.second;
-
     p2 = gsk.get(k2_d);
     v2 = p2.first;
+
+    if (v1 == -1 || v2 == -1)
+      // unanchored specific string
+      continue;
+
+    pos1 = positions.at(v1) + p1.second;
     pos2 = positions.at(v2) + p2.second;
 
     d = pos2 - (pos1 + klen);

@@ -9,7 +9,7 @@ def main():
     SFS = {}
     for line in open(sfs_path):
         idx, l, strand, kept, vertices = line.strip("\n").split(" ")
-        if kept == "0":
+        if kept == "0" or "-" in vertices:
             continue
         qname = idx.split(":")[0]
         s, e = idx.split(":")[1].split("-")
