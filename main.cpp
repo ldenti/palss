@@ -281,6 +281,7 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
       anchored_sfs.push_back({s.qidx, s.s, s.l, -1, -1, -1});
       // fprintf(stderr, "Lost (I) %s:%d-%d\n", qname, s.s, s.s+s.l);
       continue;
+    }
 
     // Finding best pair of anchors
     int mind = 100;
