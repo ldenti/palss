@@ -277,8 +277,9 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
       ckmer_d = std::min(kmer_d, rckmer_d);
     }
 
-    if (sanchors.size() == 0 || eanchors.size() == 0)
-      // extended_sfs.push_back({b, e + k + 1 - b, -1, -1, 0});
+    if (sanchors.size() == 0 || eanchors.size() == 0) {
+      anchored_sfs.push_back({s.qidx, s.s, s.l, -1, -1, -1});
+      // fprintf(stderr, "Lost (I) %s:%d-%d\n", qname, s.s, s.s+s.l);
       continue;
 
     // Finding best pair of anchors
@@ -317,6 +318,7 @@ vector<sfs_t> anchor(const vector<sfs_t> &sfs, uint8_t *P, int l, int N,
       }
     }
     if (sax == -1 || eax == -1) {
+      anchored_sfs.push_back({s.qidx, s.s, s.l, -1, -1, -1});
       // fprintf(stderr, "Lost (II) %s:%d-%d\n", qname, s.s, s.s+s.l);
       continue;
     }
@@ -607,27 +609,32 @@ int main(int argc, char *argv[]) {
       assert(S[i].s < S[i + 1].s);
     specifics_n += S.size();
 
-    /*for (const auto &s : S)*/
-    /*  fprintf(stderr, "%s:%d-%d %d\n", seq->name.s, s.s, s.s + s.l, s.l);*/
-
     S = anchor(S, s, l, N, gsk, seq->name.s);
-    anchored_n += S.size();
 
     strands[0] = 0;
     strands[1] = 0;
-    for (const auto &s : S)
-      ++strands[s.strand];
+    for (const auto &s : S) {
+      if (s.a.v != -1 && s.b.v != -1)
+        ++strands[s.strand];
+    }
     // FIXME: plus strand if tie
-    strand = 1;
-    if (strands[0] > strands[1])
-      strand = 0;
+    strand = strands[0] > strands[1] ? 0 : 1;
 
     /*S = assemble_2(S, strand);*/
     for (sfs_t &s : S) {
       assert(s.l > 0);
-      if (sfs_f != NULL)
-        fprintf(sfs_f, "%s:%d-%d %d %d %d %ld>%ld\n", seq->name.s, s.s, s.s + s.l, s.l,
-                s.strand, s.strand == strand, s.a.v, s.b.v);
+      if (sfs_f != NULL) {
+        // if (s.strand == -1)
+        //   fprintf(sfs_f, "%s:%d-%d %d -1 -1 -1>-1\n", seq->name.s, s.s,
+        //           s.s + s.l, s.l);
+        // else
+        fprintf(sfs_f, "%s:%d-%d %d %d %d %ld>%ld\n", seq->name.s, s.s,
+                s.s + s.l, s.l, s.strand, s.strand == strand, s.a.v, s.b.v);
+      }
+      if (s.strand == -1 || s.a.v == -1 || s.b.v == -1)
+        continue;
+
+      ++anchored_n;
       if (!s.strand)
         // reverse
         s.s = l - (s.s + s.l);
