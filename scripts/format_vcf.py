@@ -53,9 +53,9 @@ def main():
         sep="\t",
     )
     for line in open(pgcf_fn):
-        idx, hap, svtype, svlen, pname, subpath, qual, ref, alt, offset, cigar = line.strip(
-            "\n"
-        ).split("\t")
+        idx, hap, svtype, svlen, pname, subpath, qual, ref, alt, offset, cigar = (
+            line.strip("\n").split("\t")
+        )
         if pname != name:
             continue
         svlen = "-" + svlen if svtype == "DEL" else svlen
