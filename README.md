@@ -8,14 +8,14 @@ mkdir build ; cd build ; cmake .. ; make -j2 ; cd ..
 #### Example
 ```
 # get paths from graph (assuming vg to be in $PATH)
-vg paths -F -x example/reference.gfa | gzip > example/reference.paths.fa.gz
+vg paths -F -x example/reference.gfa > example/reference.paths.fa
 # build FMD index from paths of the graph
-./build/rb3-prefix/src/rb3/ropebwt3 build -d example/reference.paths.fa.gz > example/reference.paths.fa.fmd
+./build/rb3-prefix/src/rb3/ropebwt3 build -d example/reference.paths.fa > example/reference.paths.fa.fmd
 # sketch the graph using 27-mers
 ./pansv sketch -k27 example/reference.gfa example/reference.paths.fa.fmd > example/reference-k27.skt
 
 # call structural variations
-./pansv -k27 example/reference.gfa example/reference-k27.skt example/reference.paths.fa.fmd example/reads.fa.gz > example/calls.txt
+./pansv -k27 example/reference.gfa example/reference-k27.skt example/reference.paths.fa.fmd example/reads.fa > example/calls.txt
 # build VCF from calls against a path of the graph (assuming bcftools to be in $PATH)
 python3 scripts/format_vcf.py example/reference.gfa example/calls.txt | bcftools sort > example/calls.vcf
 ```
@@ -23,7 +23,7 @@ python3 scripts/format_vcf.py example/reference.gfa example/calls.txt | bcftools
 To map anchored specific strings to a path of the graph:
 ```
 # dump anchored specific strings to file
-./pansv -k27 example/reference.gfa example/reference-k27.skt example/reference.paths.fa.fmd example/reads.fa.gz --specifics example/sfs.tsv > example/calls.txt
+./pansv -k27 example/reference.gfa example/reference-k27.skt example/reference.paths.fa.fmd example/reads.fa --specifics example/sfs.tsv > example/calls.txt
 # convert specific strings to fasta
 python3 scripts/convert.py example/reads.fa example/sfs.tsv > example/sfs.fa
 # place anchored specific strings onto path (-p)
