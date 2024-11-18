@@ -58,8 +58,10 @@ int GSK::load_sketch(char *fn) {
   FILE *f = fopen(fn, "rb");
   uint64_t x, y;
   while (!feof(f)) {
-    fread(&x, sizeof(uint64_t), 1, f);
-    fread(&y, sizeof(uint64_t), 1, f);
+    if (fread(&x, sizeof(uint64_t), 1, f) != 1)
+      exit(1);
+    if (fread(&y, sizeof(uint64_t), 1, f) != 1)
+      exit(1);
     sketch[x] = y;
   }
   fclose(f);
@@ -109,7 +111,7 @@ int GSK::store_sketch(FILE *f, int fa) {
       if (fwrite(&it.second, sizeof(uint64_t), 1, f) != 1)
         return 1;
     } else {
-      fprintf(f, ">%ld.%ld\n%s\n", decode_v(it.second), decode_off(it.second), d2s(it.first, klen).c_str());
+      fprintf(f, ">%ld.%d\n%s\n", decode_v(it.second), decode_off(it.second), d2s(it.first, klen).c_str());
     }
   }
   return 0;

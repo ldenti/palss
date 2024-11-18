@@ -557,7 +557,7 @@ int main(int argc, char *argv[]) {
   rt = realtime();
 
   gsk.load_sketch(skt_fn);
-  fprintf(stderr, "[M::%s] loaded %d sketches in %.3f sec\n", __func__,
+  fprintf(stderr, "[M::%s] loaded %ld sketches in %.3f sec\n", __func__,
           gsk.sketch.size(), realtime() - rt);
   rt = realtime();
 

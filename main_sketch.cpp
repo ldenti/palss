@@ -79,12 +79,12 @@ int main_sketch(int argc, char *argv[]) {
     }
   }
   fprintf(stderr,
-          "[M::%s] backward searched %d kmers (%d not unique) in %.3f sec\n",
+          "[M::%s] backward searched %ld kmers (%d not unique) in %.3f sec\n",
           __func__, gsk.sketch.size(), not_unique, realtime() - rt);
   rt = realtime();
 
   gsk.store_sketch(stdout, fa);
-  fprintf(stderr, "[M::%s] dumped sketch (%d unique kmers) in %.3f sec\n",
+  fprintf(stderr, "[M::%s] dumped sketch (%ld unique kmers) in %.3f sec\n",
           __func__, gsk.sketch.size() - not_unique, realtime() - rt);
 
   rb3_fmi_free(&f);
