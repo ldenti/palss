@@ -1,9 +1,9 @@
-#ifndef GSKETCH_HPP
-#define GSKETCH_HPP
+#ifndef PATH_HPP
+#define PATH_HPP
 
-#include <stdlib.h> 
-#include <string.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef struct {
   int idx;   // identifier (as in gfa)
