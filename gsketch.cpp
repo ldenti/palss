@@ -55,16 +55,21 @@ int GSK::build_sketch() {
 }
 
 int GSK::load_sketch(char *fn) {
-  FILE *f = fopen(fn, "rb");
+  FILE *fp = fopen(fn, "rb");
   uint64_t x, y;
-  while (!feof(f)) {
-    if (fread(&x, sizeof(uint64_t), 1, f) != 1)
+  while (!feof(fp)) {
+    if (fread(&x, sizeof(uint64_t), 1, fp) != 1) {
+      break;
+      // fprintf(stderr, "[M::%s] failed to read sketch (1). Aborting...\n",
+      // __func__); exit(1);
+    }
+    if (fread(&y, sizeof(uint64_t), 1, fp) != 1) {
+      fprintf(stderr, "[M::%s] failed to read sketch. Aborting...\n", __func__);
       exit(1);
-    if (fread(&y, sizeof(uint64_t), 1, f) != 1)
-      exit(1);
+    }
     sketch[x] = y;
   }
-  fclose(f);
+  fclose(fp);
   return 0;
 }
 

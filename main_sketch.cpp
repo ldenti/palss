@@ -108,8 +108,11 @@ void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int ng,
           __func__, ns, nkmers, realtime() - rt);
 }
 
-int store_sketch(FILE *f, map<uint64_t, uint64_t> &sketch) {
+int store_sketch(char *fn, map<uint64_t, uint64_t> &sketch) {
   double rt = realtime();
+  FILE *fp = strcmp(fn, "-") ? fopen(fn, "wb") : fdopen(fileno(stdout), "wb");
+  if (fp == 0)
+    return -1;
   uint64_t total = 0;
   uint64_t skipped = 0;
   for (auto &it : sketch) {
@@ -118,11 +121,21 @@ int store_sketch(FILE *f, map<uint64_t, uint64_t> &sketch) {
       ++skipped;
       continue;
     }
-    if (fwrite(&it.first, sizeof(uint64_t), 1, f) != 1)
-      return 1;
-    if (fwrite(&it.second, sizeof(uint64_t), 1, f) != 1)
-      return 1;
+    // fprintf(stderr, "%lu -> %lu (%d %d:%d)\n", (uint64_t)it.first,
+    // (uint64_t)it.second, (int)decode_unique(it.second),
+    // (int)decode_v(it.second), (int)decode_off(it.second));
+    if (fwrite(&it.first, 8, 1, fp) != 1) {
+      fprintf(stderr, "[M::%s] failed to write sketch (1). Aborting...\n",
+              __func__);
+      exit(1);
+    }
+    if (fwrite(&it.second, 8, 1, fp) != 1) {
+      fprintf(stderr, "[M::%s] failed to write sketch (2). Aborting...\n",
+              __func__);
+      exit(1);
+    }
   }
+  fclose(fp);
   fprintf(
       stderr,
       "[M::%s] dumped sketch (%ld kmers out of %ld, %ld skipped) in %.3f sec\n",
@@ -219,7 +232,7 @@ int main_sketch(int argc, char *argv[]) {
   // ---
 
   // Write sketch to stdout
-  store_sketch(stdout, sketch);
+  store_sketch("-", sketch);
   // ---
 
   fprintf(stderr, "[M::%s] completed in %.3f sec\n", __func__,
