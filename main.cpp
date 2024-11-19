@@ -893,7 +893,8 @@ int main(int argc, char *argv[]) {
       for (const auto &s : c.specifics)
         fprintf(clusters_f, ">%s:%d-%d.%d.C%d.%d-%d%d\n%s\n",
                 qnames[s.qidx].c_str(), s.s, s.s + s.l, s.l, cc, s.strand,
-                s.a.seq == s.esk, s.b.seq == s.eek, decode(s.seq, s.l, 0).c_str());
+                s.a.seq == s.esk, s.b.seq == s.eek,
+                decode(s.seq, s.l, 0).c_str());
 
     // split cluster based on strings length
     vector<int> subclusters_l(1);

@@ -111,7 +111,8 @@ int GSK::store_sketch(FILE *f, int fa) {
       if (fwrite(&it.second, sizeof(uint64_t), 1, f) != 1)
         return 1;
     } else {
-      fprintf(f, ">%ld.%d\n%s\n", decode_v(it.second), decode_off(it.second), d2s(it.first, klen).c_str());
+      fprintf(f, ">%ld.%d\n%s\n", decode_v(it.second), decode_off(it.second),
+              d2s(it.first, klen).c_str());
     }
   }
   return 0;

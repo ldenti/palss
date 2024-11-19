@@ -1,14 +1,39 @@
+#include <assert.h>
 #include <cstdint>
 #include <iostream>
+#include <map>
+#include <vector>
+#include <zlib.h>
 
 #include "fm-index.h"
 #include "ketopt.h"
+#include "kseq.h"
 
-#include "gsketch.hpp"
+extern "C" {
+#include "graph.h"
 #include "utils.h"
+}
+
+KSTREAM_INIT(gzFile, gzread, 65536)
+
+using namespace std;
+
+inline uint64_t encode(int v, int off, int unique) {
+  uint64_t e = ((uint64_t)v << 17) | (off & 0xFFFF) << 1 | (unique & 1);
+  return e;
+}
+inline int8_t decode_unique(uint64_t e) { return e & 1; }
+inline int64_t decode_v(uint64_t e) { return (e >> 17); }
+inline int16_t decode_off(uint64_t e) { return (e >> 1) & 0xFFFF; }
+
+void add_kmer(map<uint64_t, uint64_t> &sketch, uint64_t kmer_d, uint64_t v,
+              uint16_t offset) {
+  auto x = sketch.find(kmer_d);
+  sketch[kmer_d] = encode(v, offset, x == sketch.end());
+}
 
 /* Backward search */
-int search(const rb3_fmi_t *index, char *kmer, int k) {
+int search(const rb3_fmi_t *index, uint8_t *kmer, int k) {
   rb3_sai_t ik;
   int begin = k - 1;
   rb3_fmd_set_intv(index, kmer[begin], &ik);
@@ -22,20 +47,112 @@ int search(const rb3_fmi_t *index, char *kmer, int k) {
   return ik.size;
 }
 
+/* Sketch a set of segments */
+void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int ng,
+                   int threads, map<uint64_t, uint64_t> &sketch) {
+  double rt = realtime();
+  vector<map<uint64_t, uint64_t>> sketches(ns);
+
+#pragma omp parallel for num_threads(threads)
+  for (int i = 0; i < ns; ++i) {
+    char *kmer = (char *)malloc(sizeof(char) *
+                                (klen + 1)); // first kmer on sequence (plain)
+    uint8_t *s;
+    uint64_t kmer_d = 0;   // kmer
+    uint64_t rckmer_d = 0; // reverse and complemented kmer
+    uint64_t ckmer_d = 0;  // canonical kmer
+    uint8_t c;             // new character to append
+    int p = 0;             // current position on segment
+    int hits = 0;          // hits in the FMD index
+    seg_t *seg = segs[i];
+    strncpy(kmer, seg->seq, klen);
+    kmer_d = k2d(kmer, klen);
+    rckmer_d = rc(kmer_d, klen);
+    ckmer_d = std::min(kmer_d, rckmer_d);
+
+    s = (uint8_t *)kmer;
+    rb3_char2nt6(klen, s);
+    hits = search(fmd, s, klen);
+    assert(hits > 0);
+    if (hits <= ng)
+      add_kmer(sketches[i], ckmer_d, seg->idx, 0);
+
+    for (p = klen; p < seg->l; ++p) {
+      c = to_int[seg->seq[p]] - 1; // A is 1 but it should be 0
+      kmer_d = lsappend(kmer_d, c, klen);
+      rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
+      ckmer_d = std::min(kmer_d, rckmer_d);
+
+      d23(kmer_d, klen, kmer);
+      s = (uint8_t *)kmer;
+      rb3_char2nt6(klen, s);
+      hits = search(fmd, s, klen);
+      assert(hits >= 0);
+      if (hits <= ng)
+        add_kmer(sketches[i], ckmer_d, seg->idx, p - klen + 1);
+    }
+    free(kmer);
+  }
+  uint64_t nkmers = 0;
+  for (int i = 0; i < ns; ++i) {
+    for (auto &pair : sketches[i]) {
+      ++nkmers;
+      auto x = sketch.find(pair.first);
+      if (x == sketch.end()) {
+        sketch[pair.first] = pair.second;
+      } else {
+        pair.second = pair.second & ~1;
+      }
+    }
+  }
+
+  fprintf(stderr, "[M::%s] sketched %d segments (%ld kmers) in %.3f sec\n",
+          __func__, ns, nkmers, realtime() - rt);
+}
+
+int store_sketch(FILE *f, map<uint64_t, uint64_t> &sketch) {
+  double rt = realtime();
+  uint64_t total = 0;
+  uint64_t skipped = 0;
+  for (auto &it : sketch) {
+    ++total;
+    if (!decode_unique(it.second)) {
+      ++skipped;
+      continue;
+    }
+    if (fwrite(&it.first, sizeof(uint64_t), 1, f) != 1)
+      return 1;
+    if (fwrite(&it.second, sizeof(uint64_t), 1, f) != 1)
+      return 1;
+  }
+  fprintf(
+      stderr,
+      "[M::%s] dumped sketch (%ld kmers out of %ld, %ld skipped) in %.3f sec\n",
+      __func__, total - skipped, total, skipped, realtime() - rt);
+
+  return 0;
+}
+
 int main_sketch(int argc, char *argv[]) {
-  int k = 27; // kmer size
-  int G = 1;  // expected number of genomes
-  int fa = 0; // fasta output
+  double rt0 = realtime();
+  double rt = rt0;
+
+  int klen = 27;  // kmer size
+  int ng = 1;     // expected number of genomes
+  int vpb = 5000; // number of vertices to load per batch
+  int threads = 4;
   static ko_longopt_t longopts[] = {{NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
-  while ((_c = ketopt(&opt, argc, argv, 1, "k:g:f", longopts)) >= 0) {
+  while ((_c = ketopt(&opt, argc, argv, 1, "k:g:v:@:", longopts)) >= 0) {
     if (_c == 'k')
-      k = atoi(opt.arg);
+      klen = atoi(opt.arg);
     else if (_c == 'g')
-      G = atoi(opt.arg);
-    else if (_c == 'f')
-      fa = 1;
+      ng = atoi(opt.arg);
+    else if (_c == 'v')
+      vpb = atoi(opt.arg);
+    else if (_c == '@')
+      threads = atoi(opt.arg);
   }
 
   if (argc - opt.ind != 2) {
@@ -45,17 +162,10 @@ int main_sketch(int argc, char *argv[]) {
   char *gfa_fn = argv[opt.ind++];
   char *fmd_fn = argv[opt.ind++];
 
-  double rt = realtime();
-  GSK gsk(gfa_fn, k);
-  gsk.build_sketch();
-  fprintf(stderr, "[M::%s] sketched graph with %d vertices in %.3f sec\n",
-          __func__, gsk.nvertices, realtime() - rt);
-  rt = realtime();
-
   // FMD-index loading
-  rb3_fmi_t f;
-  rb3_fmi_restore(&f, fmd_fn, 0);
-  if (f.e == 0 && f.r == 0) {
+  rb3_fmi_t fmd;
+  rb3_fmi_restore(&fmd, fmd_fn, 0);
+  if (fmd.e == 0 && fmd.r == 0) {
     fprintf(stderr, "Error restoring index");
     return 1;
   }
@@ -64,30 +174,58 @@ int main_sketch(int argc, char *argv[]) {
   rt = realtime();
   // ---
 
-  // Retain only really unique kmers (wrt genomes)
-  char *kmer = (char *)malloc((k + 1) * sizeof(char));
-  kmer[k] = '\0';
-  int hits;
-  int not_unique = 0;
-  for (auto &it : gsk.sketch) {
-    d23(it.first, k, kmer);
-    hits = search(&f, kmer, k);
-    assert(hits > 0);
-    if (hits != G) {
-      it.second = it.second & ~1;
-      ++not_unique;
+  // Sketching
+  kstring_t s = {0, 0, 0};
+  int dret;
+  gzFile fp = gzopen(gfa_fn, "r");
+  if (fp == 0)
+    return 0;
+  kstream_t *ks = ks_init(fp);
+
+  map<uint64_t, uint64_t> sketch; // sketch : (47[vertex, 16[offset, 1[unique)
+  seg_t **segs = (seg_t **)malloc(vpb * sizeof(seg_t *)); // init_seg();
+  for (int i = 0; i < vpb; ++i)
+    segs[i] = init_seg();
+  int si = 0; // current segment
+  int nvertices = 0;
+  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
+    if (s.s[0] == 'S') {
+      ++nvertices;
+      gfa_parse_S(s.s, segs[si]);
+      if (segs[si]->l < klen)
+        continue;
+      ++si;
+
+      if (si == vpb) {
+        run_sketching(segs, si, klen, &fmd, ng, threads, sketch);
+        si = 0;
+      }
     }
   }
-  fprintf(stderr,
-          "[M::%s] backward searched %ld kmers (%d not unique) in %.3f sec\n",
-          __func__, gsk.sketch.size(), not_unique, realtime() - rt);
+  if (si < vpb) {
+    run_sketching(segs, si, klen, &fmd, ng, threads, sketch);
+  }
+
+  // Clean everything
+  for (int i = 0; i < vpb; ++i)
+    destroy_seg(segs[i]);
+  free(segs);
+  free(s.s);
+  ks_destroy(ks);
+  gzclose(fp);
+  rb3_fmi_free(&fmd);
+
+  fprintf(stderr, "[M::%s] sketched graph in %.3f sec\n", __func__,
+          realtime() - rt);
   rt = realtime();
+  // ---
 
-  gsk.store_sketch(stdout, fa);
-  fprintf(stderr, "[M::%s] dumped sketch (%ld unique kmers) in %.3f sec\n",
-          __func__, gsk.sketch.size() - not_unique, realtime() - rt);
+  // Write sketch to stdout
+  store_sketch(stdout, sketch);
+  // ---
 
-  rb3_fmi_free(&f);
+  fprintf(stderr, "[M::%s] completed in %.3f sec\n", __func__,
+          realtime() - rt0);
 
   return 0;
 }
