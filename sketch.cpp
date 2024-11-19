@@ -11,7 +11,7 @@ void sk_add(sketch_t &sketch, uint64_t kmer_d, uint64_t v, uint16_t offset,
   sketch[kmer_d] = sk_encode(v, offset, good && x == sketch.end());
 }
 
-hit_t sk_get(sketch_t &sketch, uint64_t &kmer_d) {
+hit_t sk_get(const sketch_t &sketch, uint64_t &kmer_d) {
   auto x = sketch.find(kmer_d);
   pair<int64_t, int16_t> hit = make_pair((int64_t)-1, (int16_t)-1);
   if (x != sketch.end() && sk_decode_unique(x->second))
@@ -19,7 +19,7 @@ hit_t sk_get(sketch_t &sketch, uint64_t &kmer_d) {
   return hit;
 }
 
-int sk_store(sketch_t &sketch, char *fn) {
+int sk_store(const sketch_t &sketch, char *fn) {
   double rt = realtime();
   FILE *fp = strcmp(fn, "-") ? fopen(fn, "wb") : fdopen(fileno(stdout), "wb");
   if (fp == 0)

@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <iostream>
 #include <map>
+#include <utility>
 #include <vector>
 #include <zlib.h>
 
@@ -183,7 +184,7 @@ int main_sketch(int argc, char *argv[]) {
   // ---
 
   // Write sketch to stdout
-  sk_store(sketch, "-");
+  sk_store(as_const(sketch), "-");
   // ---
 
   fprintf(stderr, "[M::%s] completed in %.3f sec\n", __func__,
