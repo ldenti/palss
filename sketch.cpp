@@ -11,7 +11,7 @@ void sk_add(sketch_t &sketch, uint64_t kmer_d, uint64_t v, uint16_t offset,
   sketch[kmer_d] = sk_encode(v, offset, good && x == sketch.end());
 }
 
-pair<int64_t, int16_t> sk_get(sketch_t &sketch, uint64_t &kmer_d) {
+hit_t sk_get(sketch_t &sketch, uint64_t &kmer_d) {
   auto x = sketch.find(kmer_d);
   pair<int64_t, int16_t> hit = make_pair((int64_t)-1, (int16_t)-1);
   if (x != sketch.end() && sk_decode_unique(x->second))

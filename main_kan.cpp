@@ -53,7 +53,7 @@ int main_kan(int argc, char *argv[]) {
   int l;
   char kmer[klen + 1];
   kmer[klen] = '\0';
-  anchor_t hit;
+  hit_t hit;
   uint64_t kmer_d = 0, rckmer_d = 0, ckmer_d = 0;
   uint8_t c; // new character to append
   int p;     // current position on chromosome
