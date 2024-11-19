@@ -27,9 +27,9 @@ inline int64_t decode_v(uint64_t e) { return (e >> 17); }
 inline int16_t decode_off(uint64_t e) { return (e >> 1) & 0xFFFF; }
 
 void add_kmer(map<uint64_t, uint64_t> &sketch, uint64_t kmer_d, uint64_t v,
-              uint16_t offset) {
+              uint16_t offset, int good) {
   auto x = sketch.find(kmer_d);
-  sketch[kmer_d] = encode(v, offset, x == sketch.end());
+  sketch[kmer_d] = encode(v, offset, good && x == sketch.end());
 }
 
 /* Backward search */
@@ -74,8 +74,7 @@ void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int ng,
     rb3_char2nt6(klen, s);
     hits = search(fmd, s, klen);
     assert(hits > 0);
-    if (hits <= ng)
-      add_kmer(sketches[i], ckmer_d, seg->idx, 0);
+    add_kmer(sketches[i], ckmer_d, seg->idx, 0, hits == ng);
 
     for (p = klen; p < seg->l; ++p) {
       c = to_int[seg->seq[p]] - 1; // A is 1 but it should be 0
@@ -88,8 +87,7 @@ void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int ng,
       rb3_char2nt6(klen, s);
       hits = search(fmd, s, klen);
       assert(hits >= 0);
-      if (hits <= ng)
-        add_kmer(sketches[i], ckmer_d, seg->idx, p - klen + 1);
+      add_kmer(sketches[i], ckmer_d, seg->idx, p - klen + 1, hits == ng);
     }
     free(kmer);
   }
