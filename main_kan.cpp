@@ -1,17 +1,14 @@
 #include <cstdint>
 #include <cstring>
-#include <map>
 #include <zlib.h>
 
-#include "gsketch.hpp"
 #include "ketopt.h"
 #include "kseq.h"
+
+#include "sketch.hpp"
 #include "utils.h"
 
-// KSEQ_INIT(gzFile, gzread) // we already init kstream in gsketch
-__KSEQ_TYPE(gzFile)
-__KSEQ_BASIC(static, gzFile)
-__KSEQ_READ(static)
+KSEQ_INIT(gzFile, gzread)
 
 using namespace std;
 
@@ -43,10 +40,10 @@ int main_kan(int argc, char *argv[]) {
   rt = rt0;
 
   // Graph sketching and path extraction
-  GSK gsk(NULL, klen);
-  gsk.load_sketch(skt_fn);
+  sketch_t sketch;
+  sk_load(sketch, skt_fn);
   fprintf(stderr, "[M::%s] loaded %lu sketches in %.3f sec\n", __func__,
-          gsk.sketch.size(), realtime() - rt);
+          sketch.size(), realtime() - rt);
   rt = realtime();
 
   // ---
@@ -56,7 +53,7 @@ int main_kan(int argc, char *argv[]) {
   int l;
   char kmer[klen + 1];
   kmer[klen] = '\0';
-  pair<int64_t, int16_t> hit;
+  anchor_t hit;
   uint64_t kmer_d = 0, rckmer_d = 0, ckmer_d = 0;
   uint8_t c; // new character to append
   int p;     // current position on chromosome
@@ -66,7 +63,7 @@ int main_kan(int argc, char *argv[]) {
     kmer_d = k2d(kmer, klen);
     rckmer_d = rc(kmer_d, klen);
     ckmer_d = std::min(kmer_d, rckmer_d);
-    hit = gsk.get(ckmer_d);
+    hit = sk_get(sketch, ckmer_d);
     if (hit.first != -1)
       printf("%s:%d-%d %lu:%d %s\n", seq->name.s, p + 1, p + klen, hit.first,
              hit.second, print ? d2s(kmer_d, klen).c_str() : "");
@@ -75,7 +72,7 @@ int main_kan(int argc, char *argv[]) {
       kmer_d = lsappend(kmer_d, c, klen);
       rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
-      hit = gsk.get(ckmer_d);
+      hit = sk_get(sketch, ckmer_d);
       if (hit.first != -1)
         printf("%s:%d-%d %lu:%d %s\n", seq->name.s, p - klen + 1 + 1, p + 1,
                hit.first, hit.second, print ? d2s(kmer_d, klen).c_str() : "");
