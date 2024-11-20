@@ -5,6 +5,7 @@ include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PANSV VERSION 1.0.0)
 add_executable(pansv graph.c sketch.cpp main_sketch.cpp main_kan.cpp main_search.cpp main_map.cpp main.cpp)

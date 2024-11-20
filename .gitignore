@@ -2,3 +2,5 @@ build/
 .vscode/
 pansv
 .snakemake/
+.cache/
+example/

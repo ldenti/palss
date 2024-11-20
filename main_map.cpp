@@ -3,15 +3,15 @@
 #include <map>
 #include <zlib.h>
 
-#include "gsketch.hpp"
+// #include "gsketch.hpp"
 #include "ketopt.h"
 #include "kseq.h"
 #include "utils.h"
 
-// KSEQ_INIT(gzFile, gzread) // we already init kstream in gsketch
-__KSEQ_TYPE(gzFile)
-__KSEQ_BASIC(static, gzFile)
-__KSEQ_READ(static)
+// // KSEQ_INIT(gzFile, gzread) // we already init kstream in gsketch
+// __KSEQ_TYPE(gzFile)
+// __KSEQ_BASIC(static, gzFile)
+// __KSEQ_READ(static)
 
 using namespace std;
 

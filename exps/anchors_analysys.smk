@@ -98,7 +98,7 @@ rule kan_paths:
         skt=rules.sketch.output.skt,
         fa=rules.get_paths.output.fa,
     output:
-        txt=pjoin(WD, "{n}", "paths-anchors.k{k}.txt"),
+        txt=pjoin(WD, "{n}", "paths-anchors.k{k}.bed"),
     log:
         time = pjoin(WD, "TIMES", "{n}", "kan-paths-k{k}.time"),
     shell:
@@ -111,29 +111,24 @@ rule kan_ref:
         skt=rules.sketch.output.skt,
         fa=FA,
     output:
-        txt=pjoin(WD, "{n}", "reference-anchors.k{k}.txt"),
+        bed=pjoin(WD, "{n}", "reference-anchors.k{k}.bed"),
     log:
         time = pjoin(WD, "TIMES", "{n}", "kan-reference-k{k}.time"),
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv kan {input.skt} {input.fa} > {output.txt}
+        /usr/bin/time -vo {log.time} ../pansv kan {input.skt} {input.fa} > {output.bed}
         """
 
-rule kan_2bam:
+rule run_py:
     input:
-        fa=FA,
-        txt=rules.kan_ref.output.txt,
+        bed=rules.kan_ref.output.bed,
     output:
-       bam=pjoin(WD, "{n}", "reference-anchors.k{k}.bam"),
-    log:
-        time = pjoin(WD, "TIMES", "{n}", "kan2bam-k{k}.time"),
-    conda:
-        "workflow/envs/biopython.yml"
+        bed=pjoin(WD, "{n}", "reference-anchors.k{k}.txt"),
+        png=pjoin(WD, "{n}", "reference-anchors.k{k}.png"),
+    params:
+        prefix=pjoin(WD, "{n}", "reference-anchors.k{k}"),
     shell:
         """
-        /usr/bin/time -vo {log.time} python3 ../scripts/kan2sam.py {input.fa} {input.txt} | samtools view -bS | samtools sort > {output.bam}
-        samtools index {output.bam}
+        python3 ../scripts/kan_hist.py {input.bed} -o {params.prefix}
         """
-
-# python3 scripts/kan_hist.py  example/reference.paths.anchors.txt
 

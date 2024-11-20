@@ -65,7 +65,7 @@ int main_kan(int argc, char *argv[]) {
     ckmer_d = std::min(kmer_d, rckmer_d);
     hit = sk_get(sketch, ckmer_d);
     if (hit.first != -1)
-      printf("%s:%d-%d %lu:%d %s\n", seq->name.s, p + 1, p + klen, hit.first,
+      printf("%s\t%d\t%d\t%lu:%d:%s\n", seq->name.s, p, p + klen, hit.first,
              hit.second, print ? d2s(kmer_d, klen).c_str() : "");
     for (p = klen; p < seq->seq.l; ++p) {
       c = to_int[seq->seq.s[p]] - 1; // A is 1 but it should be 0
@@ -74,8 +74,8 @@ int main_kan(int argc, char *argv[]) {
       ckmer_d = std::min(kmer_d, rckmer_d);
       hit = sk_get(sketch, ckmer_d);
       if (hit.first != -1)
-        printf("%s:%d-%d %lu:%d %s\n", seq->name.s, p - klen + 1 + 1, p + 1,
-               hit.first, hit.second, print ? d2s(kmer_d, klen).c_str() : "");
+        printf("%s\t%d\t%d\t%lu:%d:%s\n", seq->name.s, p - klen + 1, p + 1,
+               hit.first, hit.second, print ? d2s(kmer_d, klen).c_str() : ".");
 
       if (verbose && p % 500000 == 0)
         fprintf(stderr, "Read %d bases from %s\r", p, seq->name.s);
