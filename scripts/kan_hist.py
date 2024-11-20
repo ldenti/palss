@@ -52,8 +52,8 @@ def main(args):
     total = overlapping + consecutive + len(data)
 
     for chrom, size in sizes.items():
-        ratio = uncovered[chrom]/size if chrom in uncovered else -1
-        print(chrom, ratio, sep="\t", file = of)
+        ratio = uncovered[chrom] / size if chrom in uncovered else -1
+        print(chrom, ratio, sep="\t", file=of)
 
     print(
         "Overlapping over total anchors:",
