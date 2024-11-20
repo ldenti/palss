@@ -1,4 +1,4 @@
-name: samtools
+name: biopython
 channels:
   - conda-forge
 dependencies:

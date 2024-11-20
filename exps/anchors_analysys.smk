@@ -124,6 +124,8 @@ rule run_py:
     output:
         bed="{x}.txt",
         png="{x}.png",
+    conda:
+        "workflow/envs/seaborn.yml"
     shell:
         """
         python3 ../scripts/kan_hist.py {input.bed} -o {wildcards.x}
