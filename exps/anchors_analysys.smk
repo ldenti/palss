@@ -13,7 +13,6 @@ rule run:
     input:
         expand(pjoin(WD, "{n}", "paths-anchors.k{k}.txt"), n=Ns, k=Ks),
         expand(pjoin(WD, "{n}", "reference-anchors.k{k}.txt"), n=Ns, k=Ks),
-        expand(pjoin(WD, "{n}", "reference-anchors.k{k}.bam"), n=Ns, k=Ks),
 
 rule select_samples:
     input:
@@ -121,14 +120,12 @@ rule kan_ref:
 
 rule run_py:
     input:
-        bed=rules.kan_ref.output.bed,
+        bed="{x}.bed",
     output:
-        bed=pjoin(WD, "{n}", "reference-anchors.k{k}.txt"),
-        png=pjoin(WD, "{n}", "reference-anchors.k{k}.png"),
-    params:
-        prefix=pjoin(WD, "{n}", "reference-anchors.k{k}"),
+        bed="{x}.txt",
+        png="{x}.png",
     shell:
         """
-        python3 ../scripts/kan_hist.py {input.bed} -o {params.prefix}
+        python3 ../scripts/kan_hist.py {input.bed} -o {wildcards.x}
         """
 
