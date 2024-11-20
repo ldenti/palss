@@ -14,6 +14,17 @@ rule run:
         expand(pjoin(WD, "{n}", "paths-anchors.k{k}.txt"), n=Ns, k=Ks),
         expand(pjoin(WD, "{n}", "reference-anchors.k{k}.txt"), n=Ns, k=Ks),
 
+rule faidx:
+    input:
+      FA,
+    output:
+        FA + ".fai",
+    conda: "workflow/envs/samtools.yml"
+    shell:
+        """
+        samtools faidx {input}
+        """
+
 rule select_samples:
     input:
         vcf=VCF,
@@ -121,13 +132,13 @@ rule kan_ref:
 rule run_py:
     input:
         bed="{x}.bed",
+        fai=FA + ".fai",
     output:
         bed="{x}.txt",
         png="{x}.png",
-    conda:
-        "workflow/envs/seaborn.yml"
+    conda: "workflow/envs/seaborn.yml"
     shell:
         """
-        python3 ../scripts/kan_hist.py {input.bed} -o {wildcards.x}
+        python3 ../scripts/kan_hist.py {input.bed} {input.fai} -o {wildcards.x}
         """
 

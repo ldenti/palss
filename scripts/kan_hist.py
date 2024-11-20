@@ -13,6 +13,11 @@ def main(args):
 
     of = open(args.out, "w") if args.out != "" else sys.stdout
 
+    sizes = {}
+    for line in open(args.FAI):
+        chrom, size, _, _, _ = line.split("\t")
+        sizes[chrom] = int(size)
+
     regions = {}
     for line in open(args.BED):
         chrom, s, e, _idx = line.split("\t")
@@ -25,7 +30,9 @@ def main(args):
     data = []
     overlapping = 0
     consecutive = 0
+    uncovered = {}
     for chrom, kmers in regions.items():
+        uncovered[chrom] = 0
         kmers.sort(key=lambda x: x[0])
         for (s1, e1), (s2, e2) in zip(kmers[:-1], kmers[1:]):
             if s2 < e1:
@@ -36,12 +43,17 @@ def main(args):
                     consecutive += 1
                 else:
                     if d > args.D:
+                        uncovered[chrom] += d
                         print(
-                            f"{chrom}:{e1+1}-{s2} ({d}) {chrom}:{s1}-{e1+1} {chrom}:{s2}-{e2+1}",
+                            f"# {chrom}:{e1+1}-{s2} ({d}) {chrom}:{s1}-{e1+1} {chrom}:{s2}-{e2+1}",
                             file=of,
                         )
                     data.append([chrom, d])
     total = overlapping + consecutive + len(data)
+
+    for chrom, size in sizes.items():
+        ratio = uncovered[chrom]/size if chrom in uncovered else -1
+        print(chrom, ratio, sep="\t", file = of)
 
     print(
         "Overlapping over total anchors:",
@@ -102,7 +114,8 @@ if __name__ == "__main__":
         prog="kan_hist",
         description="Analyze anchors distance from BED file",
     )
-    parser.add_argument("BED", help="Spliced pangenome in GFA format")
+    parser.add_argument("BED", help="List of anchors (.bed)")
+    parser.add_argument("FAI", help="Index of reference file (.fai)")
     parser.add_argument(
         "-c",
         help="Comma-separated list of chromosomes to consider (default: all)",
