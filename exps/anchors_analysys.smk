@@ -86,9 +86,11 @@ rule sketch:
         skt=pjoin(WD, "{n}", "pangenome-k{k}.skt"),
     log:
         time = pjoin(WD, "TIMES", "{n}", "sketch-k{k}.time"),
+    threads:
+        workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv sketch -g {wildcards.n} -k {wildcards.k} {input.gfa} {input.fmd} > {output.skt}
+        /usr/bin/time -vo {log.time} ../pansv sketch -g {wildcards.n} -k {wildcards.k} -v50000 -@{threads} {input.gfa} {input.fmd} > {output.skt}
         """
 
 rule kan_paths:
