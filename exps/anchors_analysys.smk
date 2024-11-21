@@ -6,7 +6,7 @@ WD = config["wd"]
 
 nths = workflow.cores
 
-Ns = [4] # [1,2,4,8,16]
+Ns = [1,2,4,8,16]
 Ks = [27]
 
 rule run:

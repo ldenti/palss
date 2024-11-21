@@ -11,7 +11,7 @@ def main(args):
     if args.chroms != "":
         chroms = args.chroms.split(",")
 
-    of = open(args.out, "w") if args.out != "" else sys.stdout
+    of = open(args.out + ".txt", "w") if args.out != "" else sys.stdout
 
     sizes = {}
     for line in open(args.FAI):

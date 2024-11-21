@@ -29,7 +29,7 @@ samtools index example/sfs.bam
 To analyze unique kmers in the pangenomes wrt any fasta file:
 ``` sh
 ./pansv kan example/reference-k27.skt example/reference.paths.fa > example/reference.paths.anchors.bed
-python3 scripts/kan_hist.py example/reference.paths.anchors.bed
+python3 scripts/kan_hist.py example/reference.paths.anchors.bed example/reference.paths.fa.fai
 ```
 
 ### TODO
