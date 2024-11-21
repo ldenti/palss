@@ -16,11 +16,15 @@ def main(args):
     sizes = {}
     for line in open(args.FAI):
         chrom, size, _, _, _ = line.split("\t")
+        if "_" in chrom:
+            continue
         sizes[chrom] = int(size)
 
     regions = {}
     for line in open(args.BED):
         chrom, s, e, _idx = line.split("\t")
+        if "_" in chrom:
+            continue
         if len(chroms) != 0 and chrom not in chroms:
             continue
         if chrom not in regions:
@@ -51,9 +55,18 @@ def main(args):
                     data.append([chrom, d])
     total = overlapping + consecutive + len(data)
 
+    _fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
+
+    uncovered_ratios = []
     for chrom, size in sizes.items():
         ratio = uncovered[chrom] / size if chrom in uncovered else -1
         print(chrom, ratio, sep="\t", file=of)
+        uncovered_ratios.append([chrom, uncovered[chrom], size, ratio])
+
+    df = pd.DataFrame(uncovered_ratios, columns=["Chrom", "Unc.", "Size", "Ratio"])
+    sns.barplot(df, x="Chrom", y="Size", ax=ax1)
+    sns.barplot(df, x="Chrom", y="Unc.", ax=ax1)
+    ax1.tick_params("x", labelrotation=45)
 
     print(
         "Overlapping over total anchors:",
@@ -100,7 +113,9 @@ def main(args):
         binrange=(1, df["d"].quantile(q=0.95)),
         bins=max(1, int(df["d"].quantile(q=0.95) / 50)),
         legend=None,
-    )  # , hue="Path")
+        # , hue="Path",
+        ax=ax2,
+    )
     if args.out == "":
         plt.show()
     else:
