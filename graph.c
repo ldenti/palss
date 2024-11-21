@@ -1,10 +1,76 @@
 #include "graph.h"
 
+graph_t *init_graph(char *fn) {
+  graph_t *g = malloc(1 * sizeof(graph_t));
+  g->fn = fn;
+  // vertices
+  g->nv = 0;
+  g->cv = 16384;
+  g->vertices = malloc(g->cv * sizeof(seg_t *));
+  for (int i = 0; i < g->cv; ++i)
+    g->vertices[i] = init_seg();
+  g->v_map = kh_init(im);
+
+  // paths
+  g->np = 0;
+  g->cp = 128;
+  g->paths = malloc(g->cp * sizeof(path_t *));
+  for (int i = 0; i < g->cp; ++i)
+    g->paths[i] = init_path(16384);
+  return g;
+}
+
+void destroy_graph(graph_t *g) {
+  for (int i = 0; i < g->cv; ++i)
+    destroy_seg(g->vertices[i]);
+  free(g->vertices);
+  kh_destroy(im, g->v_map);
+  for (int i = 0; i < g->cp; ++i)
+    destroy_path(g->paths[i]);
+  free(g->paths);
+  free(g);
+}
+
+int load_vertices(graph_t *g) {
+  kstring_t s = {0, 0, 0};
+  int dret;
+  gzFile fp = gzopen(g->fn, "r");
+  if (fp == 0)
+    return 0;
+  kstream_t *ks = ks_init(fp);
+  int hret;
+  khint_t k;
+  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
+    if (s.s[0] == 'S') {
+      if (g->nv == g->cv) {
+        g->vertices = realloc(g->vertices, g->cv * 2 * sizeof(seg_t *));
+        g->cv *= 2;
+        for (int64_t i = g->nv; i < g->cv; ++i)
+          g->vertices[i] = init_seg();
+      }
+      gfa_parse_S(s.s, g->vertices[g->nv]);
+
+      k = kh_put(im, g->v_map, g->vertices[g->nv]->idx, &hret);
+      kh_value(g->v_map, k) = g->nv;
+      ++g->nv;
+    }
+  }
+  free(s.s);
+  ks_destroy(ks);
+  gzclose(fp);
+  return 0;
+}
+
+seg_t *get_vertex(graph_t *g, int idx) {
+  khint64_t k = kh_get(im, g->v_map, idx);
+  return g->vertices[k];
+}
+
 // Init a path with initial capacity c
 path_t *init_path(int c) {
-  path_t *path = (path_t *)malloc(1 * sizeof(path_t));
-  path->idx = (char *)malloc(128 * sizeof(char));
-  path->vertices = (int *)malloc(c * sizeof(int));
+  path_t *path = malloc(1 * sizeof(path_t));
+  path->idx = malloc(128 * sizeof(char));
+  path->vertices = malloc(c * sizeof(int));
   path->l = 0;
   path->capacity = c;
   return path;
@@ -21,6 +87,37 @@ void add_vertex(path_t *path, int v) {
   ++path->l;
 }
 
+/* Load paths from GFA file */
+int load_paths(graph_t *g) {
+  kstring_t s = {0, 0, 0};
+  int dret;
+  gzFile fp = gzopen(g->fn, "r");
+  if (fp == 0) {
+    exit(1); // return paths;
+  }
+  kstream_t *ks = ks_init(fp);
+
+  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
+    if (s.s[0] == 'P' || s.s[0] == 'W') {
+      if (g->np == g->cp) {
+        g->paths = realloc(g->paths, g->cp * 2 * sizeof(path_t *));
+        g->cp *= 2;
+        for (int i = g->np; i < g->cp; ++i)
+          g->paths[i] = init_path(16384); // FIXME: find a better value
+      }
+      if (s.s[0] == 'P')
+        gfa_parse_P(s.s, g->paths[g->np]);
+      else
+        gfa_parse_W(s.s, g->paths[g->np]);
+      ++g->np;
+    }
+  }
+  free(s.s);
+  ks_destroy(ks);
+  gzclose(fp);
+  return 0;
+}
+
 // Destroy the path
 void destroy_path(path_t *p) {
   free(p->idx);
@@ -33,9 +130,10 @@ seg_t *init_seg() {
   seg->l = 0;
   // seg->idx = (char *)malloc(1024);
   seg->seq = malloc(4096 * sizeof(char));
-  seg->c = 4096;
+  seg->c = 4096; // TODO: assuming chopped graph
   return seg;
 }
+
 void destroy_seg(seg_t *seg) {
   free(seg->seq);
   free(seg);
@@ -44,7 +142,6 @@ void destroy_seg(seg_t *seg) {
 void gfa_parse_S(char *s, seg_t *ret) {
   int i, is_ok = 0;
   char *p, *q, *seg = 0, *seq = 0, *rest = 0;
-  uint32_t sid, len = 0;
   for (i = 0, p = q = s + 2;; ++p) {
     if (*p == 0 || *p == '\t') {
       int c = *p;
@@ -69,10 +166,9 @@ void gfa_parse_S(char *s, seg_t *ret) {
 }
 
 void gfa_parse_P(char *s, path_t *path) {
-  int x = 0;        // current index for insertion
-  int i;            // , oriv = -1, oriw = -1, is_ok = 0;
-  char *p, *q, *qq; //, *segv = 0, *segw = 0, *rest = 0;
-  // int32_t ov = INT32_MAX, ow = INT32_MAX;
+  int x = 0; // current index for insertion
+  int i;
+  char *p, *q, *qq;
   for (i = 0, p = q = s + 2;; ++p) {
     if (*p == 0 || *p == '\t') {
       *p = 0;
@@ -92,7 +188,6 @@ void gfa_parse_P(char *s, path_t *path) {
               exit(1);
             }
             *(qq - 1) = 0;
-            /*cerr << "Adding " << q << " to " << path->idx << endl;*/
             add_vertex(path, atoi(q));
             q = qq + 1;
             if (c == 0)
