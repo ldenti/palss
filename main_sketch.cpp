@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <cstdint>
-#include <iostream>
 #include <map>
 #include <utility>
 #include <vector>
@@ -15,8 +14,6 @@ extern "C" {
 #include "graph.h"
 #include "utils.h"
 }
-
-KSTREAM_INIT(gzFile, gzread, 65536)
 
 using namespace std;
 

@@ -52,18 +52,19 @@ typedef struct graph_t {
 graph_t *init_graph(char *fn);
 
 /* Destroy the graph */
-void destroy_graph(graph_t *);
+void destroy_graph(graph_t *g);
 
 /* Load all vertices from gfa */
-int load_vertices(graph_t *);
+int load_vertices(graph_t *g);
 
 /* Load all paths from gfa */
-int load_paths(graph_t *);
+int load_paths(graph_t *g);
 
 /* Return the segment given the gfa idx */
-seg_t *get_vertex(graph_t *, int);
+seg_t *get_vertex(graph_t *g, int v);
 
-// int compatible(int x, int y);
+/* Check if x and y are on at least one path */
+int compatible(graph_t *g, int x, int y);
 
 /* Initialize a segment */
 seg_t *init_seg();

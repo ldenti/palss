@@ -13,29 +13,13 @@ extern "C" {
 #include "sketch.hpp"
 #include "utils.h"
 
-KSEQ_INIT(gzFile, gzread)
+// KSEQ_INIT(gzFile, gzread) // we already init kstream in graph.h
+// XXX: there should be a better way to do this
+__KSEQ_TYPE(gzFile)
+__KSEQ_BASIC(static, gzFile)
+__KSEQ_READ(static)
 
 using namespace std;
-
-/* Check if two nodes are compatible wrt paths in the graph */
-// TODO: should we move this to graph.c?
-int compatible(vector<path_t *> paths, int x, int y) {
-  if (x > y) {
-    int tmp = x;
-    x = y;
-    y = tmp;
-  }
-  for (int p = 0; p < paths.size(); ++p) {
-    int f = 0, ok = 0;
-    for (int i = 0; i < paths[p]->l; ++i) {
-      if (paths[p]->vertices[i] == x)
-        f = 1;
-      if (f && paths[p]->vertices[i] == y)
-        return f;
-    }
-  }
-  return 0;
-}
 
 /* Compute SFS strings from P and store them into solutions */
 vector<sfs_t> ping_pong_search(const rb3_fmi_t *index, uint8_t *P, int qidx,
@@ -108,7 +92,7 @@ vector<sfs_t> assemble(const vector<sfs_t> &sfs, int d) {
 }
 
 /* Anchor specific strings on graph using graph sketch */
-vector<sfs_t> anchor(const sketch_t &sketch, const vector<path_t *> paths,
+vector<sfs_t> anchor(const sketch_t &sketch, graph_t *graph,
                      const vector<sfs_t> &sfs, uint8_t *P, int l, int klen,
                      int N) {
   vector<sfs_t> anchored_sfs;
@@ -123,7 +107,7 @@ vector<sfs_t> anchor(const sketch_t &sketch, const vector<path_t *> paths,
 
   for (const sfs_t &s : sfs) {
     // Finding anchors in flanking regions
-    // Do we want anchors overlapping the string?
+    // XXX: Do we want anchors overlapping the string?
     beg = s.s - klen;
     beg = beg < 0 ? 0 : beg;
     end = s.s + s.l;
@@ -134,7 +118,7 @@ vector<sfs_t> anchor(const sketch_t &sketch, const vector<path_t *> paths,
     rckmer_d = rc(kmer_d, klen);
     ckmer_d = std::min(kmer_d, rckmer_d);
     vector<anchor_t> sanchors;
-    // CHECKME: do we want at least one anchor?
+    // XXX: do we want at least one anchor?
     while (beg > 0 && (sanchors.size() < N /*|| sanchors.empty()*/)) {
       if ((vx = sk_get(sketch, ckmer_d)).first != -1)
         sanchors.push_back({vx.first, vx.second, beg, ckmer_d});
@@ -151,7 +135,7 @@ vector<sfs_t> anchor(const sketch_t &sketch, const vector<path_t *> paths,
     rckmer_d = rc(kmer_d, klen);
     ckmer_d = std::min(kmer_d, rckmer_d);
     vector<anchor_t> eanchors;
-    // CHECKME: do we want at least one anchor?
+    // XXX: do we want at least one anchor?
     while (end < l - klen + 1 &&
            (eanchors.size() < N /*|| eanchors.empty()*/)) {
       if ((vx = sk_get(sketch, ckmer_d)).first != -1)
@@ -188,7 +172,7 @@ vector<sfs_t> anchor(const sketch_t &sketch, const vector<path_t *> paths,
         yoff = eanchors[j].offset;
         xy.second = y;
         if ((hhit = memo.find(xy)) == memo.end()) {
-          memo[xy] = compatible(paths, sanchors[i].v, eanchors[j].v);
+          memo[xy] = compatible(graph, sanchors[i].v, eanchors[j].v);
           // memo[make_pair(y, x)] = memo[xy];
         }
         comp = memo[xy];
@@ -231,36 +215,6 @@ vector<sfs_t> anchor(const sketch_t &sketch, const vector<path_t *> paths,
   return anchored_sfs;
 }
 
-/* Load paths from GFA file */
-// TODO: should we move this to graph.c?
-vector<path_t *> load_paths(char *gfa_fn) {
-  vector<path_t *> paths;
-  kstring_t s = {0, 0, 0};
-  int dret;
-  gzFile fp = gzopen(gfa_fn, "r");
-  if (fp == 0) {
-    exit(1); // return paths;
-  }
-  kstream_t *ks = ks_init(fp);
-
-  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-    if (s.s[0] == 'P' || s.s[0] == 'W') {
-      path_t *path = init_path(2048);
-      if (s.s[0] == 'P')
-        gfa_parse_P(s.s, path);
-      else
-        gfa_parse_W(s.s, path);
-      paths.push_back(path);
-    }
-  }
-
-  free(s.s);
-  ks_destroy(ks);
-  gzclose(fp);
-
-  return paths;
-}
-
 int main_search(int argc, char *argv[]) {
   double rt0 = realtime();
   double rt = rt0, rt1;
@@ -282,7 +236,6 @@ int main_search(int argc, char *argv[]) {
     else if (_c == 'a')
       N = atoi(opt.arg);
   }
-
   if (argc - opt.ind != 4) {
     fprintf(stderr, "Argh");
     return 1;
@@ -311,9 +264,11 @@ int main_search(int argc, char *argv[]) {
           sketch.size(), realtime() - rt);
   rt = realtime();
 
-  vector<path_t *> paths = load_paths(gfa_fn);
-  fprintf(stderr, "[M::%s] loaded %ld paths in %.3f sec\n", __func__,
-          paths.size(), realtime() - rt);
+  graph_t *graph = init_graph(gfa_fn);
+  load_paths(graph);
+
+  fprintf(stderr, "[M::%s] loaded %d paths in %.3f sec\n", __func__, graph->np,
+          realtime() - rt);
   rt = realtime();
   // ---
 
@@ -323,9 +278,7 @@ int main_search(int argc, char *argv[]) {
   int l;
   uint8_t *s;
   vector<sfs_t> S;
-  // vector<sfs_t> SS;
   uint qidx = 0;
-  // vector<string> qnames;
   vector<int> strands(2);
   int strand;
 
@@ -343,7 +296,7 @@ int main_search(int argc, char *argv[]) {
       assert(S[i].s < S[i + 1].s);
     specifics_n += S.size();
 
-    S = anchor(sketch, paths, S, s, l, klen, N);
+    S = anchor(sketch, graph, S, s, l, klen, N);
 
     strands[0] = 0;
     strands[1] = 0;
@@ -351,24 +304,21 @@ int main_search(int argc, char *argv[]) {
       if (s.a.v != -1 && s.b.v != -1)
         ++strands[s.strand];
     }
-    // FIXME: plus strand if tie
+    // + strand if tie
     strand = strands[0] > strands[1] ? 0 : 1;
 
-    // S = assemble_2(S, strand);*/
     for (sfs_t &s : S) {
-      assert(s.l > 0);
+      // a.v always precedes b.v (even for sfs on - strand)
       printf("%s:%d-%d %d %d %d %ld>%ld\n", seq->name.s, s.s, s.s + s.l, s.l,
              s.strand, s.strand == strand, s.a.v, s.b.v);
       if (s.strand == -1 || s.a.v == -1 || s.b.v == -1)
         continue;
       ++anchored_n;
-      if (!s.strand)
-        // reverse
-        s.s = l - (s.s + s.l);
-      // if (s.strand == strand)
-      //   SS.push_back(s);
+
+      // we may want to "reverse" the sfs on the read if - strand
+      // if (!s.strand)
+      //   s.s = l - (s.s + s.l);
     }
-    //   qnames.push_back(seq->name.s);
     ++qidx;
     if (qidx % 10000 == 0) {
       fprintf(stderr, "[M::%s] parsed %d reads %.3f sec\n", __func__, qidx,
@@ -376,17 +326,13 @@ int main_search(int argc, char *argv[]) {
       rt1 = realtime();
     }
   }
-  // At this point, specific strings are anchored. Anchors follow + strand on
-  // graph. If read was on -, we have reversed the specific strings so that
-  // everything is on + strand
   fprintf(stderr, "%d specific strings, %d anchored strings (lost: %d)\n",
           specifics_n, anchored_n, specifics_n - anchored_n);
 
   kseq_destroy(seq);
   gzclose(fp);
   rb3_fmi_free(&fmd);
-  for (path_t *path : paths)
-    destroy_path(path);
+  destroy_graph(graph);
   fprintf(stderr, "[M::%s] done in %.3f sec\n", __func__, realtime() - rt0);
 
   return 0;

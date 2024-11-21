@@ -14,7 +14,7 @@ extern "C" {
 }
 
 // KSEQ_INIT(gzFile, gzread) // we already init kstream in graph.h
-// FIXME: there should be a better way to do this
+// XXX: there should be a better way to do this
 __KSEQ_TYPE(gzFile)
 __KSEQ_BASIC(static, gzFile)
 __KSEQ_READ(static)
@@ -41,7 +41,7 @@ map<int, int> get_positions(graph_t *graph, char *pidx) {
 }
 
 int main_map(int argc, char *argv[]) {
-  // TODO: this works for only one path at the time
+  // XXX: this works for only one path at the time
   int klen = 27; // kmer size
   char pidx[128] = "";
   static ko_longopt_t longopts[] = {{NULL, 0, 0}};

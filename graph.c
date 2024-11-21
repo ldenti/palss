@@ -16,7 +16,7 @@ graph_t *init_graph(char *fn) {
   g->cp = 128;
   g->paths = malloc(g->cp * sizeof(path_t *));
   for (int i = 0; i < g->cp; ++i)
-    g->paths[i] = init_path(16384);
+    g->paths[i] = init_path(16384); // XXX: find a better value
   return g;
 }
 
@@ -66,6 +66,24 @@ seg_t *get_vertex(graph_t *g, int idx) {
   return g->vertices[k];
 }
 
+int compatible(graph_t *g, int x, int y) {
+  if (x > y) {
+    int tmp = x;
+    x = y;
+    y = tmp;
+  }
+  for (int p = 0; p < g->np; ++p) {
+    int f = 0, ok = 0;
+    for (int i = 0; i < g->paths[p]->l; ++i) {
+      if (g->paths[p]->vertices[i] == x)
+        f = 1;
+      if (f && g->paths[p]->vertices[i] == y)
+        return f;
+    }
+  }
+  return 0;
+}
+
 // Init a path with initial capacity c
 path_t *init_path(int c) {
   path_t *path = malloc(1 * sizeof(path_t));
@@ -103,7 +121,7 @@ int load_paths(graph_t *g) {
         g->paths = realloc(g->paths, g->cp * 2 * sizeof(path_t *));
         g->cp *= 2;
         for (int i = g->np; i < g->cp; ++i)
-          g->paths[i] = init_path(16384); // FIXME: find a better value
+          g->paths[i] = init_path(16384); // XXX: find a better value
       }
       if (s.s[0] == 'P')
         gfa_parse_P(s.s, g->paths[g->np]);
@@ -130,7 +148,7 @@ seg_t *init_seg() {
   seg->l = 0;
   // seg->idx = (char *)malloc(1024);
   seg->seq = malloc(4096 * sizeof(char));
-  seg->c = 4096; // TODO: assuming chopped graph
+  seg->c = 4096; // XXX: assuming chopped graph
   return seg;
 }
 
