@@ -52,26 +52,32 @@ rule build_pangenome:
         fa=FA,
         vcf=rules.extract_vcf.output.vcf,
     output:
+        vg=pjoin(WD, "{n}", "pangenome.vg"),
         gfa=pjoin(WD, "{n}", "pangenome.gfa"),
-    log:
-        time=pjoin(WD, "TIMES", "{n}", "vg-construct.time"),
+    params:
+        pref=pjoin(WD, "{n}", "pangenome"),
     threads:
         workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} vg construct --threads {threads} --reference {input.fa} --node-max 512 --vcf {input.vcf} | vg view - > {output.gfa}
+        vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max 512 --vcf {input.vcf} > {params.pref}.walts.vg
+        vg paths --drop-paths --variant-paths -x {params.pref}.walts.vg > {params.pref}.onlyref.vg
+        vg gbwt --discard-overlaps --vcf-input {input.vcf} --xg-name {params.pref}.walts.vg --output {params.pref}.haps.gbwt
+        vg paths --extract-gam --gbwt {params.pref}.haps.gbwt -x {params.pref}.onlyref.vg > {params.pref}.haps.gam
+        vg augment --label-paths {params.pref}.onlyref.vg {params.pref}.haps.gam > {output.vg}
+        vg view {output.vg} > {output.gfa}
         """
 
 rule get_paths:
     input:
-        gfa=rules.build_pangenome.output.gfa,
+        gfa=rules.build_pangenome.output.vg,
     output:
         fa=pjoin(WD, "{n}", "pangenome.paths.fa"),
     log:
         time=pjoin(WD, "TIMES", "{n}", "vg-paths.time"),
     shell:
         """
-        /usr/bin/time -vo {log.time} vg paths -F -x {input.gfa} > {output.fa}
+        /usr/bin/time -vo {log.time} vg paths --extract-fasta --xg {input.gfa} > {output.fa}
         """
 
 rule rb3_index:
@@ -94,13 +100,15 @@ rule sketch:
         fmd=rules.rb3_index.output.fmd,
     output:
         skt=pjoin(WD, "{n}", "pangenome-k{k}.skt"),
+    params:
+        n = lambda wildcards: 2*int(wildcards.n) + 1
     log:
         time = pjoin(WD, "TIMES", "{n}", "sketch-k{k}.time"),
     threads:
         workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv sketch -g {wildcards.n} -k {wildcards.k} -v50000 -@{threads} {input.gfa} {input.fmd} > {output.skt}
+        /usr/bin/time -vo {log.time} ../pansv sketch -g {params.n} -k {wildcards.k} -v50000 -@{threads} {input.gfa} {input.fmd} > {output.skt}
         """
 
 rule kan_paths:

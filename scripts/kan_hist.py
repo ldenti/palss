@@ -63,9 +63,21 @@ def main(args):
         print(chrom, ratio, sep="\t", file=of)
         uncovered_ratios.append([chrom, uncovered[chrom], size, ratio])
 
+    chrom_order = []
+    not_number = []
+    for c in regions:
+        if c[0] != "c" and c.isdigit():
+            chrom_order.append(int(c))
+        elif c[0] == "c" and c[3:].isdigit():
+            chrom_order.append(int(c[3:]))
+        else:
+            not_number.append(c[3:])
+    chrom_order.sort()
+    chrom_order = [f"chr{c}" for c in chrom_order] + [f"chr{c}" for c in not_number]
+
     df = pd.DataFrame(uncovered_ratios, columns=["Chrom", "Unc.", "Size", "Ratio"])
-    sns.barplot(df, x="Chrom", y="Size", ax=ax1)
-    sns.barplot(df, x="Chrom", y="Unc.", ax=ax1)
+    sns.barplot(df, x="Chrom", y="Size", order=chrom_order, ax=ax1)
+    sns.barplot(df, x="Chrom", y="Unc.", order=chrom_order, ax=ax1)
     ax1.tick_params("x", labelrotation=45)
 
     print(
