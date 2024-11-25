@@ -33,7 +33,7 @@ int search(const rb3_fmi_t *index, uint8_t *kmer, int k) {
 }
 
 /* Sketch a set of segments */
-void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int ng,
+void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int nh,
                    int threads, map<uint64_t, uint64_t> &sketch) {
   double rt = realtime();
   vector<map<uint64_t, uint64_t>> sketches(ns);
@@ -59,7 +59,7 @@ void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int ng,
     rb3_char2nt6(klen, s);
     hits = search(fmd, s, klen);
     assert(hits > 0);
-    sk_add(sketches[i], ckmer_d, seg->idx, 0, hits == ng);
+    sk_add(sketches[i], ckmer_d, seg->idx, 0, hits <= nh);
 
     for (p = klen; p < seg->l; ++p) {
       c = to_int[seg->seq[p]] - 1; // A is 1 but it should be 0
@@ -72,7 +72,7 @@ void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int ng,
       rb3_char2nt6(klen, s);
       hits = search(fmd, s, klen);
       assert(hits >= 0);
-      sk_add(sketches[i], ckmer_d, seg->idx, p - klen + 1, hits == ng);
+      sk_add(sketches[i], ckmer_d, seg->idx, p - klen + 1, hits <= nh);
     }
     free(kmer);
   }
@@ -98,7 +98,7 @@ int main_sketch(int argc, char *argv[]) {
   double rt = rt0;
 
   int klen = 27;  // kmer size
-  int ng = 1;     // expected number of genomes
+  int nh = 1;     // expected number of haplotypes
   int vpb = 5000; // number of vertices to load per batch
   int threads = 4;
   static ko_longopt_t longopts[] = {{NULL, 0, 0}};
@@ -108,7 +108,7 @@ int main_sketch(int argc, char *argv[]) {
     if (_c == 'k')
       klen = atoi(opt.arg);
     else if (_c == 'g')
-      ng = atoi(opt.arg);
+      nh = atoi(opt.arg);
     else if (_c == 'v')
       vpb = atoi(opt.arg);
     else if (_c == '@')
@@ -157,13 +157,13 @@ int main_sketch(int argc, char *argv[]) {
       ++si;
 
       if (si == vpb) {
-        run_sketching(segs, si, klen, &fmd, ng, threads, sketch);
+        run_sketching(segs, si, klen, &fmd, nh, threads, sketch);
         si = 0;
       }
     }
   }
   if (si < vpb) {
-    run_sketching(segs, si, klen, &fmd, ng, threads, sketch);
+    run_sketching(segs, si, klen, &fmd, nh, threads, sketch);
   }
 
   // Clean everything
