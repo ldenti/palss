@@ -6,79 +6,30 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 
-def main(args):
-    chroms = []
-    if args.chroms != "":
-        chroms = args.chroms.split(",")
-
-    of = open(args.out + ".txt", "w") if args.out != "" else sys.stdout
-
-    sizes = {}
-    for line in open(args.FAI):
-        chrom, size, _, _, _ = line.split("\t")
-        if "_" in chrom:
-            continue
-        sizes[chrom] = int(size)
-
-    regions = {}
-    for line in open(args.BED):
-        chrom, s, e, _idx = line.split("\t")
-        if "_" in chrom:
-            continue
-        if len(chroms) != 0 and chrom not in chroms:
-            continue
-        if chrom not in regions:
-            regions[chrom] = []
-        regions[chrom].append((int(s), int(e) - 1))  # 1-based, closed
+def analyze(chrom, regions, ofp):
+    of = open(f"{ofp}.{chrom}.txt", "w") if ofp != "" else sys.stdout
 
     data = []
     overlapping = 0
     consecutive = 0
-    uncovered = {}
-    for chrom, kmers in regions.items():
-        uncovered[chrom] = 0
-        kmers.sort(key=lambda x: x[0])
-        for (s1, e1), (s2, e2) in zip(kmers[:-1], kmers[1:]):
-            if s2 < e1:
-                overlapping += 1
-            else:
-                d = s2 - e1
-                if d == 0:
-                    consecutive += 1
-                else:
-                    if d > args.D:
-                        uncovered[chrom] += d
-                        print(
-                            f"# {chrom}:{e1+1}-{s2} ({d}) {chrom}:{s1}-{e1+1} {chrom}:{s2}-{e2+1}",
-                            file=of,
-                        )
-                    data.append([chrom, d])
-    total = overlapping + consecutive + len(data)
-
-    _fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
-
-    uncovered_ratios = []
-    for chrom, size in sizes.items():
-        ratio = uncovered[chrom] / size if chrom in uncovered else -1
-        print(chrom, ratio, sep="\t", file=of)
-        uncovered_ratios.append([chrom, uncovered[chrom], size, ratio])
-
-    chrom_order = []
-    not_number = []
-    for c in regions:
-        if c[0] != "c" and c.isdigit():
-            chrom_order.append(int(c))
-        elif c[0] == "c" and c[3:].isdigit():
-            chrom_order.append(int(c[3:]))
+    uncovered = 0
+    regions.sort(key=lambda x: x[0])
+    for (s1, e1), (s2, e2) in zip(regions[:-1], regions[1:]):
+        if s2 < e1:
+            overlapping += 1
         else:
-            not_number.append(c[3:])
-    chrom_order.sort()
-    chrom_order = [f"chr{c}" for c in chrom_order] + [f"chr{c}" for c in not_number]
-
-    df = pd.DataFrame(uncovered_ratios, columns=["Chrom", "Unc.", "Size", "Ratio"])
-    sns.barplot(df, x="Chrom", y="Size", order=chrom_order, ax=ax1)
-    sns.barplot(df, x="Chrom", y="Unc.", order=chrom_order, ax=ax1)
-    ax1.tick_params("x", labelrotation=45)
+            d = s2 - e1
+            if d == 0:
+                consecutive += 1
+            else:
+                if d > args.D:
+                    uncovered += d
+                    print(
+                        f"# {chrom}:{e1+1}-{s2} ({d}) {chrom}:{s1}-{e1+1} {chrom}:{s2}-{e2+1}",
+                        file=of,
+                    )
+                data.append(d)
+    total = overlapping + consecutive + len(data)
 
     print(
         "Overlapping over total anchors:",
@@ -98,7 +49,8 @@ def main(args):
     )
     print("Data size:", len(data), file=of)
 
-    df = pd.DataFrame(data, columns=["Path", "d"])
+    df = pd.DataFrame(data, columns=["d"])
+    print(f"=== {chrom} ===", file=of)
     print(
         df.describe(
             percentiles=[
@@ -118,6 +70,8 @@ def main(args):
         ),
         file=of,
     )
+    if ofp != "":
+        of.close()
 
     sns.histplot(
         df,
@@ -125,15 +79,82 @@ def main(args):
         binrange=(1, df["d"].quantile(q=0.95)),
         bins=max(1, int(df["d"].quantile(q=0.95) / 50)),
         legend=None,
-        # , hue="Path",
-        ax=ax2,
     )
+    plt.title(chrom)
+    if ofp == "":
+        plt.show()
+    else:
+        plt.savefig(f"{ofp}.{chrom}.png")
+    plt.close()
+
+    return uncovered
+
+
+def main(args):
+    chroms = []
+    if args.chroms != "":
+        chroms = args.chroms.split(",")
+
+    sizes = {}
+    for line in open(args.FAI):
+        chrom, size, _, _, _ = line.split("\t")
+        if "_" in chrom:
+            continue
+        sizes[chrom] = int(size)
+
+    uncovered = {}
+    last_chrom = ""
+    regions = []
+    for line in open(args.BED):
+        chrom, s, e, _idx = line.split("\t")
+        if "_" in chrom:
+            continue
+        if len(chroms) != 0 and chrom not in chroms:
+            continue
+        if chrom != last_chrom:
+            if last_chrom != "":
+                uncovered[last_chrom] = analyze(last_chrom, regions, args.out)
+            last_chrom = chrom
+            regions = []
+        regions.append((int(s), int(e) - 1))  # 1-based, closed
+
+    if len(regions) != 0:
+        uncovered[last_chrom] = analyze(last_chrom, regions, args.out)
+
+    of = open(f"{args.out}.uncovered.txt", "w") if args.out != "" else sys.stdout
+
+    uncovered_ratios = []
+    for chrom in uncovered:
+        ratio = uncovered[chrom] / sizes[chrom]
+        print(chrom, uncovered[chrom], sizes[chrom], ratio, sep="\t", file=of)
+        uncovered_ratios.append([chrom, uncovered[chrom], sizes[chrom], ratio])
+    if args.out != "":
+        of.close()
+
+    # chrom_order = []
+    # not_number = []
+    # for c in uncovered_ratios:
+    #     c = c[0]
+    #     print("///", c)
+    #     if c[0] != "c" and c.isdigit():
+    #         chrom_order.append(int(c))
+    #     elif c[0] == "c" and c[3:].isdigit():
+    #         chrom_order.append(int(c[3:]))
+    #     else:
+    #         not_number.append(c[3:])
+    # chrom_order.sort()
+    # chrom_order = [f"chr{c}" for c in chrom_order] + [f"chr{c}" for c in not_number]
+    # print(chrom_order)
+
+    df = pd.DataFrame(uncovered_ratios, columns=["Chrom", "Unc.", "Size", "Ratio"])
+    sns.barplot(df, x="Chrom", y="Size")  # , order=chrom_order)
+    sns.barplot(df, x="Chrom", y="Unc.")  # , order=chrom_order)
+    plt.tick_params("x", labelrotation=45)
+
     if args.out == "":
         plt.show()
     else:
-        plt.savefig(args.out + ".png")
-
-    of.close()
+        plt.savefig(f"{args.out}.png")
 
 
 if __name__ == "__main__":
