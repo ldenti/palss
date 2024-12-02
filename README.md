@@ -32,6 +32,12 @@ To analyze unique kmers in the pangenomes wrt any fasta file:
 python3 scripts/kan_hist.py example/reference.paths.anchors.bed example/reference.paths.fa.fai
 ```
 
+To analyze unique kmers in a read sample:
+``` sh
+./pansv chreads example/reference-k27.skt example/reads.fa > example/reads.fa.nuk
+python3 scripts/ran_hist.py example/reads.fa.nuk
+```
+
 ### TODO
 - [ ] build fmd directly from vg/gbwt
 - [ ] parallelize

@@ -270,6 +270,7 @@ int main_search(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] loaded %d paths in %.3f sec\n", __func__, graph->np,
           realtime() - rt);
   rt = realtime();
+  rt1 = rt;
   // ---
 
   // Specific strings computation and anchoring
@@ -309,8 +310,10 @@ int main_search(int argc, char *argv[]) {
 
     for (sfs_t &s : S) {
       // a.v always precedes b.v (even for sfs on - strand)
-      printf("%s:%d-%d %d %d %d %ld>%ld\n", seq->name.s, s.s, s.s + s.l, s.l,
-             s.strand, s.strand == strand, s.a.v, s.b.v);
+      printf("%s:%d-%d %d %d %d %d %ld:%d:%ld>%ld:%d:%ld\n", seq->name.s, s.s,
+             s.s + s.l, s.strand ? s.s : l - (s.s + s.l), s.l, s.strand,
+             s.strand == strand, s.a.v, s.a.offset, s.a.seq, s.b.v, s.b.offset,
+             s.b.seq);
       if (s.strand == -1 || s.a.v == -1 || s.b.v == -1)
         continue;
       ++anchored_n;

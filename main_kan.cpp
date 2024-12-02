@@ -39,7 +39,7 @@ int main_kan(int argc, char *argv[]) {
   rt0 = realtime();
   rt = rt0;
 
-  // Graph sketching and path extraction
+  // Graph sketching
   sketch_t sketch;
   sk_load(sketch, skt_fn);
   fprintf(stderr, "[M::%s] loaded %lu sketches in %.3f sec\n", __func__,

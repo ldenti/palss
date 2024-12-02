@@ -106,7 +106,7 @@ int main_map(int argc, char *argv[]) {
   int pos1, pos2, d;
 
   printf("@HD\tVN:1.6\tSO:coordinate\n");
-  printf("@SQ\tSN:%s\tLN:%d\n", "chr20", totl);
+  printf("@SQ\tSN:%s\tLN:%d\n", pidx, totl);
   while ((l = kseq_read(seq)) >= 0) {
     strncpy(k1, seq->seq.s, klen);
     kmer_d = k2d(k1, klen);
@@ -133,7 +133,7 @@ int main_map(int argc, char *argv[]) {
     d = pos2 - (pos1 + klen);
 
     printf("%s\t0\t%s\t%d\t60\t%dM%dN%dM\t*\t0\t0\t%s%s\t*\n", seq->name.s,
-           "chr20", pos1 + 1, klen, d, klen, k1, k2);
+           pidx, pos1 + 1, klen, d, klen, k1, k2);
   }
   kseq_destroy(seq);
   gzclose(fp);
