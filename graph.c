@@ -62,8 +62,8 @@ int load_vertices(graph_t *g) {
 }
 
 seg_t *get_vertex(graph_t *g, int idx) {
-  khint64_t k = kh_get(im, g->v_map, idx);
-  return g->vertices[k];
+  // XXX: check if key is not in map
+  return g->vertices[kh_value(g->v_map, idx)];
 }
 
 int compatible(graph_t *g, int x, int y) {
@@ -73,7 +73,7 @@ int compatible(graph_t *g, int x, int y) {
     y = tmp;
   }
   for (int p = 0; p < g->np; ++p) {
-    int f = 0, ok = 0;
+    int f = 0; //, ok = 0;
     for (int i = 0; i < g->paths[p]->l; ++i) {
       if (g->paths[p]->vertices[i] == x)
         f = 1;
@@ -158,8 +158,8 @@ void destroy_seg(seg_t *seg) {
 }
 
 void gfa_parse_S(char *s, seg_t *ret) {
-  int i, is_ok = 0;
-  char *p, *q, *seg = 0, *seq = 0, *rest = 0;
+  int i; // , is_ok = 0;
+  char *p, *q; // *seg = 0, *seq = 0, *rest = 0;
   for (i = 0, p = q = s + 2;; ++p) {
     if (*p == 0 || *p == '\t') {
       int c = *p;
@@ -172,7 +172,7 @@ void gfa_parse_S(char *s, seg_t *ret) {
         // right now we assume to have a vg chopped graph
         strcpy(ret->seq, q);
         ret->l = p - q;
-        is_ok = 1, rest = c ? p + 1 : 0;
+        // is_ok = 1, rest = c ? p + 1 : 0;
         break;
       }
       ++i, q = p + 1;
@@ -184,7 +184,7 @@ void gfa_parse_S(char *s, seg_t *ret) {
 }
 
 void gfa_parse_P(char *s, path_t *path) {
-  int x = 0; // current index for insertion
+  // int x = 0; // current index for insertion
   int i;
   char *p, *q, *qq;
   for (i = 0, p = q = s + 2;; ++p) {
@@ -220,7 +220,7 @@ void gfa_parse_P(char *s, path_t *path) {
 }
 
 void gfa_parse_W(char *s, path_t *path) {
-  int x = 0; // current index for insertion
+  // int x = 0; // current index for insertion
   int i;
   char *p, *q, *qq;
   for (i = 0, p = q = s + 2;; ++p) {
