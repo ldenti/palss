@@ -1,4 +1,8 @@
 #include <assert.h>
+#include <iostream>
+#include <map>
+#include <set>
+#include <string>
 #include <vector>
 #include <zlib.h>
 
@@ -8,10 +12,9 @@
 
 extern "C" {
 #include "graph.h"
-#include "sfs.h"
 }
+#include "sfs.h"
 #include "sketch.hpp"
-#include "utils.h"
 
 // KSEQ_INIT(gzFile, gzread) // we already init kstream in graph.h
 // XXX: there should be a better way to do this
@@ -150,7 +153,6 @@ vector<sfs_t> anchor(const sketch_t &sketch, graph_t *graph,
 
     if (sanchors.size() == 0 || eanchors.size() == 0) {
       anchored_sfs.push_back({s.qidx, s.s, s.l, -1, -1, -1});
-      // fprintf(stderr, "Lost (I) %s:%d-%d\n", qname, s.s, s.s+s.l);
       continue;
     }
 
@@ -215,22 +217,48 @@ vector<sfs_t> anchor(const sketch_t &sketch, graph_t *graph,
   return anchored_sfs;
 }
 
+/* Merge anchored specifics strings overlapping on a read */
+vector<sfs_t> assemble_2(const vector<sfs_t> &sfs) {
+  vector<sfs_t> assembled_sfs;
+  int i = 0;
+  while (i < sfs.size()) {
+    int j;
+    for (j = i + 1; j < sfs.size(); ++j) {
+      if (sfs[j - 1].s + sfs[j - 1].l <= sfs[j].s) {
+        // non-overlapping
+        int l = sfs[j - 1].s + sfs[j - 1].l - sfs[i].s;
+        assembled_sfs.push_back(
+            {sfs[i].qidx, sfs[i].s, l, sfs[i].strand ? sfs[i].a : sfs[j - 1].a,
+             sfs[i].strand ? sfs[j - 1].b : sfs[i].b, sfs[i].strand});
+        i = j;
+        break;
+      }
+    }
+    if (j == sfs.size()) {
+      int l = sfs[j - 1].s + sfs[j - 1].l - sfs[i].s;
+      assembled_sfs.push_back(
+          {sfs[i].qidx, sfs[i].s, l, sfs[i].strand ? sfs[i].a : sfs[j - 1].a,
+           sfs[i].strand ? sfs[j - 1].b : sfs[i].b, sfs[i].strand});
+      i = sfs.size();
+    }
+  }
+  return assembled_sfs;
+}
+
 int main_search(int argc, char *argv[]) {
   double rt0 = realtime();
   double rt = rt0, rt1;
 
   int klen = 27; // kmer size
-  int d = 100;   // merge specific strings this close
+  int d = 0;     // merge specific strings this close
   int hd = 0;    // hamming distance for fixing anchors
   int N = 20;    // number of kmers to check for anchoring
-  static ko_longopt_t longopts[] = {};
+  static ko_longopt_t longopts[] = {{NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
-  while ((_c = ketopt(&opt, argc, argv, 1, "k:d:w:d:l:a:r:", longopts)) >= 0) {
+  while ((_c = ketopt(&opt, argc, argv, 1, "k:d:a:", longopts)) >= 0) {
     if (_c == 'k')
       klen = atoi(opt.arg);
-    else if (_c == 'd')
-      d = atoi(opt.arg);
     else if (_c == 'd')
       hd = atoi(opt.arg);
     else if (_c == 'a')
@@ -249,7 +277,7 @@ int main_search(int argc, char *argv[]) {
   rb3_fmi_t fmd;
   rb3_fmi_restore(&fmd, fmd_fn, 0);
   if (fmd.e == 0 && fmd.r == 0) {
-    fprintf(stderr, "Error restoring index");
+    fprintf(stderr, "Error restoring index\n");
     return 1;
   }
   fprintf(stderr, "[M::%s] restored FMD index in %.3f sec\n", __func__,
@@ -265,10 +293,11 @@ int main_search(int argc, char *argv[]) {
   rt = realtime();
 
   graph_t *graph = init_graph(gfa_fn);
+  load_vertices(graph);
   load_paths(graph);
 
-  fprintf(stderr, "[M::%s] loaded %d paths in %.3f sec\n", __func__, graph->np,
-          realtime() - rt);
+  fprintf(stderr, "[M::%s] loaded %d vertices and %d paths in %.3f sec\n",
+          __func__, graph->nv, graph->np, realtime() - rt);
   rt = realtime();
   rt1 = rt;
   // ---
@@ -277,19 +306,24 @@ int main_search(int argc, char *argv[]) {
   gzFile fp = gzopen(fq_fn, "r");
   kseq_t *seq = kseq_init(fp);
   int l;
-  uint8_t *s;
+  uint8_t *eseq;
   vector<sfs_t> S;
+  vector<sfs_t> Stmp;
   uint qidx = 0;
   vector<int> strands(2);
   int strand;
 
+  // Some statistics
   int specifics_n = 0;
   int anchored_n = 0;
-  while ((l = kseq_read(seq)) >= 0) {
-    s = (uint8_t *)seq->seq.s;
-    rb3_char2nt6(seq->seq.l, s);
+  int unanchored_n = 0;
+  int assembled_n = 0;
 
-    S = ping_pong_search(&fmd, s, qidx, seq->seq.l);
+  while ((l = kseq_read(seq)) >= 0) {
+    eseq = (uint8_t *)seq->seq.s;
+    rb3_char2nt6(seq->seq.l, eseq);
+
+    S = ping_pong_search(&fmd, eseq, qidx, seq->seq.l);
     // strings are sorted wrt their position on read (reverse)
     S = assemble(S, d);
     // strings are now sorted wrt their position on read
@@ -297,30 +331,63 @@ int main_search(int argc, char *argv[]) {
       assert(S[i].s < S[i + 1].s);
     specifics_n += S.size();
 
-    S = anchor(sketch, graph, S, s, l, klen, N);
+    S = anchor(sketch, graph, S, eseq, l, klen, N);
 
     strands[0] = 0;
     strands[1] = 0;
     for (const auto &s : S) {
-      if (s.a.v != -1 && s.b.v != -1)
+      if (s.a.v != -1 && s.b.v != -1) {
         ++strands[s.strand];
+        ++anchored_n;
+      } else {
+        printf("%s:%d-%d %d %d %d %d . %ld:%d:%ld>%ld:%d:%ld\n", seq->name.s,
+               s.s, s.s + s.l, s.strand ? s.s : l - (s.s + s.l), s.l, s.strand,
+               s.strand == strand, s.a.v, s.a.offset, s.a.seq, s.b.v,
+               s.b.offset, s.b.seq);
+        ++unanchored_n;
+      }
     }
     // + strand if tie
     strand = strands[0] > strands[1] ? 0 : 1;
+    Stmp.clear();
+    for (const auto &s : S) {
+      if (s.a.v != -1 && s.b.v != -1 && s.strand == strand)
+        // XXX: we could avoid Stmp and filter while assembling_2
+        Stmp.push_back(s);
+    }
+    S = assemble_2(Stmp);
 
     for (sfs_t &s : S) {
-      // a.v always precedes b.v (even for sfs on - strand)
-      printf("%s:%d-%d %d %d %d %d %ld:%d:%ld>%ld:%d:%ld\n", seq->name.s, s.s,
-             s.s + s.l, s.strand ? s.s : l - (s.s + s.l), s.l, s.strand,
-             s.strand == strand, s.a.v, s.a.offset, s.a.seq, s.b.v, s.b.offset,
-             s.b.seq);
       if (s.strand == -1 || s.a.v == -1 || s.b.v == -1)
-        continue;
-      ++anchored_n;
+        assert(0);
 
-      // we may want to "reverse" the sfs on the read if - strand
-      // if (!s.strand)
-      //   s.s = l - (s.s + s.l);
+      ++assembled_n;
+
+      s.seq = (uint8_t *)malloc(s.l + 1);
+      memcpy(s.seq, eseq + s.s, s.l);
+      s.seq[s.l] = '\0';
+
+      // we "reverse" the sfs on the read if - strand
+      if (!s.strand) {
+        int i;
+        for (i = 0; i < s.l >> 1; ++i) {
+          uint8_t tmp = s.seq[s.l - 1 - i];
+          tmp = (tmp >= 1 && tmp <= 4) ? 5 - tmp : tmp;
+          s.seq[s.l - 1 - i] =
+              (s.seq[i] >= 1 && s.seq[i] <= 4) ? 5 - s.seq[i] : s.seq[i];
+          s.seq[i] = tmp;
+        }
+        if (s.l & 1)
+          s.seq[i] = (s.seq[i] >= 1 && s.seq[i] <= 4) ? 5 - s.seq[i] : s.seq[i];
+      }
+
+      for (int i = 0; i < s.l; ++i)
+        s.seq[i] = ".ACGTN"[s.seq[i]];
+      // a.v always precedes b.v (even for sfs on - strand)
+      printf("%s:%d-%d %d %d %d %d %s %ld:%d:%ld>%ld:%d:%ld\n", seq->name.s,
+             s.s, s.s + s.l, s.s, s.l, s.strand, s.strand == strand, s.seq,
+             s.a.v, s.a.offset, s.a.seq, s.b.v, s.b.offset, s.b.seq);
+      free(s.seq);
     }
     ++qidx;
     if (qidx % 10000 == 0) {
@@ -329,13 +396,22 @@ int main_search(int argc, char *argv[]) {
       rt1 = realtime();
     }
   }
-  fprintf(stderr, "%d specific strings, %d anchored strings (lost: %d)\n",
-          specifics_n, anchored_n, specifics_n - anchored_n);
+
+  /* At this point, specific strings are anchored. Anchors follow + strand on
+   * graph. If read was on -, we have reversed the specific strings so that
+   * everything is on + strand
+   */
+
+  fprintf(stderr,
+          "%d specific strings, %d anchored, %d unanchored. After merging: %d "
+          "anchored\n",
+          specifics_n, anchored_n, unanchored_n, assembled_n);
 
   kseq_destroy(seq);
   gzclose(fp);
   rb3_fmi_free(&fmd);
   destroy_graph(graph);
+
   fprintf(stderr, "[M::%s] done in %.3f sec\n", __func__, realtime() - rt0);
 
   return 0;
