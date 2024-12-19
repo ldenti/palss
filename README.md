@@ -20,16 +20,15 @@ vg paths -F -x example/reference.gfa > example/reference.paths.fa
 ./pansv search -k27 example/reference.gfa example/reference-k27.skt example/reference.paths.fa.fmd example/reads.fa > example/sfs.txt
 
 # call de-novo structural variations
-# ./pansv call
+./pansv call example/reference.gfa example/sfs.txt
 # build VCF from calls against a path of the graph (assuming bcftools to be in $PATH)
-# python3 scripts/format_vcf.py example/reference.gfa example/calls.txt | bcftools sort > example/calls.vcf
+python3 scripts/format_vcf.py example/reference.gfa example/calls.txt | bcftools sort > example/calls.vcf
 
 # convert specific strings to fasta
 python3 scripts/convert.py example/reads.fa example/sfs.txt > example/sfs.fa
 # place anchored specific strings onto path (-p)
 ./pansv map -p 19 example/reference.gfa example/reference-k27.skt example/sfs.fa | samtools view -bS | samtools sort > example/sfs.bam
 samtools index example/sfs.bam
-
 ```
 
 To analyze unique kmers in the pangenomes wrt any fasta file:

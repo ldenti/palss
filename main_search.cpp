@@ -340,10 +340,9 @@ int main_search(int argc, char *argv[]) {
         ++strands[s.strand];
         ++anchored_n;
       } else {
-        printf("%s:%d-%d %d %d %d %d . %ld:%d:%ld>%ld:%d:%ld\n", seq->name.s,
-               s.s, s.s + s.l, s.strand ? s.s : l - (s.s + s.l), s.l, s.strand,
-               s.strand == strand, s.a.v, s.a.offset, s.a.seq, s.b.v,
-               s.b.offset, s.b.seq);
+        printf("X %s %d %d %d %d . %ld:%d:%ld %ld:%d:%ld\n", seq->name.s, s.s,
+               s.l, s.strand, s.strand == strand, s.a.v, s.a.offset, s.a.seq,
+               s.b.v, s.b.offset, s.b.seq);
         ++unanchored_n;
       }
     }
@@ -384,9 +383,9 @@ int main_search(int argc, char *argv[]) {
       for (int i = 0; i < s.l; ++i)
         s.seq[i] = ".ACGTN"[s.seq[i]];
       // a.v always precedes b.v (even for sfs on - strand)
-      printf("%s:%d-%d %d %d %d %d %s %ld:%d:%ld>%ld:%d:%ld\n", seq->name.s,
-             s.s, s.s + s.l, s.s, s.l, s.strand, s.strand == strand, s.seq,
-             s.a.v, s.a.offset, s.a.seq, s.b.v, s.b.offset, s.b.seq);
+      printf("O %s %d %d %d %d %s %ld:%d:%ld %ld:%d:%ld\n", seq->name.s, s.s,
+             s.l, s.strand, s.strand == strand, s.seq, s.a.v, s.a.offset,
+             s.a.seq, s.b.v, s.b.offset, s.b.seq);
       free(s.seq);
     }
     ++qidx;
