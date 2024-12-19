@@ -2,6 +2,7 @@
 #define PSPATH_HPP
 
 #include <stdint.h>
+#include <vector>
 
 struct anchor_t {
   int64_t v = -1;    // vertex on graph
@@ -20,7 +21,14 @@ struct sfs_t {
   uint64_t esk = -1,
            eek = -1; // expected starting and ending kmers (from cluster)
   int good = 1;      // is it good for calling step?
-  char *seq = NULL;  // sequence
+  uint8_t *seq;      // sequence
+};
+
+struct cluster_t {
+  std::vector<sfs_t> specifics; // TODO: kvec
+  int va = -1, vb = -1;         // starting and ending vertices
+  int offa = -1, offb = -1;     // offsets on the two vertices
+  uint64_t ka = -1, kb = -1;    // starting and ending kmers
 };
 
 #endif

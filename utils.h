@@ -1,8 +1,8 @@
 #ifndef PSUTILS_HPP
 #define PSUTILS_HPP
 
-#include <sys/time.h>
 #include <string>
+#include <sys/time.h>
 
 static const uint8_t to_int[128] = {0, 0, 1, 2, 3, 0, 0, 0, 0, 0, // 0
                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 10
@@ -19,6 +19,16 @@ static const uint8_t to_int[128] = {0, 0, 1, 2, 3, 0, 0, 0, 0, 0, // 0
                                     0, 0, 0, 0, 0, 0, 0, 0};      // 120
 
 inline uint8_t reverse_char(const uint8_t c) { return ((~c) & 3); }
+
+inline std::string decode(const uint8_t *s, int l, int shift) {
+  if (s == NULL)
+    return "";
+  char ds[l + 1];
+  for (int i = 0; i < l; ++i)
+    ds[i] = "NACGTN"[s[i] + shift];
+  ds[l] = '\0';
+  return ds;
+}
 
 inline void d23(uint64_t kmer, int k, char *kk) {
   for (int i = 1; i <= k; ++i)
