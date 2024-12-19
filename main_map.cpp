@@ -30,9 +30,12 @@ map<int, int> get_positions(graph_t *graph, char *pidx) {
   for (int p = 0; p < graph->np; ++p) {
     path = graph->paths[p];
     if (get_first || strcmp(path->idx, pidx) == 0) {
+      seg_t *s;
       for (int i = 0; i < path->l; ++i) {
-        positions[path->vertices[i]] = cp;
-        cp += get_vertex(graph, path->vertices[i])->l;
+        s = graph->vertices[path->vertices[i]];
+        // fprintf(stderr, "%d : %d\n", path->vertices[i], s->idx);
+        positions[s->idx] = cp;
+        cp += s->l;
       }
       break;
     }
@@ -60,6 +63,8 @@ int main_map(int argc, char *argv[]) {
   char *gfa_fn = argv[opt.ind++];
   char *skt_fn = argv[opt.ind++];
   char *sfs_fn = argv[opt.ind++];
+  // TODO: start directly from SFS file (no FASTA since we already have the
+  // kmers in the .sfs)
 
   double rt0, rt;
   rt0 = realtime();
@@ -126,14 +131,19 @@ int main_map(int argc, char *argv[]) {
     if (v1 == -1 || v2 == -1)
       // unanchored specific string
       continue;
+    if (positions.find(v1) == positions.end() ||
+        positions.find(v2) == positions.end()) {
+      // TODO: find best path by intersecting paths passing trough the two
+      // vertices and report over it
+      printf("%s\t4\t*\t0\t0\t*\t*\t0\t0\t*\t*\n", seq->name.s);
+    } else {
+      pos1 = positions.at(v1) + p1.second;
+      pos2 = positions.at(v2) + p2.second;
+      d = pos2 - (pos1 + klen);
 
-    pos1 = positions.at(v1) + p1.second;
-    pos2 = positions.at(v2) + p2.second;
-
-    d = pos2 - (pos1 + klen);
-
-    printf("%s\t0\t%s\t%d\t60\t%dM%dN%dM\t*\t0\t0\t%s%s\t*\n", seq->name.s,
-           pidx, pos1 + 1, klen, d, klen, k1, k2);
+      printf("%s\t0\t%s\t%d\t60\t%dM%dN%dM\t*\t0\t0\t%s%s\t*\n", seq->name.s,
+             pidx, pos1 + 1, klen, d, klen, k1, k2);
+    }
   }
   kseq_destroy(seq);
   gzclose(fp);
