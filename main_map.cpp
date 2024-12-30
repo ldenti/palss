@@ -3,21 +3,14 @@
 #include <map>
 #include <zlib.h>
 
-// #include "gsketch.hpp"
 #include "ketopt.h"
-#include "kseq.h"
+#include "sfs.h"
 #include "utils.h"
 
 #include "sketch.hpp"
 extern "C" {
 #include "graph.h"
 }
-
-// KSEQ_INIT(gzFile, gzread) // we already init kstream in graph.h
-// XXX: there should be a better way to do this
-__KSEQ_TYPE(gzFile)
-__KSEQ_BASIC(static, gzFile)
-__KSEQ_READ(static)
 
 using namespace std;
 
@@ -63,8 +56,6 @@ int main_map(int argc, char *argv[]) {
   char *gfa_fn = argv[opt.ind++];
   char *skt_fn = argv[opt.ind++];
   char *sfs_fn = argv[opt.ind++];
-  // TODO: start directly from SFS file (no FASTA since we already have the
-  // kmers in the .sfs)
 
   double rt0, rt;
   rt0 = realtime();
@@ -97,56 +88,59 @@ int main_map(int argc, char *argv[]) {
 
   // ---
 
-  // Iterate over fasta to extract alignments
-  gzFile fp = gzopen(sfs_fn, "r");
-  kseq_t *seq = kseq_init(fp);
-  int l;
-  char k1[klen + 1], k2[klen + 1];
-  k1[klen] = '\0';
-  k2[klen] = '\0';
-
-  uint64_t k1_d, k2_d, kmer_d, rckmer_d;
-  pair<int64_t, int16_t> p1, p2;
-  uint64_t v1, v2;
-  int pos1, pos2, d;
+  // Iterate over specific strings to extract alignments
 
   printf("@HD\tVN:1.6\tSO:coordinate\n");
   printf("@SQ\tSN:%s\tLN:%d\n", pidx, totl);
-  while ((l = kseq_read(seq)) >= 0) {
-    strncpy(k1, seq->seq.s, klen);
-    kmer_d = k2d(k1, klen);
-    rckmer_d = rc(kmer_d, klen);
-    k1_d = std::min(kmer_d, rckmer_d);
 
-    strncpy(k2, seq->seq.s + (l - klen), klen);
-    kmer_d = k2d(k2, klen);
-    rckmer_d = rc(kmer_d, klen);
-    k2_d = std::min(kmer_d, rckmer_d);
+  FILE *fp;
+  char *line = NULL;
+  size_t len = 0;
+  ssize_t read;
 
-    p1 = sk_get(sketch, k1_d);
+  fp = fopen(sfs_fn, "r");
+  if (fp == NULL)
+    exit(EXIT_FAILURE);
+
+  sfs_t ss;
+  pair<int64_t, int16_t> p1, p2;
+  uint64_t v1, v2;
+  int pos1, pos2, d;
+  while ((read = getline(&line, &len, fp)) != -1) {
+    if (line[0] == 'X')
+      continue;
+    ss = parse_sfs_line(line + 2);
+    if (ss.a.v > ss.b.v) {
+      fprintf(stderr, "%s %d %d - %d - %d %d %d %d\n", ss.rname, ss.s, ss.l,
+              ss.strand, ss.a.v, ss.a.offset, ss.b.v, ss.b.offset);
+      break;
+    }
+    p1 = sk_get(sketch, ss.a.seq);
     v1 = p1.first;
-    p2 = sk_get(sketch, k2_d);
+    p2 = sk_get(sketch, ss.b.seq);
     v2 = p2.first;
 
-    if (v1 == -1 || v2 == -1)
-      // unanchored specific string
-      continue;
-    if (positions.find(v1) == positions.end() ||
-        positions.find(v2) == positions.end()) {
-      // TODO: find best path by intersecting paths passing trough the two
-      // vertices and report over it
-      printf("%s\t4\t*\t0\t0\t*\t*\t0\t0\t*\t*\n", seq->name.s);
-    } else {
-      pos1 = positions.at(v1) + p1.second;
-      pos2 = positions.at(v2) + p2.second;
-      d = pos2 - (pos1 + klen);
+    if (v1 != -1 && v2 != -1) {
+      // anchored specific string
+      if (positions.find(v1) == positions.end() ||
+          positions.find(v2) == positions.end()) {
+        // TODO: find best path by intersecting paths passing trough the two
+        // vertices and report over it
+        printf("%s\t4\t*\t0\t0\t*\t*\t0\t0\t*\t*\n", ss.rname);
+      } else {
+        pos1 = positions.at(v1) + p1.second;
+        pos2 = positions.at(v2) + p2.second;
+        d = pos2 - (pos1 + klen);
 
-      printf("%s\t0\t%s\t%d\t60\t%dM%dN%dM\t*\t0\t0\t%s%s\t*\n", seq->name.s,
-             pidx, pos1 + 1, klen, d, klen, k1, k2);
+        printf("%s\t0\t%s\t%d\t60\t%dM%dN%dM\t*\t0\t0\t%s%s\t*\n", ss.rname,
+               pidx, pos1 + 1, klen, d, klen, d2s(ss.a.seq, klen).c_str(),
+               d2s(ss.b.seq, klen).c_str());
+      }
     }
+    free(ss.rname);
+    free(ss.seq);
   }
-  kseq_destroy(seq);
-  gzclose(fp);
+  fclose(fp);
 
   // ---
 

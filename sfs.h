@@ -1,17 +1,20 @@
-#ifndef PSPATH_HPP
-#define PSPATH_HPP
+#ifndef PSSFS_H
+#define PSSFS_H
 
 #include <stdint.h>
-#include <vector>
+#include <stdlib.h>
+#include <string.h>
 
-struct anchor_t {
+#include "utils.h"
+
+typedef struct anchor_t {
   int64_t v = -1;    // vertex on graph
   int offset = -1;   // offset on vertex
   int p = -1;        // position on query
   uint64_t seq = -1; // kmer
-};
+} anchor_t;
 
-struct sfs_t {
+typedef struct sfs_t {
   int qidx;        // read index
   int s;           // start on query
   int l;           // length
@@ -21,14 +24,11 @@ struct sfs_t {
   uint64_t esk = -1,
            eek = -1; // expected starting and ending kmers (from cluster)
   int good = 1;      // is it good for calling step?
-  uint8_t *seq;      // sequence
-};
+  char *rname;
+  uint8_t *seq; // sequence
+} sfs_t;
 
-struct cluster_t {
-  std::vector<sfs_t> specifics; // TODO: kvec
-  int va = -1, vb = -1;         // starting and ending vertices
-  int offa = -1, offb = -1;     // offsets on the two vertices
-  uint64_t ka = -1, kb = -1;    // starting and ending kmers
-};
+anchor_t parse_anchor(char *line);
+sfs_t parse_sfs_line(char *line);
 
 #endif

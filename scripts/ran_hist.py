@@ -42,4 +42,5 @@ sns.histplot(
 )
 
 plt.tight_layout()
-plt.show()
+# plt.show()
+plt.savefig(sys.argv[2])

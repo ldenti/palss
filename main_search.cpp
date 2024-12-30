@@ -1,8 +1,5 @@
 #include <assert.h>
-#include <iostream>
 #include <map>
-#include <set>
-#include <string>
 #include <vector>
 #include <zlib.h>
 
@@ -218,12 +215,22 @@ vector<sfs_t> anchor(const sketch_t &sketch, graph_t *graph,
 }
 
 /* Merge anchored specifics strings overlapping on a read */
-vector<sfs_t> assemble_2(const vector<sfs_t> &sfs) {
+vector<sfs_t> assemble_2(const vector<sfs_t> &sfs, int klen) {
+  int strand = sfs[0].strand;
   vector<sfs_t> assembled_sfs;
   int i = 0;
   while (i < sfs.size()) {
     int j;
     for (j = i + 1; j < sfs.size(); ++j) {
+      // if (sfs[j - 1].s + sfs[j - 1].l <= sfs[j].s &&
+      //     ((strand == 1 && (sfs[j - 1].b.v < sfs[j].a.v ||
+      //                       (sfs[j - 1].b.v == sfs[j].a.v &&
+      //                        sfs[j - 1].b.offset + klen < sfs[j].a.offset)))
+      //                        ||
+      //      (strand == 0 && (sfs[j - 1].b.v > sfs[j].a.v ||
+      //                       (sfs[j - 1].b.v == sfs[j].a.v &&
+      //                        sfs[j - 1].b.offset + klen >
+      //                        sfs[j].a.offset))))) {
       if (sfs[j - 1].s + sfs[j - 1].l <= sfs[j].s) {
         // non-overlapping
         int l = sfs[j - 1].s + sfs[j - 1].l - sfs[i].s;
@@ -243,6 +250,21 @@ vector<sfs_t> assemble_2(const vector<sfs_t> &sfs) {
     }
   }
   return assembled_sfs;
+}
+
+typedef struct read_t {
+  char *idx;
+  char *seq;
+} read_t;
+
+int load_batch(vector<read_t *> batch, int nb) {
+  int i = 0;
+  int l = -1;
+  // while ((l = kseq_read(seq)) >= 0 && i < nb) {
+  //   memcpy(batch[i]
+  //   ++i;
+  // }
+  return l >= 0;
 }
 
 int main_search(int argc, char *argv[]) {
@@ -306,6 +328,7 @@ int main_search(int argc, char *argv[]) {
   gzFile fp = gzopen(fq_fn, "r");
   kseq_t *seq = kseq_init(fp);
   int l;
+
   uint8_t *eseq;
   vector<sfs_t> S;
   vector<sfs_t> Stmp;
@@ -348,18 +371,38 @@ int main_search(int argc, char *argv[]) {
     }
     // + strand if tie
     strand = strands[0] > strands[1] ? 0 : 1;
-    Stmp.clear();
-    for (const auto &s : S) {
-      if (s.a.v != -1 && s.b.v != -1 && s.strand == strand)
-        // XXX: we could avoid Stmp and filter while assembling_2
-        Stmp.push_back(s);
-    }
-    S = assemble_2(Stmp);
+    // Stmp.clear();
+    // for (const auto &s : S) {
+    //   if (s.a.v != -1 && s.b.v != -1 && s.strand == strand) {
+    //     // XXX: we could avoid Stmp and filter while assembling_2
+    //     // printf("P %s %d %d %d %d . %ld:%d:%ld %ld:%d:%ld\n", seq->name.s,
+    //     // s.s,
+    //     //        s.l, s.strand, s.strand == strand, s.a.v, s.a.offset, s.a.seq,
+    //     //        s.b.v, s.b.offset, s.b.seq);
+    //     Stmp.push_back(s);
+    //   }
+    // }
+
+    // S = assemble_2(Stmp, klen);
 
     for (sfs_t &s : S) {
-      if (s.strand == -1 || s.a.v == -1 || s.b.v == -1)
-        assert(0);
-
+      if (s.strand == -1 || s.a.v == -1 || s.b.v == -1) {
+        fprintf(stderr, "Something went wrong while assembling anchored "
+                        "specific strings..\n");
+        exit(EXIT_FAILURE);
+      }
+      if ((s.a.v == s.b.v && s.a.offset > s.b.offset) || s.a.v > s.b.v) {
+        // if ((s.strand == 1 &&
+        //      ((s.a.v == s.b.v && s.a.offset > s.b.offset) || s.a.v > s.b.v))
+        //      ||
+        //     (s.strand == 0 &&
+        //      ((s.a.v == s.b.v && s.a.offset < s.b.offset) || s.a.v < s.b.v)))
+        //      {
+        printf("X2 %s %d %d %d %d . %ld:%d:%ld %ld:%d:%ld\n", seq->name.s, s.s,
+               s.l, s.strand, s.strand == strand, s.a.v, s.a.offset, s.a.seq,
+               s.b.v, s.b.offset, s.b.seq);
+        continue;
+      }
       ++assembled_n;
 
       s.seq = (uint8_t *)malloc(s.l + 1);

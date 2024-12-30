@@ -12,6 +12,8 @@
 
 #include "sfs.h"
 
+#include "cluster.hpp"
+
 extern "C" {
 #include "graph.h"
 }
@@ -134,78 +136,6 @@ int build_consensus(abpoa_t *ab, abpoa_para_t *abpt,
   return 0; // cons_l;
 }
 
-anchor_t parse_anchor(char *line) {
-  anchor_t a;
-  int i;
-  char *p, *q;
-  for (i = 0, p = q = line;; ++p) {
-    if (*p == 0 || *p == ':') {
-      int c = *p;
-      *p = 0;
-      /* 0: vertex (as in GFA)
-         1: offset
-         2: kmer
-       */
-      if (i == 0) {
-        a.v = atoi(q);
-      } else if (i == 1) {
-        a.offset = atoi(q);
-      } else if (i == 2) {
-        // char *pEnd;
-        a.seq = strtoull(q, NULL /*&pEnd*/, 10);
-      }
-      ++i;
-      q = p + 1;
-      if (c == 0)
-        break;
-    }
-  }
-  return a;
-}
-
-sfs_t parse_sfs_line(char *line) {
-  sfs_t s;
-  int i;
-  char *p, *q;
-  for (i = 0, p = q = line;; ++p) {
-    if (*p == 0 || *p == ' ') {
-      int c = *p;
-      *p = 0;
-      /* 0: read name
-         1: start on read
-         2: length
-         3: strand
-         4: if we kept it
-         5: sequence
-         6: left anchor
-         7: right anchor
-       */
-      if (i == 1) {
-        s.s = atoi(q);
-      } else if (i == 2) {
-        s.l = atoi(q);
-      } else if (i == 5) {
-        s.seq = (uint8_t *)malloc(s.l + 1);
-        memcpy(s.seq, q, s.l);
-        s.seq[s.l] = '\0';
-        for (int _i = 0; _i < s.l; ++_i)
-          s.seq[_i] = s.seq[_i] < 128 ? to_int[s.seq[_i]] : 5;
-      } else if (i == 6) {
-        s.a = parse_anchor(q);
-        s.a.p = s.s;
-      } else if (i == 7) {
-        s.b = parse_anchor(q);
-        s.b.p = s.s;
-      }
-      ++i;
-      q = p + 1;
-      if (c == 0)
-        break;
-    }
-  }
-  return s;
-}
-
 vector<sfs_t> load_sfs(char *fn) {
   vector<sfs_t> SS;
   FILE *fp;
@@ -217,10 +147,13 @@ vector<sfs_t> load_sfs(char *fn) {
   if (fp == NULL)
     exit(EXIT_FAILURE);
 
+  sfs_t s;
   while ((read = getline(&line, &len, fp)) != -1) {
     if (line[0] == 'X')
       continue;
-    SS.push_back(parse_sfs_line(line + 2));
+    s = parse_sfs_line(line + 2);
+    if (s.b.v - s.a.v < 50) // FIXME
+      SS.push_back(s);
   }
   fclose(fp);
   return SS;
@@ -230,11 +163,12 @@ int main_call(int argc, char *argv[]) {
   double rt0 = realtime();
   double rt = rt0, rt1;
 
-  int klen = 27;                    // kmer size
-  int min_w = 2;                    // minimum support for cluster
-  int min_l = 50;                   // minimum SV length
-  static ko_longopt_t longopts[] = {/*{ "search-only", ko_no_argument, 301 },*/
-                                    /*{"sfs", ko_required_argument, 302},*/
+  int klen = 27;       // kmer size
+  int min_w = 2;       // minimum support for cluster
+  int min_l = 50;      // minimum SV length
+  char *cls_fn = NULL; // cluster log
+
+  static ko_longopt_t longopts[] = {{"log", ko_required_argument, 301},
                                     {NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
@@ -245,6 +179,8 @@ int main_call(int argc, char *argv[]) {
       min_w = atoi(opt.arg);
     else if (_c == 'l')
       min_l = atoi(opt.arg);
+    else if (_c == 301)
+      cls_fn = opt.arg;
   }
   if (argc - opt.ind != 2) {
     fprintf(stderr, "Argh");
@@ -281,6 +217,7 @@ int main_call(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] created %ld clusters in %.3f sec\n", __func__,
           Cs.size(), realtime() - rt);
   rt = realtime();
+  rt1 = rt;
   // ---
 
   // Calling SVs
@@ -292,7 +229,11 @@ int main_call(int argc, char *argv[]) {
   int cons_l = 0;
 
   // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
-  int sc_mch = 1, sc_mis = -9, gapo = 41, gape = 1;
+  // asm5
+  // int sc_mch = 1, sc_mis = -19, gapo = 39, gape = 3, gapo2 = 81, gape2 = 1;
+  // asm10
+  int sc_mch = 1, sc_mis = -9, gapo = 16, gape = 2, gapo2 = 41, gape2 = 1;
+
   int8_t a = (int8_t)sc_mch,
          b = sc_mis < 0 ? (int8_t)sc_mis : -(int8_t)sc_mis; // a>0 and b<0
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
@@ -304,19 +245,29 @@ int main_call(int argc, char *argv[]) {
   char *del = (char *)malloc(100000 * sizeof(char));  // FIXME: hardcoded
   int cp, cc = 0;
 
-  // FILE *cls_f = NULL;
-  // if (cls_fn != NULL)
-  //   cls_f = fopen(cls_fn, "w");
+  FILE *cls_f = NULL;
+  if (cls_fn != NULL)
+    cls_f = fopen(cls_fn, "w");
 
   cluster_t C;
   int w;
   for (int cc = 0; cc < Cs.size(); ++cc) {
+    if ((cc + 1) % 1000 == 0)
+      fprintf(stderr, "[M::%s] parsed %d clusters in %.3f sec\n", __func__,
+              cc + 1, realtime() - rt1);
+    rt1 = realtime();
     C = Cs[cc];
     w = C.specifics.size();
-    //   if (cls_f != NULL)
-    //     fprintf(cls_f, "%d,%d", cc, w);
+    if (cls_f != NULL)
+      fprintf(cls_f, "%d,%d", cc, w);
     if (w < min_w)
       continue;
+
+    // fprintf(stderr, "%d %d %d\n", w, C.va, C.vb);
+    // for (int ss = 0; ss < w; ++ss)
+    //   printf("%d %s\n", C.specifics[ss].l, decode(C.specifics[ss].seq,
+    //   C.specifics[ss].l, 0).c_str());
+    // printf("\n=======\n");
 
     vector<set<uint64_t>> kmers(w);
     for (int ss = 0; ss < w; ++ss)
@@ -336,20 +287,20 @@ int main_call(int argc, char *argv[]) {
       }
     }
 
-    //   if (cls_f != NULL) {
-    //     for (int ss1 = 0; ss1 < w; ++ss1) {
-    // 	fprintf(cls_f, "%f", M[ss1][0]);
-    // 	for (int ss2 = 1; ss2 < w; ++ss2) {
-    // 	  fprintf(cls_f, "-%f", M[ss1][ss2]);
-    // 	}
-    // 	if (ss1 < w-1)
-    // 	  fprintf(cls_f, "|");
-    //     }
-    //   }
+    if (cls_f != NULL) {
+      for (int ss1 = 0; ss1 < w; ++ss1) {
+        fprintf(cls_f, "%f", M[ss1][0]);
+        for (int ss2 = 1; ss2 < w; ++ss2) {
+          fprintf(cls_f, "-%f", M[ss1][ss2]);
+        }
+        if (ss1 < w - 1)
+          fprintf(cls_f, "|");
+      }
+    }
 
     vector<set<int>> subclusters = get_clusters(M, w);
-    //   if (cls_f != NULL)
-    //     fprintf(cls_f, ",%d\n", subclusters.size());
+    if (cls_f != NULL)
+      fprintf(cls_f, ",%d\n", subclusters.size());
 
     int sci = 0;
     for (const auto &subcluster : subclusters) {
@@ -360,16 +311,18 @@ int main_call(int argc, char *argv[]) {
       for (int i = 0; i < repr.l; ++i)
         repr.seq[i] -= 1;
       int va = repr.a.v, vb = repr.b.v;
+      if (vb - va > 100)
+        continue;
       int offa = repr.a.offset, offb = repr.b.offset;
 
-      //     if (cls_f != NULL)
-      // 	fprintf(cls_f, "%d.%d,%d:%d>%d:%d", cc, sci, va, offa, vb,
-      // offb);
+      if (cls_f != NULL)
+        fprintf(cls_f, "%d.%d,%d:%d>%d:%d", cc, sci, va, offa, vb, offb);
 
       // XXX: calling variations wrt reference path only
       path_t *path = extract_subpath(graph, graph->paths[0], va, vb);
       if (path == NULL) {
         fprintf(stderr, "Skipping %d.%d\n", cc, sci);
+        ++sci;
         continue;
       }
 
@@ -382,17 +335,17 @@ int main_call(int argc, char *argv[]) {
       int suffix =
           graph->vertices[path->vertices[path->l - 1]]->l - offb - klen;
 
-      //     if (cls_f != NULL) {
-      // 	fprintf(cls_f, ",%d,%s", repr.l, decode(repr.seq, repr.l,
-      // 1).c_str()); 	fprintf(cls_f, ",%d,%s", pseq_l - offa - suffix,
-      // decode((uint8_t*)pseq + offa, pseq_l - offa - suffix, 1).c_str());
-      //     }
+      if (cls_f != NULL) {
+        fprintf(cls_f, ",%d,%s", repr.l, decode(repr.seq, repr.l, 1).c_str());
+        fprintf(
+            cls_f, ",%d,%s", pseq_l - offa - suffix,
+            decode((uint8_t *)pseq + offa, pseq_l - offa - suffix, 1).c_str());
+      }
       ksw_extz_t ez;
       memset(&ez, 0, sizeof(ksw_extz_t));
-      ksw_extz2_sse(0, repr.l, repr.seq, pseq_l - offa - suffix,
-                    (uint8_t *)pseq + offa, 5, mat, gapo, gape, -1, -1, 200,
-                    0 /*0x40*/, &ez);
-
+      ksw_extd2_sse(0, repr.l, repr.seq, pseq_l - offa - suffix,
+                    (uint8_t *)pseq + offa, 5, mat, gapo, gape, gapo2, gape2,
+                    -1, -1, -1, 0, &ez);
       // OUTPUT
       int opl;
       int op;
@@ -403,8 +356,8 @@ int main_call(int argc, char *argv[]) {
         opl = ez.cigar[i] >> 4;
         cp += sprintf(cigar + cp, "%d%c", opl, "MID"[ez.cigar[i] & 0xf]);
       }
-      // if (cls_f != NULL)
-      //   fprintf(cls_f, ",%s\n", cigar);
+      if (cls_f != NULL)
+        fprintf(cls_f, ",%s\n", cigar);
 
       for (int i = 0; i < ez.n_cigar; ++i) {
         int l = ez.cigar[i] >> 4;
@@ -423,8 +376,8 @@ int main_call(int argc, char *argv[]) {
             printf("\t100\t%c\t", "ACGT"[pseq[tp - 1]]);
             memcpy(ins, repr.seq + qp, l);
             ins[l] = '\0';
-            printf("%s\t%d\t%s\n", decode((uint8_t *)ins, l, 1).c_str(),
-                   offa + tp, cigar);
+            printf("%s\t%d\t%s\n", decode((uint8_t *)ins, l, 1).c_str(), tp,
+                   cigar);
             ++vuidx;
           }
           qp += l;
@@ -438,7 +391,7 @@ int main_call(int argc, char *argv[]) {
             memcpy(del, pseq + tp, l);
             del[l] = '\0';
             printf("\t100\t%s\t", decode((uint8_t *)del, l, 1).c_str());
-            printf("%c\t%d\t%s\n", "ACGT"[repr.seq[qp - 1]], offa + tp, cigar);
+            printf("%c\t%d\t%s\n", "ACGT"[repr.seq[qp - 1]], tp, cigar);
             ++vuidx;
           }
           tp += l;
@@ -455,8 +408,8 @@ int main_call(int argc, char *argv[]) {
       free(M[i]);
     free(M);
   }
-  // if (cls_f != NULL)
-  //   fclose(cls_f);
+  if (cls_f != NULL)
+    fclose(cls_f);
   free(cons);
   free(cigar);
   free(ins);

@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PANSV VERSION 1.0.0)
-add_executable(pansv graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main_chreads.cpp main_map.cpp main.cpp)
+add_executable(pansv sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main_chreads.cpp main_map.cpp main.cpp)
 set_target_properties(pansv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(pansv PRIVATE) # -Wall -Wextra -Wpedantic -Werror)
 
@@ -138,8 +138,9 @@ target_include_directories(pansv
 #   PUBLIC SDSL)
 
 target_link_libraries(pansv
-    PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz.o
+    # PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz.o
     PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz2_sse.o
+    PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
     PUBLIC ${BINARY_DIR}/lib/libabpoa.a
     # PUBLIC GBWT
     # PUBLIC SDSL
