@@ -475,7 +475,7 @@ path_t *extract_subpath(graph_t *g, path_t *path, int x, int y) {
     if (g->vertices[path->vertices[i]]->idx == x)
       f = 1;
     if (g->vertices[path->vertices[i]]->idx == y)
-      ok = 1;
+      ok = f;
     if (f) {
       add_vertex(subpath, path->vertices[i]);
     }
