@@ -8,24 +8,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PANSV VERSION 1.0.0)
-add_executable(pansv sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main_chreads.cpp main_map.cpp main.cpp)
+add_executable(pansv sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main_map.cpp main.cpp)
 set_target_properties(pansv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(pansv PRIVATE) # -Wall -Wextra -Wpedantic -Werror)
-
-# gfatools
-############
-# message(STATUS "gfatools will be built from source")
-# ExternalProject_Add(gfatools
-#     GIT_REPOSITORY https://github.com/lh3/gfatools.git
-#     GIT_TAG c31be8a62efc6bdea4576029f7fbe84f345a6eed
-#     BUILD_IN_SOURCE 1
-#     UPDATE_COMMAND ""
-#     CONFIGURE_COMMAND ""
-#     BUILD_COMMAND "make"
-#     INSTALL_COMMAND ""
-# )
-# ExternalProject_Get_Property(gfatools SOURCE_DIR)
-# SET(GFA_INCLUDE_DIR ${SOURCE_DIR})
 
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
@@ -44,45 +29,6 @@ ExternalProject_Add(ksw2
 )
 ExternalProject_Get_Property(ksw2 SOURCE_DIR)
 SET(KSW2_INCLUDE_DIR ${SOURCE_DIR})
-
-# # sdsl-lite (vg fork)
-# #######################
-# message(STATUS "sdsl-lite (vg fork) will be built from source")
-# ExternalProject_Add(sdsl
-#     GIT_REPOSITORY https://github.com/vgteam/sdsl-lite.git
-#     GIT_TAG 03288600910bd9cec2b70cd52db12066361b2ca9
-#     BUILD_IN_SOURCE 1
-#     UPDATE_COMMAND ""
-#     CONFIGURE_COMMAND ""
-#     BUILD_COMMAND ""
-#     INSTALL_COMMAND bash install.sh .
-# )
-# ExternalProject_Get_Property(sdsl SOURCE_DIR)
-# SET(SDSL_SOURCE_DIR ${SOURCE_DIR})
-# SET(SDSL_INCLUDE_DIR ${SDSL_SOURCE_DIR}/include)
-# add_library(SDSL STATIC IMPORTED)
-# set_target_properties(SDSL PROPERTIES IMPORTED_LOCATION ${SDSL_SOURCE_DIR}/lib/libsdsl.a)
-# add_dependencies(SDSL sdsl)
-#
-# # gbwt
-# ########
-# message(STATUS "gbwt will be built from source")
-# ExternalProject_Add(gbwt
-#     GIT_REPOSITORY https://github.com/jltsiren/gbwt.git
-#     GIT_TAG f198496a890410b6f37b55428ca8bd8f73d4bf52
-#     BUILD_IN_SOURCE 1
-#     UPDATE_COMMAND ""
-#     CONFIGURE_COMMAND ""
-#     BUILD_COMMAND make SDSL_DIR=${SDSL_SOURCE_DIR}
-#     INSTALL_COMMAND ""
-# )
-# ExternalProject_Get_Property(gbwt SOURCE_DIR)
-# SET(GBWT_SOURCE_DIR ${SOURCE_DIR})
-# SET(GBWT_INCLUDE_DIR ${GBWT_SOURCE_DIR}/include)
-# add_library(GBWT STATIC IMPORTED)
-# set_target_properties(GBWT PROPERTIES IMPORTED_LOCATION ${GBWT_SOURCE_DIR}/lib/libgbwt.a)
-# add_dependencies(GBWT gbwt)
-# add_dependencies(GBWT SDSL)
 
 # ropebwt3
 ############
@@ -128,22 +74,15 @@ add_dependencies(pansv RB3 abpoa ksw2) # gbwt)
 
 target_include_directories(pansv
     PRIVATE ${RB3_INCLUDE_DIR}
-    # PRIVATE ${SDSL_INCLUDE_DIR}
-    # PRIVATE ${GBWT_INCLUDE_DIR}
     PRIVATE ${KSW2_INCLUDE_DIR}
     PRIVATE ${ABPOA_INCLUDE_DIR}
     PRIVATE ${PROJECT_SOURCE_DIR}
 )
-# target_link_libraries(GBWT
-#   PUBLIC SDSL)
 
 target_link_libraries(pansv
-    # PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz.o
     PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz2_sse.o
     PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
     PUBLIC ${BINARY_DIR}/lib/libabpoa.a
-    # PUBLIC GBWT
-    # PUBLIC SDSL
     PUBLIC RB3
     PUBLIC z
     PUBLIC pthread
