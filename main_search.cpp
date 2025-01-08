@@ -153,6 +153,36 @@ vector<sfs_t> anchor(const sketch_t &sketch, graph_t *graph,
       continue;
     }
 
+    for (int i1 = 0; i1 < sanchors.size(); ++i1) {
+      if (sanchors[i1].v == -1)
+        continue;
+      for (int i2 = 0; i2 < sanchors.size(); ++i2) {
+        if (i1 == i2)
+          continue;
+        if (sanchors[i2].v == -1)
+          continue;
+        if (sanchors[i1].seq == sanchors[i2].seq) {
+          sanchors[i1].v = -1;
+          sanchors[i2].v = -1;
+        }
+      }
+    }
+
+    for (int i1 = 0; i1 < eanchors.size(); ++i1) {
+      if (eanchors[i1].v == -1)
+        continue;
+      for (int i2 = 0; i2 < eanchors.size(); ++i2) {
+        if (i1 == i2)
+          continue;
+        if (eanchors[i2].v == -1)
+          continue;
+        if (eanchors[i1].seq == eanchors[i2].seq) {
+          eanchors[i1].v = -1;
+          eanchors[i2].v = -1;
+        }
+      }
+    }
+
     // Finding best pair of anchors
     int mind = 100;
     int d;
@@ -164,10 +194,16 @@ vector<sfs_t> anchor(const sketch_t &sketch, graph_t *graph,
     pair<int, int> xy = {x, y};
     for (uint i = 0; i < sanchors.size(); ++i) {
       x = sanchors[i].v;
+      if (x == -1)
+        // anchor has been filtered out since it was repeated in the read
+        continue;
       xoff = sanchors[i].offset;
       xy.first = x;
       for (int j = 0; j < eanchors.size(); ++j) {
         y = eanchors[j].v;
+        if (y == -1)
+          // anchor has been filtered out since it was repeated in the read
+          continue;
         yoff = eanchors[j].offset;
         xy.second = y;
         if ((hhit = memo.find(xy)) == memo.end()) {
@@ -359,78 +395,37 @@ int main_search(int argc, char *argv[]) {
     strands[0] = 0;
     strands[1] = 0;
     for (const auto &s : S) {
-      if (s.a.v != -1 && s.b.v != -1) {
+      if (s.a.v != -1 && s.b.v != -1)
         ++strands[s.strand];
-        ++anchored_n;
-      } else {
-        printf("X %s %d %d %d %d . %ld:%d:%ld %ld:%d:%ld\n", seq->name.s, s.s,
-               s.l, s.strand, s.strand == strand, s.a.v, s.a.offset, s.a.seq,
-               s.b.v, s.b.offset, s.b.seq);
-        ++unanchored_n;
-      }
     }
+
     // + strand if tie
     strand = strands[0] > strands[1] ? 0 : 1;
     // Stmp.clear();
-    // for (const auto &s : S) {
-    //   if (s.a.v != -1 && s.b.v != -1 && s.strand == strand) {
-    //     // XXX: we could avoid Stmp and filter while assembling_2
-    //     // printf("P %s %d %d %d %d . %ld:%d:%ld %ld:%d:%ld\n", seq->name.s,
-    //     // s.s,
-    //     //        s.l, s.strand, s.strand == strand, s.a.v, s.a.offset, s.a.seq,
-    //     //        s.b.v, s.b.offset, s.b.seq);
-    //     Stmp.push_back(s);
-    //   }
-    // }
+    for (auto &s : S) {
+      if (s.a.v != -1 && s.b.v != -1) {
+        if (s.strand == 0)
+          // reverse
+          s.s = l - (s.s + s.l);
 
-    // S = assemble_2(Stmp, klen);
-
-    for (sfs_t &s : S) {
-      if (s.strand == -1 || s.a.v == -1 || s.b.v == -1) {
-        fprintf(stderr, "Something went wrong while assembling anchored "
-                        "specific strings..\n");
-        exit(EXIT_FAILURE);
-      }
-      if ((s.a.v == s.b.v && s.a.offset > s.b.offset) || s.a.v > s.b.v) {
-        // if ((s.strand == 1 &&
-        //      ((s.a.v == s.b.v && s.a.offset > s.b.offset) || s.a.v > s.b.v))
-        //      ||
-        //     (s.strand == 0 &&
-        //      ((s.a.v == s.b.v && s.a.offset < s.b.offset) || s.a.v < s.b.v)))
-        //      {
-        printf("X2 %s %d %d %d %d . %ld:%d:%ld %ld:%d:%ld\n", seq->name.s, s.s,
-               s.l, s.strand, s.strand == strand, s.a.v, s.a.offset, s.a.seq,
-               s.b.v, s.b.offset, s.b.seq);
-        continue;
-      }
-      ++assembled_n;
-
-      s.seq = (uint8_t *)malloc(s.l + 1);
-      memcpy(s.seq, eseq + s.s, s.l);
-      s.seq[s.l] = '\0';
-
-      // we "reverse" the sfs on the read if - strand
-      if (!s.strand) {
-        int i;
-        for (i = 0; i < s.l >> 1; ++i) {
-          uint8_t tmp = s.seq[s.l - 1 - i];
-          tmp = (tmp >= 1 && tmp <= 4) ? 5 - tmp : tmp;
-          s.seq[s.l - 1 - i] =
-              (s.seq[i] >= 1 && s.seq[i] <= 4) ? 5 - s.seq[i] : s.seq[i];
-          s.seq[i] = tmp;
+        ++anchored_n;
+        if (s.strand == strand) {
+          printf("O %d %s %d %d %d %d %s %ld:%d:%ld %ld:%d:%ld\n", s.qidx,
+                 seq->name.s, s.s, s.l, s.strand, s.strand == strand, ".",
+                 s.a.v, s.a.offset, s.a.seq, s.b.v, s.b.offset, s.b.seq);
+        } else {
+          printf("S %d %s %d %d %d %d %s %ld:%d:%ld %ld:%d:%ld\n", s.qidx,
+                 seq->name.s, s.s, s.l, s.strand, s.strand == strand, ".",
+                 s.a.v, s.a.offset, s.a.seq, s.b.v, s.b.offset, s.b.seq);
         }
-        if (s.l & 1)
-          s.seq[i] = (s.seq[i] >= 1 && s.seq[i] <= 4) ? 5 - s.seq[i] : s.seq[i];
+      } else {
+        ++unanchored_n;
+        printf("X %d %s %d %d %d %d . %ld:%d:%ld %ld:%d:%ld\n", s.qidx,
+               seq->name.s, s.s, s.l, s.strand, s.strand == strand, s.a.v,
+               s.a.offset, s.a.seq, s.b.v, s.b.offset, s.b.seq);
       }
-
-      for (int i = 0; i < s.l; ++i)
-        s.seq[i] = ".ACGTN"[s.seq[i]];
-      // a.v always precedes b.v (even for sfs on - strand)
-      printf("O %s %d %d %d %d %s %ld:%d:%ld %ld:%d:%ld\n", seq->name.s, s.s,
-             s.l, s.strand, s.strand == strand, s.seq, s.a.v, s.a.offset,
-             s.a.seq, s.b.v, s.b.offset, s.b.seq);
-      free(s.seq);
     }
+
     ++qidx;
     if (qidx % 10000 == 0) {
       fprintf(stderr, "[M::%s] parsed %d reads %.3f sec\n", __func__, qidx,
@@ -444,10 +439,8 @@ int main_search(int argc, char *argv[]) {
    * everything is on + strand
    */
 
-  fprintf(stderr,
-          "%d specific strings, %d anchored, %d unanchored. After merging: %d "
-          "anchored\n",
-          specifics_n, anchored_n, unanchored_n, assembled_n);
+  fprintf(stderr, "%d specific strings, %d anchored, %d unanchored\n",
+          specifics_n, anchored_n, unanchored_n);
 
   kseq_destroy(seq);
   gzclose(fp);
