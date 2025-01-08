@@ -25,7 +25,7 @@ using namespace std;
 
 int align(int argc, char *argv[]) {
   // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
-  int sc_mch = 4, sc_mis = -9, gapo = 41, gape = 1;
+  int sc_mch = 1, sc_mis = -9, gapo = 16, gape = 2, gapo2 = 41, gape2 = 1;
   int zdrop = -1;
   int flag = 0x40;
   static ko_longopt_t longopts[] = {};
@@ -71,8 +71,10 @@ int align(int argc, char *argv[]) {
     qs[i] = c[(uint8_t)qseq[i]];
   // ksw_extz(0, ql, qs, tl, ts, 5, mat, gapo, gape, -1, -1, 0, &ez);
 
-  ksw_extz2_sse(0, ql, qs, tl, ts, 5, mat, gapo, gape, -1, -1, zdrop, flag,
-                &ez);
+  ksw_extd2_sse(0, ql, qs, tl, ts, 5, mat, gapo, gape, gapo2, gape2, -1, -1, -1,
+                0, &ez);
+  // ksw_extz2_sse(0, ql, qs, tl, ts, 5, mat, gapo, gape, -1, -1, zdrop, flag,
+  // &ez);
 
   for (i = 0; i < ez.n_cigar; ++i) // print CIGAR
     printf("%d%c", ez.cigar[i] >> 4, "MID"[ez.cigar[i] & 0xf]);
