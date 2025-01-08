@@ -37,33 +37,38 @@ sfs_t parse_sfs_line(char *line) {
     if (*p == 0 || *p == ' ') {
       int c = *p;
       *p = 0;
-      /* 0: read name
-         1: start on read
-         2: length
-         3: strand
-         4: if we kept it
-         5: sequence
-         6: left anchor
-         7: right anchor
+      /* 0: read idx in .fq
+         1: read name
+         2: start on read
+         3: length
+         4: strand
+         5: if we kept it
+         6: sequence
+         7: left anchor
+         8: right anchor
        */
       if (i == 0) {
+        s.qidx = atoi(q);
+      } else if (i == 1) {
         s.rname = (char *)malloc(p - q + 1);
         strncpy(s.rname, q, p - q);
         s.rname[p - q] = '\0';
-      } else if (i == 1) {
-        s.s = atoi(q);
       } else if (i == 2) {
+        s.s = atoi(q);
+      } else if (i == 3) {
         s.l = atoi(q);
-      } else if (i == 5) {
+      } else if (i == 4) {
+        s.strand = atoi(q);
+      } else if (i == 6) {
         s.seq = (uint8_t *)malloc(s.l + 1);
         memcpy(s.seq, q, s.l);
         s.seq[s.l] = '\0';
         for (int _i = 0; _i < s.l; ++_i)
           s.seq[_i] = s.seq[_i] < 128 ? to_int[s.seq[_i]] : 5;
-      } else if (i == 6) {
+      } else if (i == 7) {
         s.a = parse_anchor(q);
         s.a.p = s.s;
-      } else if (i == 7) {
+      } else if (i == 8) {
         s.b = parse_anchor(q);
         s.b.p = s.s;
       }
