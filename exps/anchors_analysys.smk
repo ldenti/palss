@@ -1,92 +1,47 @@
 from os.path import join as pjoin
 
 FA = config["fa"]
-VCF = config["vcf"]
+GFA = config["gfa"]
+FQ = config["fq"]
 WD = config["wd"]
+n = config["nh"]
 
 nths = workflow.cores
 
-Ns = [1,2,4,8,16]
-Ks = [27]
+Ks = [23, 27, 31]
 
 rule run:
     input:
-        expand(pjoin(WD, "{n}", "paths-anchors.k{k}.txt"), n=Ns, k=Ks),
-        expand(pjoin(WD, "{n}", "reference-anchors.k{k}.txt"), n=Ns, k=Ks),
+        expand(pjoin(WD, "k{k}", "reference.kan.png"), k=Ks),
+        expand(pjoin(WD, "k{k}", "sample.nuk.png"), k=Ks),
 
 rule faidx:
     input:
-      FA,
+        FA,
     output:
         FA + ".fai",
-    conda: "workflow/envs/samtools.yml"
     shell:
         """
         samtools faidx {input}
         """
 
-rule select_samples:
-    input:
-        vcf=VCF,
-    output:
-        txt=pjoin(WD, "{n}", "samples.list"),
-    shell:
-        """
-        bcftools view -h {input.vcf} | tail -1 | cut -f10- | tr "\\t" "\\n" | sort -R | head -{wildcards.n} > {output}
-        """
-
-rule extract_vcf:
-    input:
-        vcf=VCF,
-        txt=rules.select_samples.output.txt,
-    output:
-        vcf=pjoin(WD, "{n}", "variations.vcf.gz"),
-    shell:
-        """
-        bcftools view -Oz -S {input.txt} {input.vcf} > {output.vcf}
-        tabix -p vcf {output.vcf}
-        """
-
-rule build_pangenome:
-    input:
-        fa=FA,
-        vcf=rules.extract_vcf.output.vcf,
-    output:
-        vg=pjoin(WD, "{n}", "pangenome.vg"),
-        gfa=pjoin(WD, "{n}", "pangenome.gfa"),
-    params:
-        pref=pjoin(WD, "{n}", "pangenome"),
-    threads:
-        workflow.cores
-    shell:
-        """
-        vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max 512 --vcf {input.vcf} > {params.pref}.walts.vg
-        vg paths --drop-paths --variant-paths -x {params.pref}.walts.vg > {params.pref}.onlyref.vg
-        vg gbwt --discard-overlaps --vcf-input {input.vcf} --xg-name {params.pref}.walts.vg --output {params.pref}.haps.gbwt
-        vg paths --extract-gam --gbwt {params.pref}.haps.gbwt -x {params.pref}.onlyref.vg > {params.pref}.haps.gam
-        vg augment --label-paths {params.pref}.onlyref.vg {params.pref}.haps.gam > {output.vg}
-        vg view {output.vg} > {output.gfa}
-        """
-
 rule get_paths:
     input:
-        gfa=rules.build_pangenome.output.vg,
+        gfa=GFA,
     output:
-        fa=pjoin(WD, "{n}", "pangenome.paths.fa"),
-    log:
-        time=pjoin(WD, "TIMES", "{n}", "vg-paths.time"),
+        fa=pjoin(WD, "paths.fa"),
     shell:
         """
-        /usr/bin/time -vo {log.time} vg paths --extract-fasta --xg {input.gfa} > {output.fa}
+        vg paths --extract-fasta --xg {input.gfa} > {output.fa}
         """
 
 rule rb3_index:
     input:
         fa=rules.get_paths.output.fa,
     output:
-        fmd=pjoin(WD, "{n}", "pangenome.paths.fa.fmd"),
+        fmd=pjoin(WD, "pangenome.paths.fa.fmd"),
     log:
-        time=pjoin(WD, "TIMES", "{n}", "rb3-build.time"),
+        time=pjoin(WD, "TIMES", "rb3-build.time"),
     threads:
         workflow.cores
     shell:
@@ -96,32 +51,19 @@ rule rb3_index:
 
 rule sketch:
     input:
-        gfa=rules.build_pangenome.output.gfa,
+        gfa=GFA,
         fmd=rules.rb3_index.output.fmd,
     output:
-        skt=pjoin(WD, "{n}", "pangenome-k{k}.skt"),
-    params:
-        n = lambda wildcards: 2*int(wildcards.n) + 1
+        skt=pjoin(WD, "k{k}", "pangenome.skt"),
+    #params:
+    #    n = n;
     log:
-        time = pjoin(WD, "TIMES", "{n}", "sketch-k{k}.time"),
+        time = pjoin(WD, "TIMES", "k{k}", "sketch.time"),
     threads:
         workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv sketch -g {params.n} -k {wildcards.k} -v50000 -@{threads} {input.gfa} {input.fmd} > {output.skt}
-        """
-
-rule kan_paths:
-    input:
-        skt=rules.sketch.output.skt,
-        fa=rules.get_paths.output.fa,
-    output:
-        txt=pjoin(WD, "{n}", "paths-anchors.k{k}.bed"),
-    log:
-        time = pjoin(WD, "TIMES", "{n}", "kan-paths-k{k}.time"),
-    shell:
-        """
-        /usr/bin/time -vo {log.time} ../pansv kan {input.skt} {input.fa} > {output.txt}
+        /usr/bin/time -vo {log.time} ../pansv sketch -g {n} -k {wildcards.k} -v50000 -@{threads} {input.gfa} {input.fmd} > {output.skt}
         """
 
 rule kan_ref:
@@ -129,24 +71,50 @@ rule kan_ref:
         skt=rules.sketch.output.skt,
         fa=FA,
     output:
-        bed=pjoin(WD, "{n}", "reference-anchors.k{k}.bed"),
+        bed=pjoin(WD, "k{k}", "reference-anchors.bed"),
     log:
-        time = pjoin(WD, "TIMES", "{n}", "kan-reference-k{k}.time"),
+        time = pjoin(WD, "TIMES", "k{k}", "kan-reference.time"),
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv kan {input.skt} {input.fa} > {output.bed}
+        /usr/bin/time -vo {log.time} ../pansv kan -k{wildcards.k} {input.skt} {input.fa} > {output.bed}
         """
 
-rule run_py:
+rule kan_py:
     input:
-        bed="{x}.bed",
+        bed=rules.kan_ref.output.bed,
         fai=FA + ".fai",
     output:
-        bed="{x}.txt",
-        png="{x}.png",
+        pjoin(WD, "k{k}", "reference.kan.png"),
+    params:
+        prefix=pjoin(WD, "k{k}", "reference.kan"),
     conda: "workflow/envs/seaborn.yml"
     shell:
         """
-        python3 ../scripts/kan_hist.py {input.bed} {input.fai} -o {wildcards.x}
+        python3 ../scripts/kan_hist.py {input.bed} {input.fai} -o {params.prefix}
         """
 
+
+rule kan_reads:
+    input:
+        skt=rules.sketch.output.skt,
+        fq=FQ,
+    output:
+        nuk=pjoin(WD, "k{k}", "sample.nuk"),
+    log:
+        time = pjoin(WD, "TIMES", "k{k}", "kan-reads.time"),
+    shell:
+        """
+        /usr/bin/time -vo {log.time} ../pansv chreads -k{wildcards.k} {input.skt} {input.fq} > {output.nuk}
+        """
+
+rule kan_reads_py:
+    input:
+        nuk=rules.kan_reads.output.nuk,
+    output:
+        png=pjoin(WD, "k{k}", "sample.nuk.png"),
+        txt=pjoin(WD, "k{k}", "sample.nuk.txt"),
+    conda: "workflow/envs/seaborn.yml"
+    shell:
+        """
+        python3 ../scripts/ran_hist.py {input.nuk} {output.png} > {output.txt}
+        """

@@ -25,7 +25,7 @@ inline std::string decode(const uint8_t *s, int l, int shift) {
     return "";
   char ds[l + 1];
   for (int i = 0; i < l; ++i)
-    ds[i] = "NACGTN"[s[i] + shift];
+    ds[i] = s[i] + shift <= 5 ? "NACGTN"[s[i] + shift] : 'N';
   ds[l] = '\0';
   return ds;
 }

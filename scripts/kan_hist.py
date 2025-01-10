@@ -1,9 +1,12 @@
 import sys
 import argparse
 
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+
 import pandas as pd
 import seaborn as sns
-from matplotlib import pyplot as plt
 
 
 def analyze(chrom, regions, ofp):
@@ -76,8 +79,8 @@ def analyze(chrom, regions, ofp):
     sns.histplot(
         df,
         x="d",
-        binrange=(1, df["d"].quantile(q=0.95)),
-        bins=max(1, int(df["d"].quantile(q=0.95) / 50)),
+        binrange=(1, df["d"].quantile(q=0.98)),
+        # bins=max(1, int(df["d"].quantile(q=0.98) / 50)),
         legend=None,
     )
     plt.title(chrom)
@@ -113,6 +116,7 @@ def main(args):
             continue
         if chrom != last_chrom:
             if last_chrom != "":
+                print(f"Analyzing {last_chrom}, next chrom: {chrom}", file=sys.stderr)
                 uncovered[last_chrom] = analyze(last_chrom, regions, args.out)
             last_chrom = chrom
             regions = []

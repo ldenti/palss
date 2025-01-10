@@ -75,6 +75,7 @@ int align(int argc, char *argv[]) {
   // ksw_extz2_sse(0, ql, qs, tl, ts, 5, mat, gapo, gape, -1, -1, zdrop, flag,
   // &ez);
 
+  printf("%d\n", ez.n_cigar);
   for (i = 0; i < ez.n_cigar; ++i) // print CIGAR
     printf("%d%c", ez.cigar[i] >> 4, "MID"[ez.cigar[i] & 0xf]);
   putchar('\n');

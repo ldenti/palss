@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <zlib.h>
+#include <algorithm>
 
 #include "abpoa.h"
 #include "fm-index.h"
@@ -374,7 +375,7 @@ int main_call(int argc, char *argv[]) {
   vector<string> qnames;
   while ((l = kseq_read(seq)) >= 0) {
     qnames.push_back(seq->name.s);
-    if (ss_byread[qidx].empty()) {
+    if (qidx >= ss_byread.size() || ss_byread[qidx].empty()) {
       ++qidx;
       continue;
     }
@@ -521,7 +522,7 @@ int main_call(int argc, char *argv[]) {
   for (auto &cc : Cs) {
     ++cc_idx;
 
-    // if (cc_idx != 38415)
+    // if (cc_idx != 7915)
     //   continue;
 
     if (cc.specifics.empty())
@@ -549,9 +550,10 @@ int main_call(int argc, char *argv[]) {
     // ---
 
     vector<pair<path_t *, string>> collapsed_subpaths;
-    path_t *path;
+    path_t *path = NULL;
     for (int px = 0; px < graph->np; ++px) {
       path = extract_subpath(graph, graph->paths[px], va, vb);
+
       if (path == NULL)
         continue;
       int i = 0;
@@ -573,6 +575,12 @@ int main_call(int argc, char *argv[]) {
         collapsed_subpaths[i].second += "," + string(path->idx);
       }
     }
+    if (path == NULL) {
+      if (verbose)
+        fprintf(stderr, "No path for cluster %d (%d>%d)\n", cc_idx, va, vb);
+      continue;
+    }
+
     // ---
 
     if (verbose)
@@ -612,13 +620,18 @@ int main_call(int argc, char *argv[]) {
 
         int score = -INT32_MAX;
         uint32_t *cigar = (uint32_t *)malloc(1 * sizeof(uint32_t));
-        int n_cigar = 1;
+        int n_cigar = 0;
+        int m_cigar = 1;
         uint8_t *PPSEQ = NULL;
+        int ppseq_c = 0;
         string pnames;
         int plen = 0;
         int pprefix = 0;
+        int PPSEQ_IDX = -1;
 
+        int ppseq_idx = PPSEQ_IDX;
         for (pair<path_t *, string> collp : collapsed_subpaths) {
+          ++ppseq_idx;
           path = collp.first;
           pseq_l = get_sequence(graph, path, &pseq, &pseq_c);
           for (int i = 0; i < pseq_l; ++i)
@@ -627,8 +640,11 @@ int main_call(int argc, char *argv[]) {
               graph->vertices[path->vertices[path->l - 1]]->l - offb - klen;
 
           if (verbose) {
-            fprintf(stderr, "%d %s\n", cons_l, decode(cons, cons_l, 1).c_str());
-            fprintf(stderr, "%d %s\n", pseq_l - offa - prefix_len_onlastvertex,
+            fprintf(stderr, "--- %s ---\n", path->idx);
+            fprintf(stderr, "C: %d %s\n", cons_l,
+                    decode(cons, cons_l, 1).c_str());
+            fprintf(stderr, "P: %d %s\n",
+                    pseq_l - offa - prefix_len_onlastvertex,
                     decode((uint8_t *)pseq + offa,
                            pseq_l - offa - prefix_len_onlastvertex, 1)
                         .c_str());
@@ -644,17 +660,26 @@ int main_call(int argc, char *argv[]) {
           if (ez.score <= score)
             continue;
 
+          PPSEQ_IDX = ppseq_idx;
           score = ez.score;
-          if (ez.n_cigar > n_cigar) {
-            cigar = (uint32_t *)realloc(cigar, ez.n_cigar * sizeof(uint32_t));
-            n_cigar = ez.n_cigar;
+          if (ez.n_cigar > m_cigar) {
+            cigar = (uint32_t *)realloc(cigar, ez.m_cigar * sizeof(uint32_t));
+            m_cigar = ez.m_cigar;
             // TODO: check reallocation
           }
-          memcpy(cigar, ez.cigar, ez.n_cigar * sizeof(uint32_t));
+          memcpy(cigar, ez.cigar, ez.m_cigar * sizeof(uint32_t));
+          n_cigar = ez.n_cigar;
           plen = pseq_l;
           pprefix = prefix_len_onlastvertex;
-          PPSEQ = (uint8_t *)malloc(pseq_l + 1);
 
+          if (pseq_l + 1 > ppseq_c) {
+            if (ppseq_c == 0) {
+              PPSEQ = (uint8_t *)malloc(pseq_l + 1);
+            } else {
+              PPSEQ = (uint8_t *)realloc(PPSEQ, pseq_l + 1);
+            }
+            ppseq_c = pseq_l + 1;
+          }
           memcpy(PPSEQ, (uint8_t *)pseq, pseq_l);
           PPSEQ[pseq_l] = '\0';
           pnames = collp.second;
@@ -666,6 +691,9 @@ int main_call(int argc, char *argv[]) {
           clipped = 1;
           // continue; // if we do not want these alignments
         }
+
+        // printf("%s\n", decode(cons, cons_l, 1).c_str());
+        // printf("%s\n", decode(PPSEQ, pseq_l, 1).c_str());
 
         // OUTPUT
         int opl;
@@ -708,8 +736,9 @@ int main_call(int argc, char *argv[]) {
                   tot_res_matches += l_tmp;
                   l_tmp = 0;
                 }
-                cs_p += sprintf(cs + cs_p, "*%c%c", "ACGTN"[PPSEQ[pseq_p + j]],
-                                "ACGTN"[cons[cons_p + j]]);
+                cs_p += sprintf(cs + cs_p, "*%c%c", PPSEQ[pseq_p + j] <= 3 ? "ACGT"[PPSEQ[pseq_p + j]] : 'N',
+                                cons[cons_p + j] <= 3 ? "ACGT"[cons[cons_p + j]]
+                                                      : 'N');
               } else
                 ++l_tmp;
             }
@@ -751,15 +780,21 @@ int main_call(int argc, char *argv[]) {
 
         // print GAF line
         printf("%d.%d\t%d\t%d\t%d\t+\t", cc_idx, ci, cons_l, 0, cons_l);
-        printf(">%d", graph->vertices[path->vertices[0]]->idx);
+        printf(">%d",
+               graph->vertices[collapsed_subpaths[PPSEQ_IDX].first->vertices[0]]
+                   ->idx);
         for (int i = 1; i < path->l; ++i)
-          printf(">%d", graph->vertices[path->vertices[i]]->idx);
+          printf(
+              ">%d",
+              graph->vertices[collapsed_subpaths[PPSEQ_IDX].first->vertices[i]]
+                  ->idx);
         printf("\t%d\t%d\t%d\t%d\t%d\t%d\tAS:i:%d\tcg:Z:%s\tcs:Z:%s\tcl:i:%"
                "d\tpn:Z:%"
-               "s\tqs:Z:%s\n",
+               "s\tqs:Z:%s\tps:Z:%s\n",
                pseq_l, offa, plen - pprefix, tot_res_matches, tot_cigar_len, 60,
                score, cigar_s, cs, clipped, pnames.c_str(),
-               decode(cons, cons_l, 1).c_str());
+               decode(cons, cons_l, 1).c_str(),
+               decode(PPSEQ + offa, plen - pprefix - offa, 1).c_str());
 
         free(cs);
       }
