@@ -1,6 +1,0 @@
-name: pbcss
-channels:
-  - conda-forge
-  - bioconda
-dependencies:
-  - pbcss

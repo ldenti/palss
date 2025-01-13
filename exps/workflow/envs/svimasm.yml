@@ -1,5 +1,0 @@
-name: svimasm
-channels:
-  - bioconda
-dependencies:
-  -  svim-asm=1.0.3

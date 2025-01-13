@@ -1,7 +1,0 @@
-name: cutesv
-channels:
-  - conda-forge
-  - bioconda
-dependencies:
-  - python=3.6
-  - cutesv=2.1.1

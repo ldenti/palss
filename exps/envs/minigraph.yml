@@ -1,5 +1,5 @@
-name: bcftools
+name: minigraph
 channels:
   - bioconda
 dependencies:
-  - bcftools=1.21
+  - minigraph=0.21
