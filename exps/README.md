@@ -1,52 +1,41 @@
-```
+# Experiments
 
-
-```
+### Pangenome augmentation
 
 ```
 # Setup conda environment
-mamba create -c bioconda -c conda-forge -n pansv-exps snakemake-minimal samtools bcftools
-conda activate pansv-exps
+mamba create -c bioconda -c conda-forge -n smk snakemake-minimal
+conda activate smk
 
 # Get CHM13 reference
 wget https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz
 gunzip chm13v2.0.fa.gz
 samtools faidx chm13v2.0.fa
 
-# Get GIAB tiers
-wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.5/genome-stratifications-CHM13@all.tar.gz
-tar xvfz genome-stratifications-CHM13@all.tar.gz 
-gunzip CHM13@all/Union/CHM13_notinalldifficultregions.bed.gz
-gunzip CHM13@all/Union/CHM13_alldifficultregions.bed.gz
-
-# Get CHM13 tandem repeats
-wget https://raw.githubusercontent.com/PacificBiosciences/pbsv/master/annotations/human_chm13v2.0_maskedY_rCRS.trf.bed
-
 # Get HPRC variant calls against CHM13
 wget https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/freeze1/minigraph-cactus/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.vcfbub.a100k.wave.vcf.gz
 wget https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/freeze1/minigraph-cactus/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.vcfbub.a100k.wave.vcf.gz.tbi
-bcftools +remove-overlaps -Oz hprc-v1.1-mc-chm13.vcfbub.a100k.wave.vcf.gz > hprc-v1.1-mc-chm13.vcfbub.a100k.wave.nonoverlapping.vcf.gz
-tabix -p vcf hprc-v1.1-mc-chm13.vcfbub.a100k.wave.nonoverlapping.vcf.gz
 
-# Get the real HiFi fastq for sampling simulation
-wget https://storage.googleapis.com/brain-genomics-public/research/deepconsensus/publication/deepconsensus_predictions/hg007_15kb/three_smrt_cells/HG007_230654_115437_2fl_DC_hifi_reads.fastq
+
+bcftools norm --check-ref e --fasta-ref chm13v2.0.fa hprc-v1.1-mc-chm13.vcfbub.a100k.wave.vcf.gz | bcftools +remove-overlaps | bcftools +missing2ref -Oz > hprc-v1.1.vcf.gz
+tabix -p vcf hprc-v1.1.vcf.gz
+
+# We theoretically need to remove duplicates variants (using same definition as vg).
+# Here how to run the script. However, it is not optimized for big VCF though.
+# So we will "clean" chromosome-level VCFs
+# python3 scripts/remove_duplicates.py hprc-v1.1.vcf.gz | bgzip -c > hprc-v1.1.nodups.vcf.gz
+# tabix -p vcf hprc-v1.1.nodups.vcf.gz
 
 # Extract one or more chromosomes
-mkdir 19
-samtools faidx chm13v2.0.fa chr19 > 19/reference.fa
-samtools faidx 19/reference.fa
-grep -P "^chr19\t" human_chm13v2.0_maskedY_rCRS.trf.bed > 19/trf.bed
-bcftools view -Oz hprc-v1.1-mc-chm13.vcfbub.a100k.wave.nonover.vcf.gz chr19 > 19/variations.vcf.gz
-tabix -p vcf 19/variations.vcf.gz
-grep -P "^chr19\t" CHM13@all/Union/CHM13_notinalldifficultregions.bed > 19/easy.bed
-grep -P "^chr19\t" CHM13@all/Union/CHM13_alldifficultregions.bed > 19/hard.bed
-
-# Get full assemblies
-curl -o HPRC-yr1.agc https://zenodo.org/record/5826274/files/HPRC-yr1.agc?download=1
-agc getset HPRC-yr1.agc HG02723.1 > hap1.fa
-agc getset HPRC-yr1.agc HG02723.2 > hap2.fa
-
-# edit config/config.yaml accordingly
-
-snakemake -c 16 --configfile config/config.yml --use-conda [-n]
+mkdir chr1
+samtools faidx chm13v2.0.fa chr1 > chr1/reference.fa
+samtools faidx chr1/reference.fa
+bcftools view hprc-v1.1.vcf.gz chr1 | python3 scripts/remove_duplicates.py | bgzip -c > chr1/variations.vcf.gz
+tabix -p vcf chr1/variations.vcf.gz
 ```
+
+Run the experiments:
+```
+snakemake --use-conda -s update_analysis.smk --config fa=[reference.fa] vcf=[variations.vcf.gz] fq=[real_fq] wd=[WD] -p -c4 [-n]
+```
+Everything will be created in the specified `WD` directory. Since we rely on sampling-based simulation with pbsim3, we need to pass a real fastq file to the snakemake.
