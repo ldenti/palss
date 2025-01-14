@@ -2,25 +2,25 @@ from os.path import join as pjoin
 import gzip
 import random
 
-seed=23
+seed = 23
 random.seed(seed)
-K = 27 # kmer size
-L = 512 # max vertex size
-coverage=7.5 # coverage per haplotype
+K = 27  # kmer size
+L = 512  # max vertex size
+coverage = 7.5  # coverage per haplotype
 
-Ns = [1] #, 2, 4] # , 8, 16, 32]
+Ns = [1, 2]  # , 4] # , 8, 16, 32]
 
 FA = config["fa"]
 VCF = config["vcf"]
 WD = config["wd"]
-REALFQ = config["fq"] # for sampling based simulation
+REALFQ = config["fq"]  # for sampling based simulation
 
 sample = ""
 SAMPLES = {}
 for line in gzip.open(VCF, mode="rt"):
     if line.startswith("#CHROM"):
-        line = line.strip("\n").split("\t")[10:] # remove hg38 from the list
-        nh = 1 + 1 + (len(line)-1)*2
+        line = line.strip("\n").split("\t")[10:]  # remove hg38 from the list
+        nh = 1 + 1 + (len(line) - 1) * 2
         random.shuffle(line)
         sample = line[0]
         line = line[1:]
@@ -31,14 +31,25 @@ for line in gzip.open(VCF, mode="rt"):
 
 print(sample, SAMPLES)
 
+
 wildcard_constraints:
-    x="(1out)|(full)"
-    # num="[0-9]+"
+    x="(1out)|(full)",
+
 
 rule run:
     input:
-        expand(pjoin(WD, "{n}", "alignments-{x}-augmented.k27.pkl"), n=SAMPLES.keys(), x=["1out", "full"]),
-        expand(pjoin(WD, "{n}", "alignments-{x}.pkl"), n=SAMPLES.keys(), x=["1out", "full"]),
+        expand(
+            pjoin(WD, "{n}", "alignments-{x}-augmented.k27.w{w}.pkl"),
+            n=SAMPLES.keys(),
+            x=["1out", "full"],
+            w=[2, 3, 5],
+        ),
+        expand(
+            pjoin(WD, "{n}", "alignments-{x}.pkl"),
+            n=SAMPLES.keys(),
+            x=["1out", "full"],
+        ),
+
 
 # ======================= #
 # === READ SIMULATION === #
@@ -56,19 +67,57 @@ rule get_sample_vcf:
         tabix -p vcf {output.vcf}
         """
 
-rule get_haplotype:
+
+# rule get_haplotype:
+#     input:
+#         fa=FA,
+#         vcf=rules.get_sample_vcf.output.vcf,
+#     output:
+#         fa=pjoin(WD, sample + ".hap{h}.fasta"),
+#     conda:
+#         "./envs/bcftools.yml"
+#     shell:
+#         """
+#         bcftools consensus -s {sample} -H {wildcards.h} --fasta-ref {input.fa} {input.vcf} > {output.fa}
+#         samtools faidx {output.fa}
+#         """
+
+
+rule vg_construct_sample:
     input:
         fa=FA,
         vcf=rules.get_sample_vcf.output.vcf,
     output:
-        fa=pjoin(WD, sample + ".hap{h}.fasta"),
+        vg=pjoin(WD, sample, "pangenome.vg"),
+    params:
+        prefix=pjoin(WD, sample, "pangenome"),
+    threads: workflow.cores
     conda:
-        "./envs/bcftools.yml"
+        "./envs/vg.yml"
     shell:
         """
-        bcftools consensus -s {sample} -H {wildcards.h} --fasta-ref {input.fa} {input.vcf} > {output.fa}
-        samtools faidx {output.fa}
+        vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max {L} --vcf {input.vcf} > {params.prefix}.walts.vg
+        vg gbwt --num-jobs {threads} --discard-overlaps --vcf-input {input.vcf} --xg-name {params.prefix}.walts.vg --output {params.prefix}.haplotypes.gbwt
+        vg paths --drop-paths --variant-paths -x {params.prefix}.walts.vg > {params.prefix}.ref.vg
+        vg paths --extract-gam --gbwt {params.prefix}.haplotypes.gbwt -x {params.prefix}.ref.vg > {params.prefix}.haplotypes.gam
+        vg augment --label-paths {params.prefix}.ref.vg {params.prefix}.haplotypes.gam > {output.vg}
         """
+
+
+rule get_haplotype:
+    input:
+        vg=rules.vg_construct_sample.output.vg,
+    output:
+        fa=pjoin(WD, sample + ".hap{h}.fasta"),
+    params:
+        h=lambda wildcards: int(wildcards.h) - 1,
+    conda:
+        "./envs/vg.yml"
+    shell:
+        """
+        vg paths --extract-fasta --xg {input.vg} --paths-by "{sample}#{params.h}" > {output.fa}
+        """
+
 
 rule pbsim3:
     input:
@@ -87,6 +136,7 @@ rule pbsim3:
         pbsim --prefix {params.oprefix} --strategy wgs --method sample --sample {input.fq} --depth {params.cov} --genome {input.fa}
         """
 
+
 rule combine:
     input:
         expand(pjoin(WD, "pbsim3", "hap{h}_0001.fastq"), h=[1, 2]),
@@ -99,9 +149,11 @@ rule combine:
         cat {params.oprefix}/*.fastq > {output.fq}
         """
 
+
 # ============================== #
 # === PANGENOME CONSTRUCTION === #
 # ============================== #
+
 
 rule get_fullvcf:
     input:
@@ -109,7 +161,7 @@ rule get_fullvcf:
     output:
         vcf=pjoin(WD, "{n}", "variations-full.vcf.gz"),
     params:
-        idxs = lambda wildcards: ",".join(SAMPLES[wildcards.n]) + "," + sample,
+        idxs=lambda wildcards: ",".join(SAMPLES[wildcards.n]) + "," + sample,
     conda:
         "./envs/bcftools.yml"
     shell:
@@ -119,38 +171,41 @@ rule get_fullvcf:
         tabix -p vcf {output.vcf}
         """
 
-# rule get_reducedvcf:
-#     input:
-#         vcf=VCF,
-#     output:
-#         vcf=pjoin(WD, "{n}", "variations-1out.vcf.gz"),
-#     params:
-#         idxs = lambda wildcards: ",".join(SAMPLES[wildcards.n]),
-#     conda:
-#         "./envs/bcftools.yml"
-#     shell:
-#         """
-#         bcftools view -Ou -s {params.idxs} {input.vcf} | bcftools view -Oz -c1 > {output.vcf}
-#         sleep 1
-#         tabix -p vcf {output.vcf}
-#         """
 
 rule get_reducedvcf:
     input:
-        vcf=pjoin(WD, "{n}", "variations-full.vcf.gz"),
-        vcf2=pjoin(WD, f"{sample}.vcf.gz"),
+        vcf=VCF,
     output:
         vcf=pjoin(WD, "{n}", "variations-1out.vcf.gz"),
     params:
-        idxs = lambda wildcards: ",".join(SAMPLES[wildcards.n]),
+        idxs=lambda wildcards: ",".join(SAMPLES[wildcards.n]),
     conda:
         "./envs/bcftools.yml"
     shell:
         """
-        python3 scripts/remove_sample.py {input.vcf} {input.vcf2} {sample} | bcftools view -Oz -s ^{sample} > {output.vcf}
+        bcftools view -Ou -s {params.idxs} {input.vcf} | bcftools view -Oz -c1 > {output.vcf}
         sleep 1
         tabix -p vcf {output.vcf}
         """
+
+
+# rule get_reducedvcf:
+#    input:
+#        vcf=pjoin(WD, "{n}", "variations-full.vcf.gz"),
+#        vcf2=pjoin(WD, f"{sample}.vcf.gz"),
+#    output:
+#        vcf=pjoin(WD, "{n}", "variations-1out.vcf.gz"),
+#    params:
+#        idxs = lambda wildcards: ",".join(SAMPLES[wildcards.n]),
+#    conda:
+#        "./envs/bcftools.yml"
+#    shell:
+#        """
+#        python3 scripts/remove_sample.py {input.vcf} {input.vcf2} {sample} | bcftools view -Oz -s ^{sample} > {output.vcf}
+#        sleep 1
+#        tabix -p vcf {output.vcf}
+#        """
+
 
 rule vg_construct:
     input:
@@ -166,6 +221,7 @@ rule vg_construct:
         vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max {L} --vcf {input.vcf} > {output.vg}
         """
 
+
 rule vg_droppaths:
     input:
         vg=rules.vg_construct.output.vg,
@@ -178,6 +234,7 @@ rule vg_droppaths:
         """
         vg paths --drop-paths --variant-paths -x {input.vg} > {output.vg}
         """
+
 
 rule vg_gbwt:
     input:
@@ -193,6 +250,7 @@ rule vg_gbwt:
         vg gbwt --num-jobs {threads} --discard-overlaps --vcf-input {input.vcf} --xg-name {input.vg} --output {output.gbwt}
         """
 
+
 rule vg_extractgam:
     input:
         gbwt=rules.vg_gbwt.output.gbwt,
@@ -206,6 +264,7 @@ rule vg_extractgam:
         """
         vg paths --extract-gam --gbwt {input.gbwt} -x {input.vg} > {output.gam}
         """
+
 
 rule vg_augment:
     input:
@@ -235,9 +294,11 @@ rule vg_view:
         vg view {input.vg} > {output.gfa}
         """
 
+
 # ============== #
 # === METHOD === #
 # ============== #
+
 
 rule remove_ns:
     input:
@@ -251,6 +312,7 @@ rule remove_ns:
         """
         python3 scripts/remove_n.py {input.fq} > {output.fq}
         """
+
 
 rule hifiasm:
     input:
@@ -268,6 +330,7 @@ rule hifiasm:
         """
         /usr/bin/time -vo {log.time} hifiasm -t{threads} --write-ec --bin-only {input.fq} -o {params.prefix}
         """
+
 
 rule get_paths:
     input:
@@ -295,6 +358,7 @@ rule index_paths:
         /usr/bin/time -vo {log.time} ../build/rb3-prefix/src/rb3/ropebwt3 build -m 2G -t {threads} -d {input.fa} > {output.fmd}
         """
 
+
 rule sketch:
     input:
         gfa=rules.vg_view.output.gfa,
@@ -302,7 +366,11 @@ rule sketch:
     output:
         skt=pjoin(WD, "{n}", "pangenome-{x}.k{k}.skt"),
     params:
-        nh = lambda wildcards: int(wildcards.n) * 2 + 1 if wildcards.x == "1out" else int(wildcards.n) * 2 + 2 + 1
+        nh=lambda wildcards: (
+            int(wildcards.n) * 2 + 1
+            if wildcards.x == "1out"
+            else int(wildcards.n) * 2 + 2 + 1
+        ),
     log:
         time=pjoin(WD, "{n}", "times", "sketch-{x}.k{k}.time"),
     threads: workflow.cores
@@ -310,6 +378,7 @@ rule sketch:
         """
         /usr/bin/time -vo {log.time} ../pansv sketch -g{params.nh} -k{wildcards.k} {input.gfa} {input.fmd} > {output.skt}
         """
+
 
 rule search:
     input:
@@ -327,6 +396,7 @@ rule search:
         /usr/bin/time -vo {log.time} ../pansv search -k{wildcards.k} {input.gfa} {input.skt} {input.fmd} {input.fa} > {output.txt}
         """
 
+
 rule call:
     input:
         gfa=rules.vg_view.output.gfa,
@@ -334,23 +404,24 @@ rule call:
         txt=rules.search.output.txt,
         fa=rules.hifiasm.output.fa,
     output:
-        gaf=pjoin(WD, "{n}", "specific-{x}.k{k}.gaf"),
+        gaf=pjoin(WD, "{n}", "specific-{x}.k{k}.w{w}.gaf"),
     log:
-        time=pjoin(WD, "{n}", "times", "call-{x}.k{k}.time"),
+        time=pjoin(WD, "{n}", "times", "call-{x}.k{k}.w{w}.time"),
     threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv call -k{wildcards.k} {input.gfa} {input.skt} {input.txt} {input.fa} > {output.gaf}
+        /usr/bin/time -vo {log.time} ../pansv call -w{wildcards.w} -k{wildcards.k} {input.gfa} {input.skt} {input.txt} {input.fa} > {output.gaf}
         """
+
 
 rule augment:
     input:
         gfa=rules.vg_view.output.gfa,
         gaf=rules.call.output.gaf,
     output:
-        gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.gfa"),
+        gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.w{w}.gfa"),
     log:
-        time=pjoin(WD, "{n}", "times", "augment-{x}.k{k}.time"),
+        time=pjoin(WD, "{n}", "times", "augment-{x}.k{k}.w{w}.time"),
     threads: workflow.cores / 2
     conda:
         "./envs/vg.yml"
@@ -358,6 +429,7 @@ rule augment:
         """
         vg augment --min-coverage 1 --gaf {input.gfa} {input.gaf} > {output.gfa}
         """
+
 
 # ================ #
 # === ANALYSIS === #
@@ -376,12 +448,13 @@ rule minigraph:
         minigraph -t{threads} -cx lr {input.gfa} {input.fq} > {output.gaf}
         """
 
+
 rule minigraph_augmented:
     input:
-        gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.gfa"),
+        gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.w{w}.gfa"),
         fq=rules.combine.output.fq,
     output:
-        gaf=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.gaf"),
+        gaf=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.w{w}.gaf"),
     threads: workflow.cores
     conda:
         "./envs/minigraph.yml"
@@ -389,6 +462,7 @@ rule minigraph_augmented:
         """
         minigraph -t{threads} -cx lr {input.gfa} {input.fq} > {output.gaf}
         """
+
 
 rule analyze:
     input:
@@ -401,12 +475,13 @@ rule analyze:
         python3 analyze.py {input.gfa} {input.gaf} -o {output.pkl}
         """
 
+
 rule analyze_augmented:
     input:
-        gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.gfa"),
-        gaf=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.gaf"),
+        gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.w{w}.gfa"),
+        gaf=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.w{w}.gaf"),
     output:
-        pkl=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.pkl"),
+        pkl=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.w{w}.pkl"),
     shell:
         """
         python3 analyze.py --augmented {input.gfa} {input.gaf} -o {output.pkl}
