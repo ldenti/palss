@@ -523,10 +523,20 @@ void gfa_parse_S(char *s, seg_t *ret) {
         ret->idx = atoi(q);
         // strcpy(ret->idx, q);
       } else if (i == 1) {
-        // TODO: reallocate if vertex is longer than 4096
-        // right now we assume to have a vg chopped graph
-        strcpy(ret->seq, q);
         ret->l = p - q;
+        if (ret->l > ret->c) {
+          char *temp = realloc(ret->seq, (ret->l * 2) * sizeof(char));
+          if (temp == NULL) {
+            free(ret->seq);
+            fprintf(stderr, "Error while reallocating memory for segment %d\n",
+                    ret->idx);
+            exit(2);
+          } else {
+            ret->seq = temp;
+          }
+          ret->c = ret->l * 2;
+        }
+        strcpy(ret->seq, q);
         // is_ok = 1, rest = c ? p + 1 : 0;
         break;
       }
