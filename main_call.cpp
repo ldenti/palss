@@ -129,6 +129,7 @@ vector<sfs_t> load_sfs(char *fn) {
 
   sfs_t s;
   while ((read = getline(&line, &len, fp)) != -1) {
+    assert(read < 2048);
     if (line[0] != 'O')
       continue;
     s = parse_sfs_line(line + 2);
@@ -136,6 +137,7 @@ vector<sfs_t> load_sfs(char *fn) {
       SS.push_back(s);
   }
   fclose(fp);
+  free(line);
   return SS;
 }
 
@@ -446,7 +448,8 @@ int main_call(int argc, char *argv[]) {
       }
       s->good = s->a.seq == s->esk && s->b.seq == s->eek;
 
-      // we are setting the seq for all specific strings, even not good ones
+      // XXX: we are setting the seq for all specific strings, even not good
+      // ones if (s->good) {
       s->seq = (uint8_t *)malloc((s->l + 1) * sizeof(uint8_t));
       memcpy(s->seq, seq->seq.s + s->s, s->l);
       s->seq[s->l] = '\0';
@@ -454,6 +457,7 @@ int main_call(int argc, char *argv[]) {
       // diploid mode
       for (int i = 0; i < s->l; ++i)
         --s->seq[i];
+      // }
 
       if (bed_f != NULL) {
         p1 = sk_get(sketch, s->esk);
@@ -663,7 +667,7 @@ int main_call(int argc, char *argv[]) {
 
           PPSEQ_IDX = ppseq_idx;
           score = ez.score;
-          if (ez.n_cigar > m_cigar) {
+          if (ez.m_cigar > m_cigar) {
             cigar = (uint32_t *)realloc(cigar, ez.m_cigar * sizeof(uint32_t));
             m_cigar = ez.m_cigar;
             // TODO: check reallocation
@@ -797,18 +801,23 @@ int main_call(int argc, char *argv[]) {
                decode(PPSEQ + offa, plen - pprefix - offa, 1).c_str());
 
         free(cs);
+        free(PPSEQ);
+        free(cigar);
       }
     }
     for (pair<path_t *, string> collp : collapsed_subpaths) {
       destroy_path(collp.first);
     }
   }
-  // fprintf(stderr, "[M::%s] called %d variations in %.3f sec\n", __func__,
-  // vuidx,
-  //         realtime() - rt);
-  // rt = realtime();
-  // ---
+  fprintf(stderr, "[M::%s] analyzed %d clusters (%d left) in %.3f sec\n",
+          __func__, cc_idx, sc_n - cc_idx, realtime() - rt1);
 
+  // ---
+  for (sfs_t &ss : SS) {
+    free(ss.rname);
+    // if (ss.good)
+    free(ss.seq);
+  }
   // Cleaning up
   if (bed_f != NULL)
     fclose(bed_f);

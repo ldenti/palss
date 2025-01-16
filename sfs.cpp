@@ -60,11 +60,11 @@ sfs_t parse_sfs_line(char *line) {
       } else if (i == 4) {
         s.strand = atoi(q);
       } else if (i == 6) {
-        s.seq = (uint8_t *)malloc(s.l + 1);
-        memcpy(s.seq, q, s.l);
-        s.seq[s.l] = '\0';
-        for (int _i = 0; _i < s.l; ++_i)
-          s.seq[_i] = s.seq[_i] < 128 ? to_int[s.seq[_i]] : 5;
+        // s.seq = (uint8_t *)malloc(s.l + 1);
+        // memcpy(s.seq, q, s.l);
+        // s.seq[s.l] = '\0';
+        // for (int _i = 0; _i < s.l; ++_i)
+        //   s.seq[_i] = s.seq[_i] < 128 ? to_int[s.seq[_i]] : 5;
       } else if (i == 7) {
         s.a = parse_anchor(q);
         s.a.p = s.s;
