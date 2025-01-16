@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <assert.h>
 #include <bit>
 #include <iostream>
@@ -6,7 +7,6 @@
 #include <string>
 #include <vector>
 #include <zlib.h>
-#include <algorithm>
 
 #include "abpoa.h"
 #include "fm-index.h"
@@ -184,7 +184,7 @@ vector<vector<sfs_t *>> split_by_len(cluster_t &cluster, float lr) {
 
 int main_call(int argc, char *argv[]) {
   double rt0 = realtime();
-  double rt = rt0, rt1, rt2;
+  double rt = rt0, rt1;
 
   int klen = 27;       // kmer size
   int min_w = 2;       // minimum support for cluster
@@ -520,13 +520,12 @@ int main_call(int argc, char *argv[]) {
   char *cigar_s = (char *)malloc(16384 * sizeof(char)); // FIXME: hardcoded
   int cp, cc_idx = 0;
   for (auto &cc : Cs) {
-    ++cc_idx;
-
-    // if (cc_idx != 7915)
-    //   continue;
-
     if (cc.specifics.empty())
       continue;
+
+    ++cc_idx;
+    // if (cc_idx != 7915)
+    //   continue;
     if (cc_idx % 5000 == 0) {
       fprintf(stderr, "[M::%s] analyzed %d clusters (%d left) in %.3f sec\n",
               __func__, cc_idx, sc_n - cc_idx, realtime() - rt1);
@@ -535,6 +534,7 @@ int main_call(int argc, char *argv[]) {
 
     int va = cc.va, vb = cc.vb;
     int offa = cc.offa, offb = cc.offb;
+
     // if (vb - va > 100)
     //   continue;
     if (verbose)
@@ -576,8 +576,8 @@ int main_call(int argc, char *argv[]) {
       }
     }
     if (path == NULL) {
-      if (verbose)
-        fprintf(stderr, "No path for cluster %d (%d>%d)\n", cc_idx, va, vb);
+      // if (verbose)
+      fprintf(stderr, "No path for cluster %d (%d>%d)\n", cc_idx, va, vb);
       continue;
     }
 
@@ -630,6 +630,7 @@ int main_call(int argc, char *argv[]) {
         int PPSEQ_IDX = -1;
 
         int ppseq_idx = PPSEQ_IDX;
+
         for (pair<path_t *, string> collp : collapsed_subpaths) {
           ++ppseq_idx;
           path = collp.first;
@@ -686,14 +687,12 @@ int main_call(int argc, char *argv[]) {
 
           free(ez.cigar);
         }
+
         int clipped = 0;
         if ((cigar[0] & 0xf) != 0 || (cigar[n_cigar - 1] & 0xf) != 0) {
           clipped = 1;
           // continue; // if we do not want these alignments
         }
-
-        // printf("%s\n", decode(cons, cons_l, 1).c_str());
-        // printf("%s\n", decode(PPSEQ, pseq_l, 1).c_str());
 
         // OUTPUT
         int opl;
@@ -736,9 +735,10 @@ int main_call(int argc, char *argv[]) {
                   tot_res_matches += l_tmp;
                   l_tmp = 0;
                 }
-                cs_p += sprintf(cs + cs_p, "*%c%c", PPSEQ[pseq_p + j] <= 3 ? "ACGT"[PPSEQ[pseq_p + j]] : 'N',
-                                cons[cons_p + j] <= 3 ? "ACGT"[cons[cons_p + j]]
-                                                      : 'N');
+                cs_p += sprintf(
+                    cs + cs_p, "*%c%c",
+                    PPSEQ[pseq_p + j] <= 3 ? "ACGT"[PPSEQ[pseq_p + j]] : 'N',
+                    cons[cons_p + j] <= 3 ? "ACGT"[cons[cons_p + j]] : 'N');
               } else
                 ++l_tmp;
             }
