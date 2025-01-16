@@ -22,6 +22,8 @@ def main():
             v = ":".join(v.split(":")[:-1])
             print(f"Skipping {v}", file=sys.stderr)
             continue
+        record.ref = record.ref.upper()
+        record.alts = (x.upper() for x in record.alts)
         print(record, end="")
         kept.add(v)
 
