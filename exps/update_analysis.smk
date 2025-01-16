@@ -42,7 +42,7 @@ rule run:
             pjoin(WD, "{n}", "alignments-{x}-augmented.k27.w{w}.pkl"),
             n=SAMPLES.keys(),
             x=["1out", "full"],
-            w=[2, 3, 5],
+            w=[2], # , 3, 5],
         ),
         expand(
             pjoin(WD, "{n}", "alignments-{x}.pkl"),
@@ -64,6 +64,7 @@ rule get_sample_vcf:
     shell:
         """
         bcftools view -s {sample} {input.vcf} | bcftools view -c 1 -Oz > {output.vcf}
+        sleep 3
         tabix -p vcf {output.vcf}
         """
 
@@ -100,7 +101,7 @@ rule vg_construct_sample:
         vg gbwt --num-jobs {threads} --discard-overlaps --vcf-input {input.vcf} --xg-name {params.prefix}.walts.vg --output {params.prefix}.haplotypes.gbwt
         vg paths --drop-paths --variant-paths -x {params.prefix}.walts.vg > {params.prefix}.ref.vg
         vg paths --extract-gam --gbwt {params.prefix}.haplotypes.gbwt -x {params.prefix}.ref.vg > {params.prefix}.haplotypes.gam
-        vg augment --label-paths {params.prefix}.ref.vg {params.prefix}.haplotypes.gam > {output.vg}
+        vg augment --label-paths {params.prefix}.ref.vg {params.prefix}.haplotypes.gam | vg mod --remove-non-path - > {output.vg}
         """
 
 
@@ -167,7 +168,7 @@ rule get_fullvcf:
     shell:
         """
         bcftools view -Ou -s {params.idxs} {input.vcf} | bcftools view -Oz -c1 > {output.vcf}
-        sleep 1
+        sleep 3
         tabix -p vcf {output.vcf}
         """
 
@@ -184,7 +185,7 @@ rule get_reducedvcf:
     shell:
         """
         bcftools view -Ou -s {params.idxs} {input.vcf} | bcftools view -Oz -c1 > {output.vcf}
-        sleep 1
+        sleep 3
         tabix -p vcf {output.vcf}
         """
 
@@ -277,7 +278,7 @@ rule vg_augment:
         "./envs/vg.yml"
     shell:
         """
-        vg augment --label-paths {input.vg} {input.gam} > {output.vg}
+        vg augment --label-paths {input.vg} {input.gam} | vg mod --remove-non-path - > {output.vg}
         """
 
 
@@ -373,10 +374,11 @@ rule sketch:
         ),
     log:
         time=pjoin(WD, "{n}", "times", "sketch-{x}.k{k}.time"),
+        log=pjoin(WD, "{n}", "logs", "sketch-{x}.k{k}.log"),
     threads: workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv sketch -g{params.nh} -k{wildcards.k} {input.gfa} {input.fmd} > {output.skt}
+        /usr/bin/time -vo {log.time} ../pansv sketch -g{params.nh} -k{wildcards.k} {input.gfa} {input.fmd} > {output.skt} 2> {log.log}
         """
 
 
@@ -390,10 +392,11 @@ rule search:
         txt=pjoin(WD, "{n}", "specific-{x}.k{k}.txt"),
     log:
         time=pjoin(WD, "{n}", "times", "search-{x}.k{k}.time"),
+        log=pjoin(WD, "{n}", "logs", "search-{x}.k{k}.log"),
     threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv search -k{wildcards.k} {input.gfa} {input.skt} {input.fmd} {input.fa} > {output.txt}
+        /usr/bin/time -vo {log.time} ../pansv search -k{wildcards.k} {input.gfa} {input.skt} {input.fmd} {input.fa} > {output.txt} 2> {log.log}
         """
 
 
@@ -407,10 +410,11 @@ rule call:
         gaf=pjoin(WD, "{n}", "specific-{x}.k{k}.w{w}.gaf"),
     log:
         time=pjoin(WD, "{n}", "times", "call-{x}.k{k}.w{w}.time"),
+        log=pjoin(WD, "{n}", "logs", "call-{x}.k{k}.w{w}.log"),
     threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv call -w{wildcards.w} -k{wildcards.k} {input.gfa} {input.skt} {input.txt} {input.fa} > {output.gaf}
+        /usr/bin/time -vo {log.time} ../pansv call -w{wildcards.w} -k{wildcards.k} {input.gfa} {input.skt} {input.txt} {input.fa} > {output.gaf} 2> {log.log}
         """
 
 
@@ -472,7 +476,7 @@ rule analyze:
         pkl=pjoin(WD, "{n}", "alignments-{x}.pkl"),
     shell:
         """
-        python3 analyze.py {input.gfa} {input.gaf} -o {output.pkl}
+        python3 scripts/analyze.py {input.gfa} {input.gaf} -o {output.pkl}
         """
 
 
@@ -484,5 +488,5 @@ rule analyze_augmented:
         pkl=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.w{w}.pkl"),
     shell:
         """
-        python3 analyze.py --augmented {input.gfa} {input.gaf} -o {output.pkl}
+        python3 scripts/analyze.py {input.gfa} {input.gaf} -o {output.pkl}
         """
