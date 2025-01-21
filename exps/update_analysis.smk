@@ -134,7 +134,7 @@ rule pbsim3:
         "./envs/pbsim3.yml"
     shell:
         """
-        pbsim --prefix {params.oprefix} --strategy wgs --method sample --sample {input.fq} --depth {params.cov} --genome {input.fa}
+        pbsim --id-prefix "S{wildcards.h}_" --prefix {params.oprefix} --strategy wgs --method sample --sample {input.fq} --depth {params.cov} --genome {input.fa}
         """
 
 
