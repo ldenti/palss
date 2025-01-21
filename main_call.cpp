@@ -813,11 +813,12 @@ int main_call(int argc, char *argv[]) {
           __func__, cc_idx, sc_n - cc_idx, realtime() - rt1);
 
   // ---
-  for (sfs_t &ss : SS) {
-    free(ss.rname);
-    // if (ss.good)
-    free(ss.seq);
-  }
+  //for (sfs_t &ss : SS) {
+  //  free(ss.rname);
+  //  // if (ss.good)
+  //  free(ss.seq);
+  // }
+
   // Cleaning up
   if (bed_f != NULL)
     fclose(bed_f);
