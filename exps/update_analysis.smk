@@ -2,13 +2,13 @@ from os.path import join as pjoin
 import gzip
 import random
 
-seed = 23
+seed = 42
 random.seed(seed)
 K = 27  # kmer size
 L = 512  # max vertex size
 coverage = 7.5  # coverage per haplotype
 
-Ns = [1, 2]  # , 4] # , 8, 16, 32]
+Ns = [1, 2, 4, 8, 16, 32]
 
 FA = config["fa"]
 VCF = config["vcf"]
@@ -64,7 +64,7 @@ rule get_sample_vcf:
     shell:
         """
         bcftools view -s {sample} {input.vcf} | bcftools view -c 1 -Oz > {output.vcf}
-        sleep 3
+        sleep 5
         tabix -p vcf {output.vcf}
         """
 
@@ -92,7 +92,7 @@ rule vg_construct_sample:
         vg=pjoin(WD, sample, "pangenome.vg"),
     params:
         prefix=pjoin(WD, sample, "pangenome"),
-    threads: workflow.cores
+    threads: workflow.cores / 2
     conda:
         "./envs/vg.yml"
     shell:
@@ -185,7 +185,7 @@ rule get_reducedvcf:
     shell:
         """
         bcftools view -Ou -s {params.idxs} {input.vcf} | bcftools view -Oz -c1 > {output.vcf}
-        sleep 3
+        sleep 5
         tabix -p vcf {output.vcf}
         """
 
@@ -214,7 +214,7 @@ rule vg_construct:
         vcf=pjoin(WD, "{n}", "variations-{x}.vcf.gz"),
     output:
         vg=pjoin(WD, "{n}", "vg-{x}", "pangenome.walts.vg"),
-    threads: workflow.cores
+    threads: workflow.cores / 2
     conda:
         "./envs/vg.yml"
     shell:
@@ -228,7 +228,7 @@ rule vg_droppaths:
         vg=rules.vg_construct.output.vg,
     output:
         vg=pjoin(WD, "{n}", "vg-{x}", "pangenome.ref.vg"),
-    threads: workflow.cores / 4
+    threads: workflow.cores / 2
     conda:
         "./envs/vg.yml"
     shell:
@@ -306,7 +306,7 @@ rule remove_ns:
         fq=rules.combine.output.fq,
     output:
         fq=pjoin(WD, sample + ".clean.fq"),
-    threads: workflow.cores / 2
+    threads: workflow.cores / 4
     conda:
         "./envs/biopython.yml"
     shell:
@@ -338,6 +338,7 @@ rule get_paths:
         vg=pjoin(WD, "{n}", "pangenome-{x}.vg"),
     output:
         fa=pjoin(WD, "{n}", "pangenome-{x}.paths.fa"),
+    threads: workflow.cores / 2
     conda:
         "./envs/vg.yml"
     shell:
@@ -353,10 +354,10 @@ rule index_paths:
         fmd=pjoin(WD, "{n}", "pangenome-{x}.paths.fa.fmd"),
     log:
         time=pjoin(WD, "{n}", "times", "ropebwt3-{x}.time"),
-    threads: workflow.cores
+    threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} ../build/rb3-prefix/src/rb3/ropebwt3 build -m 2G -t {threads} -d {input.fa} > {output.fmd}
+        /usr/bin/time -vo {log.time} ../build/rb3-prefix/src/rb3/ropebwt3 build -m 3G -t {threads} -d {input.fa} -o {output.fmd}
         """
 
 
@@ -375,10 +376,10 @@ rule sketch:
     log:
         time=pjoin(WD, "{n}", "times", "sketch-{x}.k{k}.time"),
         log=pjoin(WD, "{n}", "logs", "sketch-{x}.k{k}.log"),
-    threads: workflow.cores
+    threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv sketch -g{params.nh} -k{wildcards.k} {input.gfa} {input.fmd} > {output.skt} 2> {log.log}
+        /usr/bin/time -vo {log.time} ../pansv sketch -g{params.nh} -k{wildcards.k} -v25000 {input.gfa} {input.fmd} > {output.skt} 2> {log.log}
         """
 
 
@@ -444,7 +445,7 @@ rule minigraph:
         fq=rules.combine.output.fq,
     output:
         gaf=pjoin(WD, "{n}", "alignments-{x}.gaf"),
-    threads: workflow.cores
+    threads: workflow.cores / 2
     conda:
         "./envs/minigraph.yml"
     shell:
@@ -459,7 +460,7 @@ rule minigraph_augmented:
         fq=rules.combine.output.fq,
     output:
         gaf=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.w{w}.gaf"),
-    threads: workflow.cores
+    threads: workflow.cores / 2
     conda:
         "./envs/minigraph.yml"
     shell:

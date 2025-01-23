@@ -10,7 +10,7 @@ WD = config["wd"]
 
 nths = workflow.cores
 
-Ns = [2]  # [1, 2]  # , 4] # , 8, 16, 32]
+Ns = [16]  # [1, 2]  # , 4] # , 8, 16, 32]
 Ks = [27]  # [23, 27, 31]
 
 SAMPLES = {}
@@ -62,11 +62,13 @@ rule vg_construct:
     output:
         vg=pjoin(WD, "{n}", "vg", "pangenome.walts.vg"),
     threads: workflow.cores
+    log:
+        time=pjoin(WD, "times", "{n}", "vg-construct.time"),
     conda:
         "./envs/vg.yml"
     shell:
         """
-        vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max 512 --vcf {input.vcf} > {output.vg}
+        /usr/bin/time -vo {log.time} vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max 512 --vcf {input.vcf} > {output.vg}
         """
 
 
@@ -75,12 +77,14 @@ rule vg_droppaths:
         vg=rules.vg_construct.output.vg,
     output:
         vg=pjoin(WD, "{n}", "vg", "pangenome.ref.vg"),
-    threads: workflow.cores / 2
+    threads: workflow.cores
+    log:
+        time=pjoin(WD, "times", "{n}", "vg-drop.time"),
     conda:
         "./envs/vg.yml"
     shell:
         """
-        vg paths --drop-paths --variant-paths -x {input.vg} > {output.vg}
+        /usr/bin/time -vo {log.time} vg paths --drop-paths --variant-paths -x {input.vg} > {output.vg}
         """
 
 
@@ -91,11 +95,13 @@ rule vg_gbwt:
     output:
         gbwt=pjoin(WD, "{n}", "vg", "haplotypes.gbwt"),
     threads: workflow.cores
+    log:
+        time=pjoin(WD, "times", "{n}", "vg-gbwt.time"),
     conda:
         "./envs/vg.yml"
     shell:
         """
-        vg gbwt --num-jobs {threads} --discard-overlaps --vcf-input {input.vcf} --xg-name {input.vg} --output {output.gbwt}
+        /usr/bin/time -vo {log.time} vg gbwt --num-jobs {threads} --discard-overlaps --vcf-input {input.vcf} --xg-name {input.vg} --output {output.gbwt}
         """
 
 
@@ -105,12 +111,14 @@ rule vg_extractgam:
         vg=rules.vg_droppaths.output.vg,
     output:
         gam=pjoin(WD, "{n}", "vg", "haplotypes.gam"),
-    threads: workflow.cores / 2
+    threads: workflow.cores
+    log:
+        time=pjoin(WD, "times", "{n}", "vg-extract.time"),
     conda:
         "./envs/vg.yml"
     shell:
         """
-        vg paths --extract-gam --gbwt {input.gbwt} -x {input.vg} > {output.gam}
+        /usr/bin/time -vo {log.time} vg paths --extract-gam --gbwt {input.gbwt} -x {input.vg} > {output.gam}
         """
 
 
@@ -120,12 +128,14 @@ rule vg_augment:
         gam=rules.vg_extractgam.output.gam,
     output:
         vg=pjoin(WD, "{n}", "pangenome.vg"),
-    threads: workflow.cores / 2
+    threads: workflow.cores
+    log:
+        time=pjoin(WD, "times", "{n}", "vg-augment.time"),
     conda:
         "./envs/vg.yml"
     shell:
         """
-        vg augment --label-paths {input.vg} {input.gam} | vg mod --remove-non-path - > {output.vg}
+        /usr/bin/time -vo {log.time} vg augment --label-paths {input.vg} {input.gam} | vg mod --remove-non-path - > {output.vg}
         """
 
 
@@ -135,11 +145,13 @@ rule vg_view:
     output:
         gfa=pjoin(WD, "{n}", "pangenome.gfa"),
     threads: 1
+    log:
+        time=pjoin(WD, "times", "{n}", "vg-view.time"),
     conda:
         "./envs/vg.yml"
     shell:
         """
-        vg view {input.vg} > {output.gfa}
+        /usr/bin/time -vo {log.time} vg view {input.vg} > {output.gfa}
         """
 
 
@@ -148,9 +160,11 @@ rule get_paths:
         gfa=rules.vg_view.output.gfa,
     output:
         fa=pjoin(WD, "{n}", "paths.fa"),
+    log:
+        time=pjoin(WD, "times", "{n}", "get_paths.time"),
     shell:
         """
-        vg paths --extract-fasta --xg {input.gfa} > {output.fa}
+        /usr/bin/time -vo {log.time} vg paths --extract-fasta --xg {input.gfa} > {output.fa}
         """
 
 
@@ -164,7 +178,7 @@ rule rb3_index:
     threads: workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../build/rb3-prefix/src/rb3/ropebwt3 build -m 2G -t {threads} -d {input.fa} > {output.fmd}
+        /usr/bin/time -vo {log.time} ../build/rb3-prefix/src/rb3/ropebwt3 build -t {threads} -d {input.fa} > {output.fmd}
         """
 
 
@@ -213,8 +227,6 @@ rule kan_ref:
 #         """
 #         python3 ../scripts/kan_hist.py {input.bed} {input.fai} -o {params.prefix}
 #         """
-
-
 # rule kan_reads:
 #     input:
 #         skt=rules.sketch.output.skt,
