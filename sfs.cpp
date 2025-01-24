@@ -1,5 +1,19 @@
 #include "sfs.h"
 
+sfs_t *init_sfs() {
+  sfs_t *s = (sfs_t *)malloc(sizeof(sfs_t));
+  s->rname = (char *)malloc(128 * sizeof(char));
+  s->seq = NULL;
+  return s;
+}
+
+void destroy_sfs(sfs_t *s) {
+  free(s->rname);
+  if (s->seq != NULL)
+    free(s->seq);
+  free(s);
+}
+
 anchor_t parse_anchor(char *line) {
   anchor_t a;
   int i;
@@ -29,8 +43,7 @@ anchor_t parse_anchor(char *line) {
   return a;
 }
 
-sfs_t parse_sfs_line(char *line) {
-  sfs_t s;
+void parse_sfs_line(char *line, sfs_t *s) {
   int i;
   char *p, *q;
   for (i = 0, p = q = line;; ++p) {
@@ -48,17 +61,16 @@ sfs_t parse_sfs_line(char *line) {
          8: right anchor
        */
       if (i == 0) {
-        s.qidx = atoi(q);
+        s->qidx = atoi(q);
       } else if (i == 1) {
-        s.rname = (char *)malloc(p - q + 1);
-        strncpy(s.rname, q, p - q);
-        s.rname[p - q] = '\0';
+        strncpy(s->rname, q, p - q);
+        s->rname[p - q] = '\0';
       } else if (i == 2) {
-        s.s = atoi(q);
+        s->s = atoi(q);
       } else if (i == 3) {
-        s.l = atoi(q);
+        s->l = atoi(q);
       } else if (i == 4) {
-        s.strand = atoi(q);
+        s->strand = atoi(q);
       } else if (i == 6) {
         // s.seq = (uint8_t *)malloc(s.l + 1);
         // memcpy(s.seq, q, s.l);
@@ -66,11 +78,11 @@ sfs_t parse_sfs_line(char *line) {
         // for (int _i = 0; _i < s.l; ++_i)
         //   s.seq[_i] = s.seq[_i] < 128 ? to_int[s.seq[_i]] : 5;
       } else if (i == 7) {
-        s.a = parse_anchor(q);
-        s.a.p = s.s;
+        s->a = parse_anchor(q);
+        s->a.p = s->s;
       } else if (i == 8) {
-        s.b = parse_anchor(q);
-        s.b.p = s.s;
+        s->b = parse_anchor(q);
+        s->b.p = s->s;
       }
       ++i;
       q = p + 1;
@@ -78,5 +90,4 @@ sfs_t parse_sfs_line(char *line) {
         break;
     }
   }
-  return s;
 }

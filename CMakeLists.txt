@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PANSV VERSION 1.0.0)
-add_executable(pansv sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main_map.cpp main.cpp)
+add_executable(pansv sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main.cpp) # main_map.cpp
 set_target_properties(pansv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(pansv PRIVATE) # -Wall -Wextra -Wpedantic -Werror)
 
@@ -55,7 +55,7 @@ add_dependencies(RB3 rb3)
 SET(PATCH_CMD "")
 ExternalProject_Add(abpoa
   GIT_REPOSITORY https://github.com/yangao07/abPOA.git
-  GIT_TAG fee63aeab633a050baecbfe65b77595e25364907 # v1.5.3 with bug fixes
+  GIT_TAG e6bb6fdfa40d573558e5e2b545bdf5769631eaaf # v1.5.3 with bug fixes
   PATCH_COMMAND ${PATCH_CMD}
   INSTALL_COMMAND ""
 )

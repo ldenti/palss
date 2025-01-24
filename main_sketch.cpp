@@ -59,7 +59,9 @@ void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int nh,
     rb3_char2nt6(klen, s);
     hits = search(fmd, s, klen);
     assert(hits > 0);
-    sk_add(sketches[i], ckmer_d, seg->idx, 0, hits <= nh);
+    if (hits <= nh)
+      // TODO: keep track of number of skipped anchors
+      sk_add(sketches[i], ckmer_d, seg->idx, 0, hits <= nh);
 
     for (p = klen; p < seg->l; ++p) {
       c = to_int[seg->seq[p]] - 1; // A is 1 but it should be 0
@@ -72,7 +74,9 @@ void run_sketching(seg_t **segs, int ns, uint8_t klen, rb3_fmi_t *fmd, int nh,
       rb3_char2nt6(klen, s);
       hits = search(fmd, s, klen);
       assert(hits >= 0);
-      sk_add(sketches[i], ckmer_d, seg->idx, p - klen + 1, hits <= nh);
+      // TODO: keep track of number of skipped anchors
+      if (hits <= nh)
+        sk_add(sketches[i], ckmer_d, seg->idx, p - klen + 1, hits <= nh);
     }
     free(kmer);
   }

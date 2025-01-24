@@ -1,4 +1,4 @@
-# panSSV
+# PAL
 
 ``` sh
 # Compile
@@ -19,28 +19,23 @@ vg paths -F -x example/reference.gfa > example/reference.paths.fa
 # search for specific strings
 ./pansv search -k27 example/reference.gfa example/reference-k27.skt example/reference.paths.fa.fmd example/reads.fa > example/sfs.txt
 
-# call de-novo structural variations
-./pansv call example/reference.gfa example/sfs.txt
-# build VCF from calls against a path of the graph (assuming bcftools to be in $PATH)
-python3 scripts/format_vcf.py example/reference.gfa example/calls.txt | bcftools sort > example/calls.vcf
+# analyze specific strings
+./pansv call -k27 example/reference.gfa example/reference-k27.skt example/sfs2.txt example/reads.fa > example/new_portions.gaf
+
+# augment the graph
+vg augment --gaf --label-paths example/reference.gfa example/new_portions.gaf > example/reference-augmented.gfa
 
 # convert specific strings to fasta
-python3 scripts/convert.py example/reads.fa example/sfs.txt > example/sfs.fa
+# python3 scripts/convert.py example/reads.fa example/sfs.txt > example/sfs.fa
 # place anchored specific strings onto path (-p)
-./pansv map -p 19 example/reference.gfa example/reference-k27.skt example/sfs.fa | samtools view -bS | samtools sort > example/sfs.bam
-samtools index example/sfs.bam
+# ./pansv map -p 19 example/reference.gfa example/reference-k27.skt example/sfs.fa | samtools view -bS | samtools sort > example/sfs.bam
+# samtools index example/sfs.bam
 ```
 
-To analyze unique kmers in the pangenomes wrt any fasta file:
+To analyze solid anchors in a pangenome wrt any fastx file:
 ``` sh
-./pansv kan example/reference-k27.skt example/reference.paths.fa > example/reference.paths.anchors.bed
-python3 scripts/kan_hist.py example/reference.paths.anchors.bed example/reference.paths.fa.fai
-```
-
-To analyze unique kmers in a read sample:
-``` sh
-./pansv chreads example/reference-k27.skt example/reads.fa > example/reads.fa.nuk
-python3 scripts/ran_hist.py example/reads.fa.nuk
+./pansv kan [.skt] [.fx] > [.bed]
+# python3 exps/scripts/kan_hist.py example/reference.paths.anchors.bed example/reference.paths.fa.fai
 ```
 
 ### TODO

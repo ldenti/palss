@@ -28,7 +28,9 @@ typedef struct sfs_t {
   uint8_t *seq; // sequence
 } sfs_t;
 
+sfs_t *init_sfs();
+void destroy_sfs(sfs_t *s);
 anchor_t parse_anchor(char *line);
-sfs_t parse_sfs_line(char *line);
+void parse_sfs_line(char *line, sfs_t *s);
 
 #endif

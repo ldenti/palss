@@ -34,36 +34,36 @@ __KSEQ_READ(static)
 using namespace std;
 
 /* Add specific string s to cluster c and update its anchors */
-void cl_insert(cluster_t &c, const sfs_t &s) {
+void cl_insert(cluster_t &c, sfs_t *s) {
   c.specifics.push_back(s);
-  if (c.va == -1 || s.a.v < c.va) {
-    c.va = s.a.v;
-    c.offa = s.a.offset;
-    c.ka = s.a.seq;
+  if (c.va == -1 || s->a.v < c.va) {
+    c.va = s->a.v;
+    c.offa = s->a.offset;
+    c.ka = s->a.seq;
   }
-  if (c.vb == -1 || s.b.v >= c.vb) {
-    if (s.b.v == c.vb) {
-      if (s.b.offset > c.offb) {
-        c.offb = s.b.offset;
-        c.kb = s.b.seq;
+  if (c.vb == -1 || s->b.v >= c.vb) {
+    if (s->b.v == c.vb) {
+      if (s->b.offset > c.offb) {
+        c.offb = s->b.offset;
+        c.kb = s->b.seq;
       }
     } else {
-      c.vb = s.b.v;
-      c.offb = s.b.offset;
-      c.kb = s.b.seq;
+      c.vb = s->b.v;
+      c.offb = s->b.offset;
+      c.kb = s->b.seq;
     }
   }
 }
 
 /* Sweep line clustering of specific strings based on their anchors. Assuming
  * topological ordering of vertices */
-vector<cluster_t> cluster(const vector<sfs_t> SS, int klen) {
+vector<cluster_t> cluster(const vector<sfs_t *> SS, int klen) {
   vector<cluster_t> clusters(1);
   cl_insert(clusters.back(), SS[0]);
   for (int i = 1; i < SS.size(); ++i) {
-    if (SS[i].a.v > clusters.back().vb ||
-        (SS[i].a.v == clusters.back().vb &&
-         SS[i].a.offset >= clusters.back().offb + klen)) {
+    if (SS[i]->a.v > clusters.back().vb ||
+        (SS[i]->a.v == clusters.back().vb &&
+         SS[i]->a.offset >= clusters.back().offb + klen)) {
       // no overlap, so new cluster
       clusters.push_back({});
     }
@@ -73,41 +73,43 @@ vector<cluster_t> cluster(const vector<sfs_t> SS, int klen) {
 }
 
 int merge(cluster_t &C) {
-  vector<sfs_t> newC;
-  map<int, vector<sfs_t>> byread;
-  for (const sfs_t &s : C.specifics)
-    byread[s.qidx].push_back(s);
+  vector<sfs_t *> newC;
+  map<int, vector<sfs_t *>> byread;
+  for (sfs_t *s : C.specifics)
+    byread[s->qidx].push_back(s);
 
   int skipped = 0;
+  sfs_t *s;
   for (const auto &c : byread) {
     int mins = 100000, maxe = 0; // FIXME: assuming HiFi
     int first = -1, last = -1;
     for (int i = 0; i < c.second.size(); ++i) {
-      /*printf("%d\t%d.%d %d:%d %d:%d\n", c.first, c.second[i].s, c.second[i].l,
-       * c.second[i].a.v, c.second[i].a.offset, c.second[i].b.v,
-       * c.second[i].b.offset);*/
-      if (c.second[i].s < mins) {
-        mins = c.second[i].s;
+      if (c.second[i]->s < mins) {
+        mins = c.second[i]->s;
         first = i;
       }
-      if (c.second[i].s + c.second[i].l > maxe) {
-        maxe = c.second[i].s + c.second[i].l;
+      if (c.second[i]->s + c.second[i]->l > maxe) {
+        maxe = c.second[i]->s + c.second[i]->l;
         last = i;
       }
     }
     if (first == -1 || last == -1) {
       exit(1);
     }
-    /*printf("%d %d\n\n", first, last);*/
+    if (c.second[first]->a.v < c.second[last]->b.v ||
+        (c.second[first]->a.v == c.second[last]->b.v &&
+         c.second[first]->a.offset < c.second[last]->b.offset)) {
 
-    if (c.second[first].a.v < c.second[last].b.v ||
-        (c.second[first].a.v == c.second[last].b.v &&
-         c.second[first].a.offset < c.second[last].b.offset))
-      newC.push_back({c.first, c.second[first].s,
-                      c.second[last].s + c.second[last].l - c.second[first].s,
-                      c.second[first].a, c.second[last].b,
-                      c.second[first].strand});
-    else {
+      s = init_sfs();
+      s->qidx = c.first;
+      s->s = c.second[first]->s;
+      s->l = c.second[last]->s + c.second[last]->l - c.second[first]->s;
+      s->a = c.second[first]->a;
+      s->b = c.second[last]->b;
+      s->strand = c.second[first]->strand;
+      newC.push_back(s);
+
+    } else {
       // TODO
       ++skipped;
     }
@@ -116,8 +118,8 @@ int merge(cluster_t &C) {
   return skipped;
 }
 
-vector<sfs_t> load_sfs(char *fn) {
-  vector<sfs_t> SS;
+vector<sfs_t *> load_sfs(char *fn) {
+  vector<sfs_t *> SS;
   FILE *fp;
   char *line = NULL;
   size_t len = 0;
@@ -127,14 +129,16 @@ vector<sfs_t> load_sfs(char *fn) {
   if (fp == NULL)
     exit(EXIT_FAILURE);
 
-  sfs_t s;
+  sfs_t *s;
   while ((read = getline(&line, &len, fp)) != -1) {
-    assert(read < 2048);
     if (line[0] != 'O')
       continue;
-    s = parse_sfs_line(line + 2);
-    if (s.b.v - s.a.v < 50) // FIXME
+    s = init_sfs();
+    parse_sfs_line(line + 2, s);
+    if (s->b.v - s->a.v < 50) // FIXME
       SS.push_back(s);
+    else
+      destroy_sfs(s);
   }
   fclose(fp);
   free(line);
@@ -147,32 +151,32 @@ vector<vector<sfs_t *>> split_by_len(cluster_t &cluster, float lr) {
 
   // move to first good specific string and create the first cluster
   int i = 0;
-  while (i < cluster.specifics.size() && !cluster.specifics[i].good)
+  while (i < cluster.specifics.size() && !cluster.specifics[i]->good)
     ++i;
   if (i == cluster.specifics.size())
     return subclusters;
-  subclusters_avgl.push_back(cluster.specifics[i].l);
-  subclusters.push_back({{&cluster.specifics[i]}});
+  subclusters_avgl.push_back(cluster.specifics[i]->l);
+  subclusters.push_back({{cluster.specifics[i]}});
 
   // iterate over remaining specific strings
   for (i = i + 1; i < cluster.specifics.size(); ++i) {
-    if (!cluster.specifics[i].good)
+    if (!cluster.specifics[i]->good)
       continue;
     int j = 0;
     for (j = 0; j < subclusters.size(); ++j) {
-      if (min(cluster.specifics[i].l, subclusters_avgl[j]) /
-              (float)max(cluster.specifics[i].l, subclusters_avgl[j]) >=
+      if (min(cluster.specifics[i]->l, subclusters_avgl[j]) /
+              (float)max(cluster.specifics[i]->l, subclusters_avgl[j]) >=
           lr)
         break;
     }
     if (j == subclusters.size()) {
-      subclusters.push_back({&cluster.specifics[i]});
-      subclusters_avgl.push_back(cluster.specifics[i].l);
+      subclusters.push_back({cluster.specifics[i]});
+      subclusters_avgl.push_back(cluster.specifics[i]->l);
     } else {
       subclusters_avgl[j] =
-          (subclusters_avgl[j] * subclusters.size() + cluster.specifics[i].l) /
+          (subclusters_avgl[j] * subclusters.size() + cluster.specifics[i]->l) /
           (subclusters.size() + 1);
-      subclusters[j].push_back(&cluster.specifics[i]);
+      subclusters[j].push_back(cluster.specifics[i]);
     }
   }
 
@@ -188,15 +192,15 @@ int main_call(int argc, char *argv[]) {
   double rt0 = realtime();
   double rt = rt0, rt1;
 
-  int klen = 27;       // kmer size
-  int min_w = 2;       // minimum support for cluster
-  int min_l = 50;      // minimum SV length
-  float lr = 0.97;     // Ratio to cluster specific strings inside same cluster
-  char *bed_fn = NULL; // bed file
-  int hd = 0;          // hamming distance for fixing anchors
+  int klen = 27;   // kmer size
+  int min_w = 2;   // minimum support for cluster
+  int min_l = 50;  // minimum SV length
+  float lr = 0.97; // Ratio to cluster specific strings inside same cluster
+  int hd = 0;      // hamming distance for fixing anchors
   int verbose = 0;
+  // char *bed_fn = NULL; // bed file
 
-  static ko_longopt_t longopts[] = {{"bed", ko_required_argument, 301},
+  static ko_longopt_t longopts[] = {/*{"bed", ko_required_argument, 301},*/
                                     {NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
@@ -211,8 +215,8 @@ int main_call(int argc, char *argv[]) {
       lr = atof(opt.arg);
     else if (_c == 'v')
       verbose = 1;
-    else if (_c == 301)
-      bed_fn = opt.arg;
+    // else if (_c == 301)
+    //   bed_fn = opt.arg;
   }
   if (argc - opt.ind != 4) {
     fprintf(stderr, "Argh");
@@ -223,9 +227,9 @@ int main_call(int argc, char *argv[]) {
   char *sfs_fn = argv[opt.ind++];
   char *fq_fn = argv[opt.ind++];
 
-  FILE *bed_f = NULL;
-  if (bed_fn != NULL)
-    bed_f = fopen(bed_fn, "w");
+  // FILE *bed_f = NULL;
+  // if (bed_fn != NULL)
+  //   bed_f = fopen(bed_fn, "w");
 
   // Sketch loading
   sketch_t sketch;
@@ -244,18 +248,18 @@ int main_call(int argc, char *argv[]) {
 
   // Extracting vertex to reference position
   // (XXX: only to first path, assuming reference sequence)
-  map<int, int> positions;
-  path_t *path = graph->paths[0];
-  char *ref_name = path->idx;
-  int refpath_len = 0;
-  seg_t *seg;
-  for (int i = 0; i < path->l; ++i) {
-    seg = graph->vertices[path->vertices[i]];
-    positions[seg->idx] = refpath_len;
-    refpath_len += seg->l;
-  }
+  // map<int, int> positions;
+  // path_t *path = graph->paths[0];
+  // char *ref_name = path->idx;
+  // int refpath_len = 0;
+  // seg_t *seg;
+  // for (int i = 0; i < path->l; ++i) {
+  //   seg = graph->vertices[path->vertices[i]];
+  //   positions[seg->idx] = refpath_len;
+  //   refpath_len += seg->l;
+  // }
 
-  vector<sfs_t> SS = load_sfs(sfs_fn);
+  vector<sfs_t *> SS = load_sfs(sfs_fn);
   fprintf(stderr, "[M::%s] loaded %d specific strings in %.3f sec\n", __func__,
           SS.size(), realtime() - rt);
   rt = realtime();
@@ -264,11 +268,10 @@ int main_call(int argc, char *argv[]) {
   uint64_t v1, v2;
   int pos1, pos2;
 
-  // XXX: alloc and realloc, so we do not need exact allocation
   int nreads = 0;
-  for (auto &ss : SS) {
-    if (ss.qidx > nreads)
-      nreads = ss.qidx;
+  for (sfs_t *ss : SS) {
+    if (ss->qidx > nreads)
+      nreads = ss->qidx;
     /* // uncomment if we want specific strings in the bed file
     if (bed_f != NULL) {
       p1 = sk_get(sketch, ss.a.seq);
@@ -280,7 +283,8 @@ int main_call(int argc, char *argv[]) {
         // anchored specific string
         if (positions.find(v1) == positions.end() ||
             positions.find(v2) == positions.end()) {
-          // TODO: find best path by intersecting paths passing trough the two
+          // TODO: find best path by intersecting paths passing trough the
+          two
           // vertices and report over it
           // printf("%s\t4\t*\t0\t0\t*\t*\t0\t0\t*\t*\n", ss.rname);
         } else {
@@ -297,12 +301,13 @@ int main_call(int argc, char *argv[]) {
   }
   nreads += 1; // since qidx starts from 0
 
-  std::sort(SS.begin(), SS.end(), [](const sfs_t &a, const sfs_t &b) {
-    return a.a.v < b.a.v || (a.a.v == b.a.v && a.a.offset < b.a.offset);
+  std::sort(SS.begin(), SS.end(), [](const sfs_t *a, const sfs_t *b) {
+    return a->a.v < b->a.v || (a->a.v == b->a.v && a->a.offset < b->a.offset);
   });
   fprintf(stderr, "[M::%s] sorted specific strings in %.3f sec\n", __func__,
           realtime() - rt);
   rt = realtime();
+
   // ---
 
   // Clustering
@@ -319,7 +324,7 @@ int main_call(int argc, char *argv[]) {
   int sc_n = 0;
   int total = 0;
   int skipped = 0;
-  for (auto &c : Cs) {
+  for (cluster_t &c : Cs) {
     if (c.specifics.size() < min_w) {
       ++lowsc_n;
       c.specifics.clear();
@@ -327,13 +332,15 @@ int main_call(int argc, char *argv[]) {
       total += c.specifics.size();
       skipped += merge(c);
       if (c.specifics.size() < min_w) {
-        c.specifics.clear();
         ++lowsc_am_n;
       } else {
         ++sc_n;
       }
     }
   }
+  for (sfs_t *ss : SS)
+    destroy_sfs(ss);
+
   fprintf(stderr,
           "[M::%s] merged clusters in %.3f sec (%d+%d=%d clusters filtered - "
           "%d/%d strings skipped)\n",
@@ -341,22 +348,19 @@ int main_call(int argc, char *argv[]) {
           skipped, total);
   rt = realtime();
 
-  // We now need to clean specific strings to make them start/end with "correct"
-  // kmers wrt cluster
+  /* We now need to clean specific strings to make them start/end with "correct"
+   * kmers wrt cluster */
 
   // Split specific strings by read
   vector<vector<sfs_t *>> ss_byread(nreads);
-  for (auto &c : Cs) {
-    if (c.specifics.empty())
+  for (cluster_t &c : Cs) {
+    if (c.specifics.size() < min_w)
       continue;
-    // XXX: can we remove this for?
-    for (const sfs_t &s : c.specifics)
-      assert(s.l > 0);
-    for (auto &s : c.specifics) {
-      s.esk = c.ka;
-      s.eek = c.kb;
-      s.good = (s.a.seq == c.ka && s.b.seq == c.kb);
-      ss_byread[s.qidx].push_back(&s);
+    for (sfs_t *s : c.specifics) {
+      s->esk = c.ka;
+      s->eek = c.kb;
+      s->good = (s->a.seq == c.ka && s->b.seq == c.kb);
+      ss_byread[s->qidx].push_back(s);
     }
   }
 
@@ -448,27 +452,26 @@ int main_call(int argc, char *argv[]) {
       }
       s->good = s->a.seq == s->esk && s->b.seq == s->eek;
 
-      // XXX: we are setting the seq for all specific strings, even not good
-      // ones if (s->good) {
-      s->seq = (uint8_t *)malloc((s->l + 1) * sizeof(uint8_t));
-      memcpy(s->seq, seq->seq.s + s->s, s->l);
-      s->seq[s->l] = '\0';
-      // XXX: convert to 0123 since it seems abpoa works better this way in
-      // diploid mode
-      for (int i = 0; i < s->l; ++i)
-        --s->seq[i];
-      // }
-
-      if (bed_f != NULL) {
-        p1 = sk_get(sketch, s->esk);
-        v1 = p1.first;
-        p2 = sk_get(sketch, s->eek);
-        v2 = p2.first;
-        pos1 = positions.at(v1) + p1.second;
-        pos2 = positions.at(v2) + p2.second + klen;
-        fprintf(bed_f, "%s\t%d\t%d\t%s:%d-%d:%d/2\n", ref_name, pos1, pos2,
-                seq->name.s, s->s, s->s + s->l, s->good);
+      if (s->good) {
+        s->seq = (uint8_t *)malloc((s->l + 1) * sizeof(uint8_t));
+        memcpy(s->seq, seq->seq.s + s->s, s->l);
+        s->seq[s->l] = '\0';
+        // XXX: convert to 0123 since it seems abpoa works better this way in
+        // diploid mode
+        for (int i = 0; i < s->l; ++i)
+          --s->seq[i];
       }
+
+      // if (bed_f != NULL) {
+      //   p1 = sk_get(sketch, s->esk);
+      //   v1 = p1.first;
+      //   p2 = sk_get(sketch, s->eek);
+      //   v2 = p2.first;
+      //   pos1 = positions.at(v1) + p1.second;
+      //   pos2 = positions.at(v2) + p2.second + klen;
+      //   fprintf(bed_f, "%s\t%d\t%d\t%s:%d-%d:%d/2\n", ref_name, pos1, pos2,
+      //           seq->name.s, s->s, s->s + s->l, s->good);
+      // }
     }
     ++qidx;
   }
@@ -482,12 +485,19 @@ int main_call(int argc, char *argv[]) {
 
   // --- Analyzing clusters
 
-  char *pseq = (char *)malloc(8192 * sizeof(char));
-  int pseq_c = 8192;
-  int pseq_l = 0;
+  path_t *path = NULL;
+  char *pathseq = (char *)malloc(8192 * sizeof(char));
+  int pathseq_c = 8192;
+  int pathseq_len = 0;
 
-  uint8_t *cons;
+  int bestpath_idx;
+  path_t *bestpath = NULL;
+  uint8_t *bestpathseq = (uint8_t *)malloc(8192 * sizeof(uint8_t));
+  int bestpathseq_c = 8192;
+  int bestpathseq_len = 0;
+  int bestpath_lastprefix;
 
+  // === INIT KSW2
   // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
   // asm5
   // int sc_mch = 1, sc_mis = -19, gapo = 39, gape = 3, gapo2 = 81, gape2 = 1;
@@ -498,38 +508,43 @@ int main_call(int argc, char *argv[]) {
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
                     b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
 
-  // INIT ABPOA
+  ksw_extz_t ez;
+  memset(&ez, 0, sizeof(ksw_extz_t));
+
+  uint32_t *cigar = (uint32_t *)malloc(1 * sizeof(uint32_t));
+  int n_cigar = 0;
+  int m_cigar = 1;
+
+  // === INIT ABPOA
   abpoa_t *ab = abpoa_init();
   abpoa_para_t *abpt = abpoa_init_para();
   abpt->align_mode = 0; // global
   abpt->out_msa = 0;
   abpt->out_cons = 1;
   abpt->out_gfa = 0;
-  abpt->max_n_cons = 2;
-  // abpt->min_freq = 0.25;
-  // abpt->disable_seeding = 1;
-  // abpt->progressive_poa = 0;
-  // abpt->amb_strand = 0;
+  abpt->disable_seeding = 1;
+  abpt->progressive_poa = 0;
+  abpt->amb_strand = 0;
   // abpt->wb = -1;
-  // abpt->match = 2;      // match score
-  // abpt->mismatch = 4;   // mismatch penalty
-  // abpt->gap_mode = ABPOA_CONVEX_GAP; // gap penalty mode
-  // abpt->gap_open1 = 4;  // gap open penalty #1
-  // abpt->gap_ext1 = 2;   // gap extension penalty #1
-  // abpt->gap_open2 = 24; // gap open penalty #2
-  // abpt->gap_ext2 = 1;   // gap extension penalty #2
-  // gap_penalty = min{gap_open1 + gap_len*gap_ext1, gap_open2+gap_len*gap_ext2}
+  abpt->max_n_cons = 2;
+  abpt->min_freq = 0.25;
   abpoa_post_set_para(abpt);
 
-  char *cigar_s = (char *)malloc(16384 * sizeof(char)); // FIXME: hardcoded
-  int cp, cc_idx = 0;
+  // XXX: Assuming clusters of size <= 128
+  int *ssseqs_lens = (int *)malloc(sizeof(int) * 128);
+  uint8_t **ssseqs = (uint8_t **)malloc(sizeof(uint8_t *) * 128);
+  int goods = 0;
+
+  // XXX
+  char *cigar_s = (char *)malloc(16384 * 2 * sizeof(char)); // FIXME: hardcoded
+
+  int cc_idx = 0;
   for (auto &cc : Cs) {
-    if (cc.specifics.empty())
+    if (cc.specifics.size() < min_w)
       continue;
 
     ++cc_idx;
-    // if (cc_idx != 7915)
-    //   continue;
+
     if (cc_idx % 5000 == 0) {
       fprintf(stderr, "[M::%s] analyzed %d clusters (%d left) in %.3f sec\n",
               __func__, cc_idx, sc_n - cc_idx, realtime() - rt1);
@@ -554,19 +569,17 @@ int main_call(int argc, char *argv[]) {
     // ---
 
     vector<pair<path_t *, string>> collapsed_subpaths;
-    path_t *path = NULL;
     for (int px = 0; px < graph->np; ++px) {
       path = extract_subpath(graph, graph->paths[px], va, vb);
-
       if (path == NULL)
         continue;
       int i = 0;
-      for (const auto &cp : collapsed_subpaths) {
-        if (path->l != cp.first->l)
+      for (const auto &csp : collapsed_subpaths) {
+        if (path->l != csp.first->l)
           continue;
         int j = 0;
         for (j = 0; j < path->l; ++j) {
-          if (path->vertices[j] != cp.first->vertices[j])
+          if (path->vertices[j] != csp.first->vertices[j])
             break;
         }
         if (j == path->l)
@@ -580,15 +593,12 @@ int main_call(int argc, char *argv[]) {
       }
     }
     if (path == NULL) {
-      // if (verbose)
-      fprintf(stderr, "No path for cluster %d (%d>%d)\n", cc_idx, va, vb);
+      if (verbose)
+        fprintf(stderr, "No path for cluster %d (%d>%d)\n", cc_idx, va, vb);
       continue;
     }
 
     // ---
-
-    if (verbose)
-      fprintf(stderr, "We have %d subclusters to check\n", subclusters.size());
 
     for (int sci = 0; sci < (potential_diploid ? 1 : 2); ++sci) {
       vector<sfs_t *> specifics = subclusters[sci];
@@ -596,77 +606,66 @@ int main_call(int argc, char *argv[]) {
         continue;
 
       // abpoa
-      int *seq_lens = (int *)malloc(sizeof(int) * cc.specifics.size());
-      uint8_t **bseqs =
-          (uint8_t **)malloc(sizeof(uint8_t *) * cc.specifics.size());
-      int goods = 0;
+      goods = 0;
       for (const sfs_t *s : specifics) {
-        if (!s->good)
+        if (s->good == 0)
           continue;
-        seq_lens[goods] = s->l;
-        bseqs[goods] = s->seq;
-        if (verbose)
-          fprintf(stderr, ">%d.%d\n%s\n", goods, s->l,
-                  decode(s->seq, s->l, 1).c_str());
+        assert(s->l > 0);
+        ssseqs_lens[goods] = s->l;
+        ssseqs[goods] = s->seq;
+        // printf(">%d.%d\n%s\n", goods, s->l, decode(s->seq, s->l, 1).c_str());
         ++goods;
       }
-      assert(goods > 0);
-      abpoa_msa(ab, abpt, goods, NULL, seq_lens, bseqs, NULL, NULL);
-      free(bseqs);
-      free(seq_lens);
+      assert(goods < 128);
+      // printf("%d\n", goods);
+      abpoa_msa(ab, abpt, goods, NULL, ssseqs_lens, ssseqs, NULL, NULL);
 
       abpoa_cons_t *abc = ab->abc;
-      int cons_l = 0;
-
       for (int ci = 0; ci < (potential_diploid ? abc->n_cons : 1); ++ci) {
-        cons_l = abc->cons_len[ci];
-        cons = abc->cons_base[ci];
-
+        int cons_len = abc->cons_len[ci];
+        uint8_t *cons_seq = abc->cons_base[ci];
         int score = -INT32_MAX;
-        uint32_t *cigar = (uint32_t *)malloc(1 * sizeof(uint32_t));
-        int n_cigar = 0;
-        int m_cigar = 1;
-        uint8_t *PPSEQ = NULL;
-        int ppseq_c = 0;
-        string pnames;
-        int plen = 0;
-        int pprefix = 0;
-        int PPSEQ_IDX = -1;
 
-        int ppseq_idx = PPSEQ_IDX;
+        // uint8_t *PPSEQ = NULL;
+        // int ppseq_c = 0;
+        // string pnames;
+        // int plen = 0;
+        //       int pprefix = 0;
+        //       int PPSEQ_IDX = -1;
+
+        int path_idx = -1;
 
         for (pair<path_t *, string> collp : collapsed_subpaths) {
-          ++ppseq_idx;
+          ++path_idx;
           path = collp.first;
-          pseq_l = get_sequence(graph, path, &pseq, &pseq_c);
-          for (int i = 0; i < pseq_l; ++i)
-            pseq[i] = to_int[pseq[i]] - 1;
+          pathseq_len = get_sequence(graph, path, &pathseq, &pathseq_c);
+          for (int i = 0; i < pathseq_len; ++i)
+            pathseq[i] = to_int[pathseq[i]] - 1;
           int prefix_len_onlastvertex =
               graph->vertices[path->vertices[path->l - 1]]->l - offb - klen;
 
-          if (verbose) {
-            fprintf(stderr, "--- %s ---\n", path->idx);
-            fprintf(stderr, "C: %d %s\n", cons_l,
-                    decode(cons, cons_l, 1).c_str());
-            fprintf(stderr, "P: %d %s\n",
-                    pseq_l - offa - prefix_len_onlastvertex,
-                    decode((uint8_t *)pseq + offa,
-                           pseq_l - offa - prefix_len_onlastvertex, 1)
-                        .c_str());
-          }
+          // if (verbose) {
+          //   fprintf(stderr, "--- %s ---\n", path->idx);
+          //   fprintf(stderr, "C: %d %s\n", cons_l,
+          //           decode(cons, cons_l, 1).c_str());
+          //   fprintf(stderr, "P: %d %s\n",
+          //           pathseq_len - offa - prefix_len_onlastvertex,
+          //           decode((uint8_t *)pseq + offa,
+          //                  pathseq_len - offa - prefix_len_onlastvertex, 1)
+          //               .c_str());
+          // }
 
-          ksw_extz_t ez;
-          memset(&ez, 0, sizeof(ksw_extz_t));
-          ksw_extd2_sse(0, cons_l, cons,
-                        pseq_l - offa - prefix_len_onlastvertex,
-                        (uint8_t *)pseq + offa, 5, mat, gapo, gape, gapo2,
+          ksw_extd2_sse(0, cons_len, cons_seq,
+                        pathseq_len - offa - prefix_len_onlastvertex,
+                        (uint8_t *)pathseq + offa, 5, mat, gapo, gape, gapo2,
                         gape2, -1, -1, -1, 0, &ez);
 
           if (ez.score <= score)
             continue;
 
-          PPSEQ_IDX = ppseq_idx;
           score = ez.score;
+          bestpath_idx = path_idx;
+
           if (ez.m_cigar > m_cigar) {
             cigar = (uint32_t *)realloc(cigar, ez.m_cigar * sizeof(uint32_t));
             m_cigar = ez.m_cigar;
@@ -674,28 +673,23 @@ int main_call(int argc, char *argv[]) {
           }
           memcpy(cigar, ez.cigar, ez.m_cigar * sizeof(uint32_t));
           n_cigar = ez.n_cigar;
-          plen = pseq_l;
-          pprefix = prefix_len_onlastvertex;
 
-          if (pseq_l + 1 > ppseq_c) {
-            if (ppseq_c == 0) {
-              PPSEQ = (uint8_t *)malloc(pseq_l + 1);
-            } else {
-              PPSEQ = (uint8_t *)realloc(PPSEQ, pseq_l + 1);
-            }
-            ppseq_c = pseq_l + 1;
+          if (pathseq_len + 1 > bestpathseq_c) {
+            bestpathseq = (uint8_t *)realloc(bestpathseq, pathseq_len + 1);
+            bestpathseq_c = pathseq_len + 1;
           }
-          memcpy(PPSEQ, (uint8_t *)pseq, pseq_l);
-          PPSEQ[pseq_l] = '\0';
-          pnames = collp.second;
+          bestpathseq_len = pathseq_len;
+          bestpath_lastprefix = prefix_len_onlastvertex;
+          memcpy(bestpathseq, (uint8_t *)pathseq, pathseq_len);
+          bestpathseq[pathseq_len] = '\0';
 
-          free(ez.cigar);
+          // pnames = collp.second;
         }
 
         int clipped = 0;
         if ((cigar[0] & 0xf) != 0 || (cigar[n_cigar - 1] & 0xf) != 0) {
           clipped = 1;
-          // continue; // if we do not want these alignments
+          continue; // XXX: do we want these?
         }
 
         // OUTPUT
@@ -704,21 +698,21 @@ int main_call(int argc, char *argv[]) {
         int tot_res_matches = 0;
 
         // XXX: avoid reallocation at each iteration
-        char *cs = (char *)malloc((cons_l + plen) * 4);
+        char *cs = (char *)malloc((cons_len + bestpathseq_len) * 4);
         int cs_p = 0;
         int cons_p = 0;
         int pseq_p = offa;
-        cp = 0;
+        int cp = 0;
 
         // We could do this while building difference strings, but it's better
         // for debugging purpose to keep them separated
-        for (int i = 0; i < n_cigar; ++i) {
-          opl = cigar[i] >> 4;
-          tot_cigar_len += opl;
-          cp += sprintf(cigar_s + cp, "%d%c", opl, "MID"[cigar[i] & 0xf]);
-        }
-        if (verbose)
-          fprintf(stderr, "%s\n", cigar_s);
+        // for (int i = 0; i < n_cigar; ++i) {
+        //   opl = cigar[i] >> 4;
+        //   tot_cigar_len += opl;
+        //   cp += sprintf(cigar_s + cp, "%d%c", opl, "MID"[cigar[i] & 0xf]);
+        // }
+        // if (verbose)
+        //   fprintf(stderr, "%s\n", cigar_s);
 
         // XXX: avoid string copies
         for (int i = 0; i < n_cigar; ++i) {
@@ -726,23 +720,26 @@ int main_call(int argc, char *argv[]) {
           tot_cigar_len += opl;
 
           // cigar
-          // cp += sprintf(cigar_s + cp, "%d%c", opl, "MID"[cigar[i] & 0xf]);
+          cp += sprintf(cigar_s + cp, "%d%c", opl, "MID"[cigar[i] & 0xf]);
 
           // difference string, residues, cigar length
           if ((cigar[i] & 0xf) == 0) {
             // M
             int l_tmp = 0;
             for (int j = 0; j < opl; ++j) {
-              if (cons[cons_p + j] != PPSEQ[pseq_p + j]) {
+              if (cons_seq[cons_p + j] != bestpathseq[pseq_p + j]) {
                 if (l_tmp > 0) {
                   cs_p += sprintf(cs + cs_p, ":%d", l_tmp);
                   tot_res_matches += l_tmp;
                   l_tmp = 0;
                 }
-                cs_p += sprintf(
-                    cs + cs_p, "*%c%c",
-                    PPSEQ[pseq_p + j] <= 3 ? "ACGT"[PPSEQ[pseq_p + j]] : 'N',
-                    cons[cons_p + j] <= 3 ? "ACGT"[cons[cons_p + j]] : 'N');
+                cs_p += sprintf(cs + cs_p, "*%c%c",
+                                bestpathseq[pseq_p + j] <= 3
+                                    ? "ACGT"[bestpathseq[pseq_p + j]]
+                                    : 'N',
+                                cons_seq[cons_p + j] <= 3
+                                    ? "ACGT"[cons_seq[cons_p + j]]
+                                    : 'N');
               } else
                 ++l_tmp;
             }
@@ -754,7 +751,7 @@ int main_call(int argc, char *argv[]) {
             pseq_p += opl;
           } else if ((cigar[i] & 0xf) == 1) {
             // I
-            string tmp = decode(cons + cons_p, opl, 1);
+            string tmp = decode(cons_seq + cons_p, opl, 1);
             // char *tmp = (char *)malloc(opl+1);
             // tmp[opl] = '\0';
             // strncpy(tmp, cons + cons_p, opl);
@@ -764,7 +761,7 @@ int main_call(int argc, char *argv[]) {
             // free(tmp);
           } else if ((cigar[i] & 0xf) == 2) {
             // D
-            string tmp = decode((uint8_t *)PPSEQ + pseq_p, opl, 1);
+            string tmp = decode((uint8_t *)bestpathseq + pseq_p, opl, 1);
             // char *tmp = (char *)malloc(opl+1);
             // tmp[opl] = '\0';
             // strncpy(tmp, cons + cons_p, opl);
@@ -783,26 +780,29 @@ int main_call(int argc, char *argv[]) {
         cs[cs_p] = '\0';
 
         // print GAF line
-        printf("%d.%d\t%d\t%d\t%d\t+\t", cc_idx, ci, cons_l, 0, cons_l);
-        printf(">%d",
-               graph->vertices[collapsed_subpaths[PPSEQ_IDX].first->vertices[0]]
-                   ->idx);
+        printf("%d.%d.%d\t%d\t%d\t%d\t+\t", cc_idx, sci, ci, cons_len, 0,
+               cons_len);
+        printf(
+            ">%d",
+            graph->vertices[collapsed_subpaths[bestpath_idx].first->vertices[0]]
+                ->idx);
         for (int i = 1; i < path->l; ++i)
-          printf(
-              ">%d",
-              graph->vertices[collapsed_subpaths[PPSEQ_IDX].first->vertices[i]]
-                  ->idx);
-        printf("\t%d\t%d\t%d\t%d\t%d\t%d\tAS:i:%d\tcg:Z:%s\tcs:Z:%s\tcl:i:%"
-               "d\tpn:Z:%"
-               "s\tqs:Z:%s\tps:Z:%s\n",
-               pseq_l, offa, plen - pprefix, tot_res_matches, tot_cigar_len, 60,
-               score, cigar_s, cs, clipped, pnames.c_str(),
-               decode(cons, cons_l, 1).c_str(),
-               decode(PPSEQ + offa, plen - pprefix - offa, 1).c_str());
+          printf(">%d", graph
+                            ->vertices[collapsed_subpaths[bestpath_idx]
+                                           .first->vertices[i]]
+                            ->idx);
+        printf("\t%d\t%d\t%d\t%d\t%d\t%d\tAS:i:%d\tcg:Z:%s\tcs:Z:%s\tcl:i:%d"
+               // "\tpn:Z:%s"
+               "\tqs:Z:%s\tps:Z:%s\n",
+               pathseq_len, offa, bestpathseq_len - bestpath_lastprefix,
+               tot_res_matches, tot_cigar_len, 60, score, cigar_s, cs, clipped,
+               // pnames.c_str(),
+               decode(cons_seq, cons_len, 1).c_str(),
+               decode(bestpathseq + offa,
+                      bestpathseq_len - bestpath_lastprefix - offa, 1)
+                   .c_str());
 
         free(cs);
-        free(PPSEQ);
-        free(cigar);
       }
     }
     for (pair<path_t *, string> collp : collapsed_subpaths) {
@@ -813,25 +813,27 @@ int main_call(int argc, char *argv[]) {
           __func__, cc_idx, sc_n - cc_idx, realtime() - rt1);
 
   // ---
-  //for (sfs_t &ss : SS) {
-  //  free(ss.rname);
-  //  // if (ss.good)
-  //  free(ss.seq);
-  // }
 
-  // Cleaning up
-  if (bed_f != NULL)
-    fclose(bed_f);
-  for (auto &c : Cs) {
-    for (const sfs_t s : c.specifics) {
-      if (s.seq != NULL)
-        free(s.seq);
+  for (cluster_t &c : Cs) {
+    for (sfs_t *s : c.specifics) {
+      destroy_sfs(s);
     }
   }
-  abpoa_free(ab);
+
+  // Cleaning up
+  // if (bed_f != NULL)
+  //   fclose(bed_f);
+
+  free(ez.cigar);
+  free(cigar);
+
   abpoa_free_para(abpt);
+  abpoa_free(ab);
+  free(ssseqs);
+  free(ssseqs_lens);
   free(cigar_s);
-  free(pseq);
+  free(pathseq);
+  free(bestpathseq);
 
   destroy_graph(graph);
 
