@@ -19,8 +19,6 @@ def main():
         else:
             continue
         for v in path:
-            if v == 234:
-                print(v)
             V[v] = 0
 
     nV = {}
@@ -49,6 +47,9 @@ def main():
                 nV[v][0] = nV[v][0] + 1
             else:
                 assert False
+    x = len([v for v in nV.values() if v[0] == 0])
+    print(x, len(nV))
+    print(x / len(nV), (len(nV) - x) / len(nV))
 
     for line in open(gfa_fn):
         if line.startswith("L"):
@@ -66,7 +67,7 @@ def main():
     for v in nV:
         w, seq, incoming, outgoing = nV[v]
         if w == 0:
-            print(v, seq)
+            print(v, seq, w)
             for i in incoming:
                 assert i in V
                 print("<", i, V[i])

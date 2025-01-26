@@ -6,7 +6,7 @@ seed = 42
 random.seed(seed)
 K = 27  # kmer size
 L = 512  # max vertex size
-coverage = 7.5  # coverage per haplotype
+coverage = 5 # 7.5  # coverage per haplotype
 
 Ns = [1, 2, 4, 8, 16, 32]
 
@@ -145,9 +145,11 @@ rule combine:
         fq=pjoin(WD, sample + ".fq"),
     params:
         oprefix=pjoin(WD, "pbsim3"),
+    conda:
+        "./envs/biopython.yml"
     shell:
         """
-        cat {params.oprefix}/*.fastq > {output.fq}
+        cat {params.oprefix}/*.fastq | python3 scripts/remove_n.py > {output.fq}
         """
 
 
@@ -301,23 +303,9 @@ rule vg_view:
 # ============== #
 
 
-rule remove_ns:
-    input:
-        fq=rules.combine.output.fq,
-    output:
-        fq=pjoin(WD, sample + ".clean.fq"),
-    threads: workflow.cores / 4
-    conda:
-        "./envs/biopython.yml"
-    shell:
-        """
-        python3 scripts/remove_n.py {input.fq} > {output.fq}
-        """
-
-
 rule hifiasm:
     input:
-        fq=rules.remove_ns.output.fq,
+        fq=rules.combine.output.fq,
     output:
         fa=pjoin(WD, sample + ".ec.fa"),
     params:
@@ -432,7 +420,8 @@ rule augment:
         "./envs/vg.yml"
     shell:
         """
-        vg augment --min-coverage 1 --gaf {input.gfa} {input.gaf} > {output.gfa}
+        vg augment --min-coverage 1 --gaf {input.gfa} {input.gaf} > {output.gfa}.tmp
+        python3 ../scripts/clean_augmented_gfa.py {output.gfa}.tmp > {output.gfa}
         """
 
 
