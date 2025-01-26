@@ -544,6 +544,8 @@ int main_call(int argc, char *argv[]) {
       continue;
 
     ++cc_idx;
+    // if (cc_idx != 48552)
+    //   continue;
 
     if (cc_idx % 5000 == 0) {
       fprintf(stderr, "[M::%s] analyzed %d clusters (%d left) in %.3f sec\n",
@@ -617,7 +619,7 @@ int main_call(int argc, char *argv[]) {
         ++goods;
       }
       assert(goods < 128);
-      // printf("%d\n", goods);
+      // printf(">>> %d\n", goods);
       abpoa_msa(ab, abpt, goods, NULL, ssseqs_lens, ssseqs, NULL, NULL);
 
       abpoa_cons_t *abc = ab->abc;
@@ -625,6 +627,12 @@ int main_call(int argc, char *argv[]) {
         int cons_len = abc->cons_len[ci];
         uint8_t *cons_seq = abc->cons_base[ci];
         int score = -INT32_MAX;
+        int abpoa_supp = abc->clu_n_seq[ci];
+        if (abpoa_supp < min_w)
+          continue;
+        // printf(">>> %d.%d.%d - %d - %d : %d %d\n", cc_idx, sci, ci,
+        //        specifics.size(), potential_diploid,
+        //        potential_diploid ? abc->n_cons : 1, abpoa_supp);
 
         // uint8_t *PPSEQ = NULL;
         // int ppseq_c = 0;
@@ -793,11 +801,11 @@ int main_call(int argc, char *argv[]) {
                             ->idx);
         printf("\t%d\t%d\t%d\t%d\t%d\t%d\tAS:i:%d\tcg:Z:%s\tcs:Z:%s\tcl:i:%d"
                // "\tpn:Z:%s"
-               "\tqs:Z:%s\tps:Z:%s\n",
+               "\tcw:i:%d\tqs:Z:%s\tps:Z:%s\n",
                pathseq_len, offa, bestpathseq_len - bestpath_lastprefix,
                tot_res_matches, tot_cigar_len, 60, score, cigar_s, cs, clipped,
                // pnames.c_str(),
-               decode(cons_seq, cons_len, 1).c_str(),
+               abpoa_supp, decode(cons_seq, cons_len, 1).c_str(),
                decode(bestpathseq + offa,
                       bestpathseq_len - bestpath_lastprefix - offa, 1)
                    .c_str());
