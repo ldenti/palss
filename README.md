@@ -23,7 +23,7 @@ vg paths -F -x example/reference.gfa > example/reference.paths.fa
 ./pansv call -k27 example/reference.gfa example/reference-k27.skt example/sfs2.txt example/reads.fa > example/new_portions.gaf
 
 # augment the graph
-vg augment --gaf --label-paths example/reference.gfa example/new_portions.gaf > example/reference-augmented.gfa
+vg augment --min-coverage 1 --gaf example/reference.gfa example/new_portions.gaf > example/reference-augmented.gfa
 
 # convert specific strings to fasta
 # python3 scripts/convert.py example/reads.fa example/sfs.txt > example/sfs.fa
