@@ -1,21 +1,20 @@
 import sys
 from intervaltree import IntervalTree
-
 from Bio import SeqIO
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
 
 
 def main():
     fa_fn = sys.argv[1]
     segdup_fn = sys.argv[2]
     rmsk_fn = sys.argv[3]
-    CHROM = "chr1"
 
     n = 0
     sd_trees = {}
     for line in open(segdup_fn):
         chrom, s, e = line.split("\t")[:3]
-        # if chrom != CHROM:
-        #     continue
         s, e = int(s), int(e)
         if chrom not in sd_trees:
             sd_trees[chrom] = IntervalTree()
@@ -29,9 +28,7 @@ def main():
     rm_trees = {}
     for line in open(rmsk_fn):
         chrom, s, e = line.split("\t")[:3]
-        # if chrom != CHROM:
-        #     continue
-        repclass = "RM"  # line.split("\t")[11]
+        repclass = line.split("\t")[3]
         s, e = int(s), int(e)
         if chrom not in rm_trees:
             rm_trees[chrom] = IntervalTree()
@@ -41,26 +38,33 @@ def main():
             print(f"Loaded {n} repeats..", end="\r", file=sys.stderr)
     print(f"Loaded {n} repeats..", end="\n", file=sys.stderr)
 
+    d = []
     for record in SeqIO.parse(fa_fn, "fasta"):
         chrom, se = record.id.split(":")
-        # if chrom != CHROM:
-        #     continue
         s, e = (int(x) for x in se.split("-"))
+        d.append(e - s + 1)
         nn = record.count("N")
         if nn > 0.8:
-            print(record.id, f"N{nn/len(record)*100}", f"{nn}/{len(record)}")
+            print(record.id, e - s + 1, f"N{nn/len(record)*100}", f"{nn}/{len(record)}")
         else:
             if sd_trees[chrom].overlaps(s, e):
-                print(record.id, "SEGDUP")
+                print(record.id, e - s + 1, "SEGDUP")
             else:
                 overlaps = rm_trees[chrom].overlap(s, e)
                 if len(overlaps) != 0:
                     repclasses = set()
                     for interval in overlaps:
                         repclasses.add(interval.data)
-                    print(record.id, ",".join(repclasses))
+                    print(record.id, e - s + 1, ",".join(repclasses))
                 else:
-                    print(record.id, "False")
+                    print(record.id, e - s + 1, "False")
+
+    df = pd.DataFrame(d)
+    sns.histplot(df, bins=100, legend=None)
+    plt.xlim(0, max(d) + 25000)
+    plt.xlabel("Length")
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":

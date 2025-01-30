@@ -66,7 +66,8 @@ def main():
     width = 0.25  # the width of the bars
     multiplier = 0
     colors = [["royalblue", "lightsteelblue"], ["seagreen", "lightgreen"]]
-    fig, (ax1, ax2) = plt.subplots(1, 2, layout="constrained", figsize=(9, 7))
+    # fig, (ax1, ax2) = plt.subplots(1, 2, layout="constrained", figsize=(9, 7))
+    fig, ax1 = plt.subplots(1, 1, layout="constrained", figsize=(8, 6), dpi=80)
     for r in [1, 2]:
         offset = width * multiplier
 
@@ -92,62 +93,65 @@ def main():
 
         d = df[(df["Run"] == r) & (df["Elem"] == "E")].sort_values(by="G")
 
-        rects = ax2.bar(
-            x + offset,
-            d["Added"],
-            width=width,
-            label=runs[r],
-            align="edge",
-            color=colors[r - 1][0],
-        )
-        ax2.bar(
-            x + offset,
-            d["Used"],
-            width=width,
-            label=runs[r],
-            align="edge",
-            color=colors[r - 1][1],
-        )
-        ax2.bar_label(rects, labels=round(d["Used"] / d["Added"], 2), padding=3)
+        # rects = ax2.bar(
+        #     x + offset,
+        #     d["Added"],
+        #     width=width,
+        #     label=runs[r],
+        #     align="edge",
+        #     color=colors[r - 1][0],
+        # )
+        # ax2.bar(
+        #     x + offset,
+        #     d["Used"],
+        #     width=width,
+        #     label=runs[r],
+        #     align="edge",
+        #     color=colors[r - 1][1],
+        # )
+        # ax2.bar_label(rects, labels=round(d["Used"] / d["Added"], 2), padding=3)
 
         multiplier += 1
 
     ax1.set_title("Novel Vertices")
     # ax1.set_ylabel("#")
-    ax1.set_xlabel("Samples")
+    ax1.set_xlabel("#Samples")
     ax1.set_xticks(x + width, Gs)
     # ax1.legend(loc="upper right", ncols=1)
 
-    ax2.set_title("Novel Edges")
-    ax2.set_xlabel("Samples")
-    ax2.set_xticks(x + width, Gs)
-    # ax2.legend(loc="upper right", ncols=1)
+    # ax2.set_title("Novel Edges")
+    # ax2.set_xlabel("#Samples")
+    # ax2.set_xticks(x + width, Gs)
+    # # ax2.legend(loc="upper right", ncols=1)
 
     legend_elements = [
         Patch(facecolor=colors[0][1], edgecolor=colors[0][0], label="1OUT-AUG"),
         Patch(facecolor=colors[1][1], edgecolor=colors[1][0], label="FULL-AUG"),
     ]
-    ax2.legend(title="Graph", handles=legend_elements, loc="upper right")
+    ax1.legend(title="Graph", handles=legend_elements, loc="upper right")
 
     # fig.supxlabel("Samples")
-    # sns.barplot(data=df, x="")
+
     plt.tight_layout()
     plt.show()
-
+    plt.savefig("precision.png")
     plt.close()
 
-    data = []
-    for v, w in NOVEL_1OUT[1].items():
-        data.append(["1OUT", w])
-        if w <= 1:
-            print(v, w)
-    for v, w in NOVEL_FULL[1].items():
-        data.append(["FULL", w])
+    for n in NOVEL_1OUT:
+        data = []
+        for v, w in NOVEL_1OUT[n].items():
+            data.append(["1OUT", w])
+            if w <= 1:
+                print(v, w)
+        for v, w in NOVEL_FULL[n].items():
+            data.append(["FULL", w])
 
-    df = pd.DataFrame(data, columns=["Graph", "Support"])
-    sns.histplot(data=df, x="Support", hue="Graph", discrete=True, element="step")
-    plt.tight_layout()
-    plt.show()
+        df = pd.DataFrame(data, columns=["Graph", "Support"])
+        sns.histplot(data=df, x="Support", hue="Graph", discrete=True, element="step")
+        plt.title(f"#Samples: {n}")
+        plt.tight_layout()
+        plt.show()
+        plt.savefig(f"precision-supp.{n}.png")
 
 
 if __name__ == "__main__":

@@ -47,7 +47,14 @@ def main():
     df = pd.DataFrame(data, columns=["G", "Graph", "NM"])
 
     plt.figure(figsize=(8, 6), dpi=80)
-    x = sns.boxplot(data=df, x="G", y="NM", hue="Graph", showfliers=False)
+    x = sns.boxplot(
+        data=df,
+        x="G",
+        y="NM",
+        hue="Graph",
+        hue_order=["1OUT-AUG", "1OUT", "FULL", "FULL-AUG"],
+        showfliers=False,
+    )
     plt.xlabel("#Samples")
     yl = x.get_ylim()
     plt.yticks(np.arange(-5, int(yl[1]) + (int(yl[1]) % 5), 5))

@@ -47,7 +47,7 @@ def main():
                         continue
                     if d > dt:
                         print(
-                            f"# {g} {chrom}:{e1+1}-{s2} ({d}) {chrom}:{s1}-{e1+1} {chrom}:{s2}-{e2+1}"
+                            f"# {g} {last_chrom}:{e1+1}-{s2} ({d}) {last_chrom}:{s1}-{e1+1} {last_chrom}:{s2}-{e2+1}"
                         )
                     data.append([g, last_chrom, d])
                 print(f"{close} / {total} = {close/total}", file=sys.stderr)
@@ -66,7 +66,7 @@ def main():
                     continue
                 if d > dt:
                     print(
-                        f"# {g} {chrom}:{e1+1}-{s2} ({d}) {chrom}:{s1}-{e1+1} {chrom}:{s2}-{e2+1}"
+                        f"# {g} {last_chrom}:{e1+1}-{s2} ({d}) {last_chrom}:{s1}-{e1+1} {last_chrom}:{s2}-{e2+1}"
                     )
                 data.append([g, last_chrom, d])
             print(f"{close} / {total} = {close/total}", file=sys.stderr)
