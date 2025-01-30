@@ -95,6 +95,7 @@ int main_kan(int argc, char *argv[]) {
       fprintf(stderr, "Read %d bases from %s\n", seq->seq.l, seq->name.s);
     else {
       printf("%s\t%d\t%d\n", seq->name.s, tot, l - klen + 1);
+      tot = 0;
       ++qidx;
       if (qidx % 10000 == 0) {
         fprintf(stderr, "[M::%s] parsed 10000 reads %.3f sec\n", __func__,
