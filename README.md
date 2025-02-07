@@ -2,6 +2,8 @@
 PALSS (_Pangenome Graph Augmentation from Long-reads Specific Strings_) is an assembly- and mapping-free approach for updating (or augmenting) a pangenome graph directly from unassembled long reads sequenced from a new individual not already in the pangenome.
 
 ### Installation
+PALSS has been tested only on 64bit Linux system(s).
+
 ``` sh
 git clone https://github.com/ldenti/palss
 cd palss ; mkdir build ; cd build
