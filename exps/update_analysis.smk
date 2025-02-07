@@ -6,7 +6,7 @@ seed = 42
 random.seed(seed)
 K = 27  # kmer size
 L = 512  # max vertex size
-coverage = 5 # 7.5  # coverage per haplotype
+coverage = 5  # coverage per haplotype
 
 Ns = [1, 2, 4, 8, 16, 32]
 
@@ -33,7 +33,7 @@ print(sample, SAMPLES)
 
 
 wildcard_constraints:
-    x="(1out)|(full)",
+    x="(1out)|(full)|(mgcactus)",
 
 
 rule run:
@@ -47,7 +47,7 @@ rule run:
         expand(
             pjoin(WD, "{n}", "alignments-{x}.pkl"),
             n=SAMPLES.keys(),
-            x=["1out", "full"],
+            x=["1out", "full", "mgcactus"],
         ),
 
 
@@ -192,24 +192,6 @@ rule get_reducedvcf:
         """
 
 
-# rule get_reducedvcf:
-#    input:
-#        vcf=pjoin(WD, "{n}", "variations-full.vcf.gz"),
-#        vcf2=pjoin(WD, f"{sample}.vcf.gz"),
-#    output:
-#        vcf=pjoin(WD, "{n}", "variations-1out.vcf.gz"),
-#    params:
-#        idxs = lambda wildcards: ",".join(SAMPLES[wildcards.n]),
-#    conda:
-#        "./envs/bcftools.yml"
-#    shell:
-#        """
-#        python3 scripts/remove_sample.py {input.vcf} {input.vcf2} {sample} | bcftools view -Oz -s ^{sample} > {output.vcf}
-#        sleep 1
-#        tabix -p vcf {output.vcf}
-#        """
-
-
 rule vg_construct:
     input:
         fa=FA,
@@ -303,7 +285,7 @@ rule vg_view:
 # ============== #
 
 
-rule hifiasm:
+rule hifiasm_ec:
     input:
         fq=rules.combine.output.fq,
     output:
@@ -314,7 +296,7 @@ rule hifiasm:
     conda:
         "./envs/hifiasm.yml"
     log:
-        time=pjoin(WD, "hifiasm.time"),
+        time=pjoin(WD, "hifiasm_ec.time"),
     shell:
         """
         /usr/bin/time -vo {log.time} hifiasm -t{threads} --write-ec --bin-only {input.fq} -o {params.prefix}
@@ -376,7 +358,7 @@ rule search:
         gfa=rules.vg_view.output.gfa,
         skt=rules.sketch.output.skt,
         fmd=rules.index_paths.output.fmd,
-        fa=rules.hifiasm.output.fa,
+        fa=rules.hifiasm_ec.output.fa,
     output:
         txt=pjoin(WD, "{n}", "specific-{x}.k{k}.txt"),
     log:
@@ -394,7 +376,7 @@ rule call:
         gfa=rules.vg_view.output.gfa,
         skt=rules.sketch.output.skt,
         txt=rules.search.output.txt,
-        fa=rules.hifiasm.output.fa,
+        fa=rules.hifiasm_ec.output.fa,
     output:
         gaf=pjoin(WD, "{n}", "specific-{x}.k{k}.w{w}.gaf"),
     log:
@@ -424,6 +406,68 @@ rule augment:
         python3 ../scripts/clean_augmented_gfa.py {output.gfa}.tmp > {output.gfa}
         """
 
+# ======================== #
+# === MINIGRAPH-CACTUS === #
+# ======================== #
+rule hifiasm:
+    input:
+        fq=rules.combine.output.fq,
+    output:
+        fa1=pjoin(WD, sample + ".asm.bp.hap1.p_ctg.fa"),
+        fa2=pjoin(WD, sample + ".asm.bp.hap2.p_ctg.fa"),
+    params:
+        prefix=pjoin(WD, sample + ".asm"),
+    threads: workflow.cores
+    conda:
+        "./envs/hifiasm.yml"
+    log:
+        time=pjoin(WD, "hifiasm.time"),
+    shell:
+        """
+        /usr/bin/time -vo {log.time} hifiasm -o {params.prefix} -t{threads} {input.fq}
+        awk '/^S/{{print ">"$2;print $3}}' {params.prefix}.bp.hap1.p_ctg.gfa > {output.fa1}
+        awk '/^S/{{print ">"$2;print $3}}' {params.prefix}.bp.hap2.p_ctg.gfa > {output.fa2}
+        """
+
+rule install_minigraphcactus:
+    output:
+        pjoin(WD, "mgc-src", "cactus_env", "bin", "activate"),
+    params:
+        d=pjoin(WD, "mgc-src"),
+    shell:
+        """
+        rm -rf {params.d}
+        git clone --recursive https://github.com/ComparativeGenomicsToolkit/cactus.git {params.d}
+        cd {params.d}
+        virtualenv -p python3 cactus_env
+        echo "export PATH=$(pwd)/bin:\$PATH" >> cactus_env/bin/activate
+        echo "export PYTHONPATH=$(pwd)/lib:\$PYTHONPATH" >> cactus_env/bin/activate
+        set +u; source cactus_env/bin/activate; set -u
+        python3 -m pip install -U setuptools pip wheel
+        python3 -m pip install -U .
+        python3 -m pip install -U -r ./toil-requirement.txt
+        """
+
+rule minigraphcactus:
+    input:
+        ref=FA,
+        vcf=pjoin(WD, "{n}", "variations-1out.vcf.gz"),
+        fa1=rules.hifiasm.output.fa1,
+        fa2=rules.hifiasm.output.fa2,
+        venv=pjoin(WD, "mgc-src", "cactus_env", "bin", "activate"),
+    output:
+        gfa=pjoin(WD, "{n}", "pangenome-mgcactus.gfa"),
+    params:
+        prefix = pjoin(WD, "{n}", "mgcactus"),
+    threads: workflow.cores
+    log:
+        time = pjoin(WD, "{n}", "times", "mgcactus.time"),
+        log = pjoin(WD, "{n}", "logs", "mgcactus.log"),
+    shell:
+        """
+        set +u; source {input.venv}; set -u
+        /usr/bin/time -vo {log.time} bash run_mgcactus.sh {input.ref} {input.vcf} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} > {output.gfa}
+        """
 
 # ================ #
 # === ANALYSIS === #
@@ -456,7 +500,6 @@ rule minigraph_augmented:
         """
         minigraph -t{threads} -cx lr {input.gfa} {input.fq} > {output.gaf}
         """
-
 
 rule analyze:
     input:

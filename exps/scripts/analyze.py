@@ -1,4 +1,5 @@
 import argparse
+import re
 import pickle
 
 
@@ -13,7 +14,7 @@ def main(args):
             path = [int(x[:-1]) for x in line[2].split(",")]
         elif line.startswith("W"):
             line = line.strip("\n").split("\t")
-            path = [int(x) for x in line[6][1:].split(">")]
+            path = [int(x) for x in re.split("[<>]", line[6][1:])]
         else:
             continue
         V.add(path[0])
@@ -28,7 +29,7 @@ def main(args):
     print("Reiterating over graph...")
     for line in open(args.GFA):
         if line.startswith("S"):
-            _, v, seq = line.strip("\n").split("\t")
+            _, v, seq, *_ = line.strip("\n").split("\t")
             v = int(v)
             if v in V:
                 continue
@@ -53,7 +54,7 @@ def main(args):
 
         path = line[5]
         strand = path[0]
-        path = [int(x) for x in path[1:].split(strand)]
+        path = [int(x) for x in re.split("[<>]", path[1:])]
         if strand == "<":
             path = path[::-1]
 
@@ -95,12 +96,5 @@ if __name__ == "__main__":
         required=True,
         default="out.pickle",
     )
-    # parser.add_argument(
-    #     "--augmented",
-    #     dest="augmented",
-    #     help="Run augmentation analysis (default: False)",
-    #     required=False,
-    #     action="store_true",
-    # )
     args = parser.parse_args()
     main(args)

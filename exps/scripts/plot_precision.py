@@ -36,7 +36,8 @@ def main():
         nV = pickle.load(fb)
         nE = pickle.load(fb)
         fb.close()
-
+        if "mgcactus" in t:
+            continue
         if "augmented" not in t:
             assert len(nV) == 0 and len(nE) == 0
             continue
@@ -65,9 +66,12 @@ def main():
     x = np.arange(len(Gs))  # the label locations
     width = 0.25  # the width of the bars
     multiplier = 0
-    colors = [["royalblue", "lightsteelblue"], ["seagreen", "lightgreen"]]
-    # fig, (ax1, ax2) = plt.subplots(1, 2, layout="constrained", figsize=(9, 7))
-    fig, ax1 = plt.subplots(1, 1, layout="constrained", figsize=(8, 6), dpi=80)
+    colors = [["royalblue", "lightsteelblue"], ["darkorange", "bisque"]]
+
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        1, 3, layout="constrained", figsize=(11, 4), dpi=80
+    )
+
     for r in [1, 2]:
         offset = width * multiplier
 
@@ -92,37 +96,12 @@ def main():
         ax1.bar_label(rects, labels=round(d["Used"] / d["Added"], 2), padding=3)
 
         d = df[(df["Run"] == r) & (df["Elem"] == "E")].sort_values(by="G")
-
-        # rects = ax2.bar(
-        #     x + offset,
-        #     d["Added"],
-        #     width=width,
-        #     label=runs[r],
-        #     align="edge",
-        #     color=colors[r - 1][0],
-        # )
-        # ax2.bar(
-        #     x + offset,
-        #     d["Used"],
-        #     width=width,
-        #     label=runs[r],
-        #     align="edge",
-        #     color=colors[r - 1][1],
-        # )
-        # ax2.bar_label(rects, labels=round(d["Used"] / d["Added"], 2), padding=3)
-
         multiplier += 1
 
-    ax1.set_title("Novel Vertices")
-    # ax1.set_ylabel("#")
-    ax1.set_xlabel("#Samples")
+    ax1.set_title("(a) Novel Vertices")
+    ax1.set_ylabel("Count")
+    ax1.set_xlabel("n")
     ax1.set_xticks(x + width, Gs)
-    # ax1.legend(loc="upper right", ncols=1)
-
-    # ax2.set_title("Novel Edges")
-    # ax2.set_xlabel("#Samples")
-    # ax2.set_xticks(x + width, Gs)
-    # # ax2.legend(loc="upper right", ncols=1)
 
     legend_elements = [
         Patch(facecolor=colors[0][1], edgecolor=colors[0][0], label="1OUT-AUG"),
@@ -130,28 +109,47 @@ def main():
     ]
     ax1.legend(title="Graph", handles=legend_elements, loc="upper right")
 
-    # fig.supxlabel("Samples")
+    data = []
+    for n in [1, 8]:  # NOVEL_1OUT
+        for v, w in NOVEL_1OUT[n].items():
+            data.append([n, "1OUT", w])
+        for v, w in NOVEL_FULL[n].items():
+            data.append([n, "FULL", w])
+    df = pd.DataFrame(data, columns=["n", "Graph", "Support"])
+
+    print(df[(df["n"] == 1) & (df["Graph"] == "1OUT") & (df["Support"] == 1)].shape[0])
+    print(df[(df["n"] == 1) & (df["Graph"] == "1OUT")].shape[0])
+    print(df[(df["n"] == 8) & (df["Graph"] == "1OUT") & (df["Support"] == 1)].shape[0])
+    print(df[(df["n"] == 8) & (df["Graph"] == "1OUT")].shape[0])
+
+    sns.histplot(
+        data=df[df["n"] == 1],
+        x="Support",
+        hue="Graph",
+        discrete=True,
+        element="step",
+        ax=ax2,
+        legend=None,
+    )
+    ax2.set_ylabel("")
+    ax2.set_title(f"(b) n=1")
+
+    sns.histplot(
+        data=df[df["n"] == 8],
+        x="Support",
+        hue="Graph",
+        discrete=True,
+        element="step",
+        ax=ax3,
+        legend=None,
+    )
+    ax3.set_ylim(ax2.get_ylim())
+    ax3.set_ylabel("")
+    ax3.set_title(f"(c) n=8")
 
     plt.tight_layout()
+    plt.savefig("precision.pdf")
     plt.show()
-    plt.savefig("precision.png")
-    plt.close()
-
-    for n in NOVEL_1OUT:
-        data = []
-        for v, w in NOVEL_1OUT[n].items():
-            data.append(["1OUT", w])
-            if w <= 1:
-                print(v, w)
-        for v, w in NOVEL_FULL[n].items():
-            data.append(["FULL", w])
-
-        df = pd.DataFrame(data, columns=["Graph", "Support"])
-        sns.histplot(data=df, x="Support", hue="Graph", discrete=True, element="step")
-        plt.title(f"#Samples: {n}")
-        plt.tight_layout()
-        plt.show()
-        plt.savefig(f"precision-supp.{n}.png")
 
 
 if __name__ == "__main__":

@@ -10,8 +10,8 @@ WD = config["wd"]
 
 nths = workflow.cores
 
-Ns = [16]  # [1, 2]  # , 4] # , 8, 16, 32]
-Ks = [27]  # [23, 27, 31]
+Ns = [1, 2, 4, 8, 16, 32]
+Ks = [27]
 
 SAMPLES = {}
 for line in gzip.open(VCF, mode="rt"):
@@ -30,7 +30,6 @@ for line in gzip.open(VCF, mode="rt"):
 rule run:
     input:
         expand(pjoin(WD, "{n}", "k{k}", "reference-anchors.bed"), n=Ns, k=Ks),
-        # expand(pjoin(WD, "k{k}", "sample.nuk.png"), k=Ks),
 
 
 # ============================== #
@@ -212,41 +211,3 @@ rule kan_ref:
         """
         /usr/bin/time -vo {log.time} ../pansv kan -k{wildcards.k} {input.skt} {input.fa} > {output.bed}
         """
-
-
-# rule kan_py:
-#     input:
-#         bed=rules.kan_ref.output.bed,
-#         fai=FA + ".fai",
-#     output:
-#         pjoin(WD, "k{k}", "reference.kan.png"),
-#     params:
-#         prefix=pjoin(WD, "k{k}", "reference.kan"),
-#     conda: "workflow/envs/seaborn.yml"
-#     shell:
-#         """
-#         python3 ../scripts/kan_hist.py {input.bed} {input.fai} -o {params.prefix}
-#         """
-# rule kan_reads:
-#     input:
-#         skt=rules.sketch.output.skt,
-#         fq=FQ,
-#     output:
-#         nuk=pjoin(WD, "k{k}", "sample.nuk"),
-#     log:
-#         time = pjoin(WD, "TIMES", "k{k}", "kan-reads.time"),
-#     shell:
-#         """
-#         /usr/bin/time -vo {log.time} ../pansv chreads -k{wildcards.k} {input.skt} {input.fq} > {output.nuk}
-#         """
-# rule kan_reads_py:
-#     input:
-#         nuk=rules.kan_reads.output.nuk,
-#     output:
-#         png=pjoin(WD, "k{k}", "sample.nuk.png"),
-#         txt=pjoin(WD, "k{k}", "sample.nuk.txt"),
-#     conda: "workflow/envs/seaborn.yml"
-#     shell:
-#         """
-#         python3 ../scripts/ran_hist.py {input.nuk} {output.png} > {output.txt}
-#         """

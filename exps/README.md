@@ -1,6 +1,6 @@
 # Experiments
 
-### Pangenome augmentation
+### Prepare data
 
 ```
 # Setup conda environment
@@ -16,7 +16,6 @@ samtools faidx chm13v2.0.fa
 wget https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/freeze1/minigraph-cactus/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.vcfbub.a100k.wave.vcf.gz
 wget https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/freeze1/minigraph-cactus/hprc-v1.1-mc-chm13/hprc-v1.1-mc-chm13.vcfbub.a100k.wave.vcf.gz.tbi
 
-
 bcftools norm --check-ref e --fasta-ref chm13v2.0.fa hprc-v1.1-mc-chm13.vcfbub.a100k.wave.vcf.gz | bcftools +remove-overlaps | bcftools +missing2ref -Oz > hprc-v1.1.vcf.gz
 tabix -p vcf hprc-v1.1.vcf.gz
 
@@ -26,7 +25,7 @@ tabix -p vcf hprc-v1.1.vcf.gz
 # python3 scripts/remove_duplicates.py hprc-v1.1.vcf.gz | bgzip -c > hprc-v1.1.nodups.vcf.gz
 # tabix -p vcf hprc-v1.1.nodups.vcf.gz
 
-# Extract one or more chromosomes
+# Extract one (or more) chromosome(s)
 mkdir chr1
 samtools faidx chm13v2.0.fa chr1 > chr1/reference.fa
 samtools faidx chr1/reference.fa
@@ -41,12 +40,12 @@ snakemake --use-conda -s update_analysis.smk --config fa=[reference.fa] vcf=[var
 ```
 Everything will be created in the specified `WD` directory. Since we rely on sampling-based simulation with pbsim3, we need to pass a real fastq file to the snakemake.
 
+Results and plots can be obtained using the following scripts:
 ```
-python3 scripts/plot_recall.py [WD]
-python3 scripts/compare_gafs.py [WD] [%covread]
+# %covread is 0.8 and then 1
+python3 scripts/plot_recall.py [WD] [%covread]
 python3 scripts/plot_precision.py [WD]
 ```
-
 
 ### Anchor experiment
 Evaluate how robust our graph sketching is.
@@ -67,12 +66,19 @@ bedtools genomecov -i missed-regions-15k.32.bed -g [reference.fa.fai]
 # convert to bed using bigBedToBed
 # e.g., bigBedToBed chm13v2.0_rmsk.bb -chrom=chr20 rmsk.chr20.bed
 
-# analyze missed regions
-python3 scripts/check_uncovered_regions.py missed-regions-15k.32.fa sedefSegDups.bed rmsk.bed
-
+# Get reads and get solid anchors from them
 wget https://storage.googleapis.com/brain-genomics-public/publications/kolesnikov2023_dv_haplotagging/evaluation/ont_simplex_HG002_chr20/downsampled_bams/HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.bam
 wget https://storage.googleapis.com/brain-genomics-public/publications/kolesnikov2023_dv_haplotagging/evaluation/ont_simplex_HG002_chr20/downsampled_bams/HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.bam.bai
 samtools fastq HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.bam > HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.fq
+samtools faidx HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.fq
 ../pansv kan -r -k27 [WD]/32/k27/pangenome.skt HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.fq > ont-reads.txt
 
+# Analyze and plot
+python3 ./scripts/exp1_plot.py missed-regions-15k.32.fa sedefSegDups.bed rmsk.bed ont-reads.txt HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.fq.fai > missed-regions-15k.32.info.txt
+
+# Regions classification
+grep "^chr" missed-regions-15k.32.info.txt | cut -f3 -d" " | sort | uniq -c | most
+
+# Reads information
+tail -14 missed-regions-15k.32.info.txt
 ```
