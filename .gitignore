@@ -1,6 +1,6 @@
 build/
 .vscode/
-pansv
+palss
 .snakemake/
 .cache/
 example/

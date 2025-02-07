@@ -7,10 +7,12 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(PANSV VERSION 1.0.0)
-add_executable(pansv sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main.cpp) # main_map.cpp
-set_target_properties(pansv PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
-target_compile_options(pansv PRIVATE) # -Wall -Wextra -Wpedantic -Werror)
+project(PALSS VERSION 0.0.1)
+add_executable(palss sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main.cpp) # main_map.cpp
+set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
+target_compile_options(palss PRIVATE) # -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
+
+add_definitions("-Wp,-w")
 
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
@@ -56,7 +58,10 @@ SET(PATCH_CMD "")
 ExternalProject_Add(abpoa
   GIT_REPOSITORY https://github.com/yangao07/abPOA.git
   GIT_TAG e6bb6fdfa40d573558e5e2b545bdf5769631eaaf # v1.5.3 with bug fixes
-  PATCH_COMMAND ${PATCH_CMD}
+  BUILD_IN_SOURCE 1
+  UPDATE_COMMAND ""
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND make
   INSTALL_COMMAND ""
 )
 ExternalProject_Get_Property(abpoa SOURCE_DIR BINARY_DIR)
@@ -70,16 +75,16 @@ SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
 ### final setup (includes and libraries) ###
 ############################################
 
-add_dependencies(pansv RB3 abpoa ksw2) # gbwt)
+add_dependencies(palss RB3 abpoa ksw2) # gbwt)
 
-target_include_directories(pansv
+target_include_directories(palss
     PRIVATE ${RB3_INCLUDE_DIR}
     PRIVATE ${KSW2_INCLUDE_DIR}
     PRIVATE ${ABPOA_INCLUDE_DIR}
     PRIVATE ${PROJECT_SOURCE_DIR}
 )
 
-target_link_libraries(pansv
+target_link_libraries(palss
     PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz2_sse.o
     PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
     PUBLIC ${BINARY_DIR}/lib/libabpoa.a

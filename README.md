@@ -25,13 +25,14 @@ vg paths -F -x example/reference.gfa > example/reference.paths.fa
 ./build/rb3-prefix/src/rb3/ropebwt3 build -d example/reference.paths.fa > example/reference.paths.fa.fmd
 
 # sketch the graph using 27-mers solid anchors
-./pansv sketch -k27 example/reference.gfa example/reference.paths.fa.fmd > example/reference-k27.skt
+# !!! Set the number of paths (haplotypes) in the graph using the -g option !!!
+./palss sketch -g1 -k27 example/reference.gfa example/reference.paths.fa.fmd > example/reference-k27.skt
 
 # search for specific strings in the haplotypes
-./pansv search -k27 example/reference.gfa example/reference-k27.skt example/reference.paths.fa.fmd example/reads.fa > example/sfs.txt
+./palss search -k27 example/reference.gfa example/reference-k27.skt example/reference.paths.fa.fmd example/reads.fa > example/sfs.txt
 
 # cluster specific strings and analyze clusters
-./pansv call -k27 example/reference.gfa example/reference-k27.skt example/sfs2.txt example/reads.fa > example/new_portions.gaf
+./palss call -k27 example/reference.gfa example/reference-k27.skt example/sfs.txt example/reads.fa > example/new_portions.gaf
 
 # augment the graph
 vg augment --min-coverage 1 --gaf example/reference.gfa example/new_portions.gaf > example/reference-augmented.gfa
@@ -40,12 +41,12 @@ vg augment --min-coverage 1 --gaf example/reference.gfa example/new_portions.gaf
 ##### Solid anchors analysis
 To analyze solid anchors from a pangenome wrt any fastx file (use `-r` if .fq):
 ``` sh
-./pansv kan [-r] [.skt] [.fx] > [.bed]
+./palss kan [-r] [.skt] [.fx] > [.bed]
 ```
 Please refer to the scripts in the `exps` subdirectory for more information.
 
 ### Experiments
-Instructions and code to reproduce the experiments described in the manuscript can be found [here](./exps)
+Instructions and code to reproduce the experiments described in the manuscript can be found [here](./exps).
 
 ### Planned future improvements
 - [ ] cyclic graphs

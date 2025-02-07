@@ -12,6 +12,7 @@
 #include "sketch.hpp"
 extern "C" {
 #include "graph.h"
+#include "usage.h"
 #include "utils.h"
 }
 
@@ -108,7 +109,7 @@ int main_sketch(int argc, char *argv[]) {
   static ko_longopt_t longopts[] = {{NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
-  while ((_c = ketopt(&opt, argc, argv, 1, "k:g:v:@:", longopts)) >= 0) {
+  while ((_c = ketopt(&opt, argc, argv, 1, "k:g:v:@:h", longopts)) >= 0) {
     if (_c == 'k')
       klen = atoi(opt.arg);
     else if (_c == 'g')
@@ -117,10 +118,14 @@ int main_sketch(int argc, char *argv[]) {
       vpb = atoi(opt.arg);
     else if (_c == '@')
       threads = atoi(opt.arg);
+    else if (_c == 'h') {
+      fprintf(stderr, "%s", SKETCH_USAGE_MESSAGE);
+      return 0;
+    }
   }
 
   if (argc - opt.ind != 2) {
-    fprintf(stderr, "Argh");
+    fprintf(stderr, "%s", SKETCH_USAGE_MESSAGE);
     return 1;
   }
   char *gfa_fn = argv[opt.ind++];

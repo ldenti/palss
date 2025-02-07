@@ -71,7 +71,7 @@ wget https://storage.googleapis.com/brain-genomics-public/publications/kolesniko
 wget https://storage.googleapis.com/brain-genomics-public/publications/kolesnikov2023_dv_haplotagging/evaluation/ont_simplex_HG002_chr20/downsampled_bams/HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.bam.bai
 samtools fastq HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.bam > HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.fq
 samtools faidx HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.fq
-../pansv kan -r -k27 [WD]/32/k27/pangenome.skt HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.fq > ont-reads.txt
+../palss kan -r -k27 [WD]/32/k27/pangenome.skt HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.fq > ont-reads.txt
 
 # Analyze and plot
 python3 ./scripts/exp1_plot.py missed-regions-15k.32.fa sedefSegDups.bed rmsk.bed ont-reads.txt HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.fq.fai > missed-regions-15k.32.info.txt

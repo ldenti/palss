@@ -195,7 +195,7 @@ rule sketch:
     threads: workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv sketch -g{params.nh} -k {wildcards.k} -v25000 -@{threads} {input.gfa} {input.fmd} > {output.skt} 2> {log.log}
+        /usr/bin/time -vo {log.time} ../palss sketch -g{params.nh} -k {wildcards.k} -v25000 -@{threads} {input.gfa} {input.fmd} > {output.skt} 2> {log.log}
         """
 
 
@@ -209,5 +209,5 @@ rule kan_ref:
         time=pjoin(WD, "times", "{n}", "k{k}", "kan-reference.time"),
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv kan -k{wildcards.k} {input.skt} {input.fa} > {output.bed}
+        /usr/bin/time -vo {log.time} ../palss kan -k{wildcards.k} {input.skt} {input.fa} > {output.bed}
         """

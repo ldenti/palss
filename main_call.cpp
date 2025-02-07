@@ -19,11 +19,11 @@
 
 extern "C" {
 #include "graph.h"
+#include "ksw2.h" // XXX: redefinitions. This has to be included after graph.h
+#include "usage.h"
 }
 #include "sketch.hpp"
 #include "utils.h"
-
-#include "ksw2.h" // XXX: redefinitions
 
 // KSEQ_INIT(gzFile, gzread) // we already init kstream in graph.h
 // XXX: there should be a better way to do this
@@ -194,7 +194,6 @@ int main_call(int argc, char *argv[]) {
 
   int klen = 27;   // kmer size
   int min_w = 2;   // minimum support for cluster
-  int min_l = 50;  // minimum SV length
   float lr = 0.97; // Ratio to cluster specific strings inside same cluster
   int hd = 0;      // hamming distance for fixing anchors
   int verbose = 0;
@@ -204,22 +203,22 @@ int main_call(int argc, char *argv[]) {
                                     {NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
-  while ((_c = ketopt(&opt, argc, argv, 1, "k:w:l:r:v", longopts)) >= 0) {
+  while ((_c = ketopt(&opt, argc, argv, 1, "k:w:l:r:vh", longopts)) >= 0) {
     if (_c == 'k')
       klen = atoi(opt.arg);
     else if (_c == 'w')
       min_w = atoi(opt.arg);
-    else if (_c == 'l')
-      min_l = atoi(opt.arg);
     else if (_c == 'r')
       lr = atof(opt.arg);
     else if (_c == 'v')
       verbose = 1;
-    // else if (_c == 301)
-    //   bed_fn = opt.arg;
+    else if (_c == 'h') {
+      fprintf(stderr, "%s", CALL_USAGE_MESSAGE);
+      return 0;
+    }
   }
   if (argc - opt.ind != 4) {
-    fprintf(stderr, "Argh");
+    fprintf(stderr, "%s", CALL_USAGE_MESSAGE);
     return 1;
   }
   char *gfa_fn = argv[opt.ind++];

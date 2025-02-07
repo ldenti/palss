@@ -349,7 +349,7 @@ rule sketch:
     threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv sketch -g{params.nh} -k{wildcards.k} -v25000 {input.gfa} {input.fmd} > {output.skt} 2> {log.log}
+        /usr/bin/time -vo {log.time} ../palss sketch -g{params.nh} -k{wildcards.k} -v25000 {input.gfa} {input.fmd} > {output.skt} 2> {log.log}
         """
 
 
@@ -367,7 +367,7 @@ rule search:
     threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv search -k{wildcards.k} {input.gfa} {input.skt} {input.fmd} {input.fa} > {output.txt} 2> {log.log}
+        /usr/bin/time -vo {log.time} ../palss search -k{wildcards.k} {input.gfa} {input.skt} {input.fmd} {input.fa} > {output.txt} 2> {log.log}
         """
 
 
@@ -385,7 +385,7 @@ rule call:
     threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} ../pansv call -w{wildcards.w} -k{wildcards.k} {input.gfa} {input.skt} {input.txt} {input.fa} > {output.gaf} 2> {log.log}
+        /usr/bin/time -vo {log.time} ../palss call -w{wildcards.w} -k{wildcards.k} {input.gfa} {input.skt} {input.txt} {input.fa} > {output.gaf} 2> {log.log}
         """
 
 

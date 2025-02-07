@@ -9,6 +9,7 @@
 
 extern "C" {
 #include "graph.h"
+#include "usage.h"
 }
 #include "sfs.h"
 #include "sketch.hpp"
@@ -314,16 +315,20 @@ int main_search(int argc, char *argv[]) {
   static ko_longopt_t longopts[] = {{NULL, 0, 0}};
   ketopt_t opt = KETOPT_INIT;
   int _c;
-  while ((_c = ketopt(&opt, argc, argv, 1, "k:d:a:", longopts)) >= 0) {
+  while ((_c = ketopt(&opt, argc, argv, 1, "k:d:a:h", longopts)) >= 0) {
     if (_c == 'k')
       klen = atoi(opt.arg);
     else if (_c == 'd')
       hd = atoi(opt.arg);
     else if (_c == 'a')
       N = atoi(opt.arg);
+    else if (_c == 'h') {
+      fprintf(stderr, "%s", SEARCH_USAGE_MESSAGE);
+      return 0;
+    }
   }
   if (argc - opt.ind != 4) {
-    fprintf(stderr, "Argh");
+    fprintf(stderr, "%s", SEARCH_USAGE_MESSAGE);
     return 1;
   }
   char *gfa_fn = argv[opt.ind++];
