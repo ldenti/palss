@@ -148,7 +148,7 @@ def main():
     ax3.set_title(f"(c) n=8")
 
     plt.tight_layout()
-    plt.savefig("precision.pdf")
+    # plt.savefig("precision.pdf")
     plt.show()
 
 

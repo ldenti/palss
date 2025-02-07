@@ -192,8 +192,8 @@ def main():
     ax2.set_title("(b)")
 
     plt.tight_layout()
-    plt.savefig("x.png", bbox_inches="tight")
-    plt.savefig("x.pdf", bbox_inches="tight")
+    # plt.savefig("x.png", bbox_inches="tight")
+    # plt.savefig("x.pdf", bbox_inches="tight")
     plt.show()
 
 
