@@ -49,8 +49,8 @@ Instructions and code to reproduce the experiments described in the manuscript c
 
 ### Planned future improvements
 - [ ] cyclic graphs
-- [ ] build fmd directly from vg/gbwt
-- [ ] parallelize
-- [ ] align directly to subgraphs
+- [ ] align consensus directly to subgraphs
+- [ ] works from .vg/.gbwt
+- [ ] parallelize, improve scalability
 
 For any question/doubt, please [open an issue](https://github.com/ldenti/palss/issues/new).
