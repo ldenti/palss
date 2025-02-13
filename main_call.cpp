@@ -33,6 +33,16 @@ __KSEQ_READ(static)
 
 using namespace std;
 
+string decode(const uint8_t *s, int l, int shift) {
+  if (s == NULL)
+    return "";
+  char ds[l + 1];
+  for (int i = 0; i < l; ++i)
+    ds[i] = s[i] + shift <= 5 ? "NACGTN"[s[i] + shift] : 'N';
+  ds[l] = '\0';
+  return ds;
+}
+
 /* Add specific string s to cluster c and update its anchors */
 void cl_insert(cluster_t &c, sfs_t *s) {
   c.specifics.push_back(s);

@@ -1,5 +1,5 @@
-#ifndef PSUTILS_HPP
-#define PSUTILS_HPP
+#ifndef PS_UTILS_HPP
+#define PS_UTILS_HPP
 
 #include <string>
 #include <sys/time.h>
@@ -20,23 +20,13 @@ static const uint8_t to_int[128] = {0, 0, 1, 2, 3, 0, 0, 0, 0, 0, // 0
 
 inline uint8_t reverse_char(const uint8_t c) { return ((~c) & 3); }
 
-inline std::string decode(const uint8_t *s, int l, int shift) {
-  if (s == NULL)
-    return "";
-  char ds[l + 1];
-  for (int i = 0; i < l; ++i)
-    ds[i] = s[i] + shift <= 5 ? "NACGTN"[s[i] + shift] : 'N';
-  ds[l] = '\0';
-  return ds;
-}
-
-inline void d23(uint64_t kmer, int k, char *kk) {
+void d23(uint64_t kmer, int k, char *kk) {
   for (int i = 1; i <= k; ++i)
     kk[i - 1] = ((kmer >> (k - i) * 2) & 3) + 1;
   kk[k] = '\0';
 }
 
-inline std::string d2s(uint64_t kmer, int k) {
+std::string d2s(uint64_t kmer, int k) {
   char kk[k + 1];
   for (int i = 1; i <= k; ++i)
     kk[i - 1] = "ACGT"[(kmer >> (k - i) * 2) & 3];
@@ -44,7 +34,7 @@ inline std::string d2s(uint64_t kmer, int k) {
   return kk;
 }
 
-inline uint64_t k2d(char *kmer, uint8_t k) {
+uint64_t k2d(char *kmer, uint8_t k) {
   uint64_t kmer_d = 0;
   uint8_t x;
   for (uint8_t i = 0; i < k; ++i) {
@@ -55,7 +45,7 @@ inline uint64_t k2d(char *kmer, uint8_t k) {
   return kmer_d;
 }
 
-inline uint64_t rc(uint64_t kmer, const uint8_t k) {
+uint64_t rc(uint64_t kmer, const uint8_t k) {
   uint64_t rckmer = 0;
   kmer = ~kmer;
   for (uint8_t i = 0; i < k; ++i) {
@@ -65,21 +55,14 @@ inline uint64_t rc(uint64_t kmer, const uint8_t k) {
   return rckmer;
 }
 
-inline uint64_t lsappend(const uint64_t kmer, const uint64_t c,
-                         const uint64_t k) { // left shift and append
+uint64_t lsappend(const uint64_t kmer, const uint64_t c,
+                  const uint64_t k) { // left shift and append
   return ((kmer << 2) | c) & ((1UL << 2 * k) - 1);
 }
 
-inline uint64_t rsprepend(const uint64_t kmer, const uint64_t c,
-                          const uint64_t k) { // right shift and prepend
+uint64_t rsprepend(const uint64_t kmer, const uint64_t c,
+                   const uint64_t k) { // right shift and prepend
   return (kmer >> 2) | (c << (2 * k - 2));
-}
-
-static inline double realtime() {
-  struct timeval tp;
-  struct timezone tzp;
-  gettimeofday(&tp, &tzp);
-  return (double)tp.tv_sec + (double)tp.tv_usec * 1e-6;
 }
 
 #endif

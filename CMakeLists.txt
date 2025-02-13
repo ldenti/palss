@@ -8,7 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PALSS VERSION 0.0.1)
-add_executable(palss sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main.cpp) # main_map.cpp
+add_executable(palss misc.c kmer.c sketch.c graph.c main_sketch.c main.cpp)
+# add_executable(palss sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main.cpp) # main_map.cpp
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(palss PRIVATE) # -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
 
