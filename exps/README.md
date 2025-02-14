@@ -52,7 +52,7 @@ Evaluate how robust our graph sketching is.
 ```
 snakemake --use-conda -s anchors_analysis.smk --config fa=[reference.fa] vcf=[variations.vcf.gz] wd=[WD] -p -c4 [-n]
 
-python3 scripts/kan_hist.py [reference.fa.fai] [WD] [avg_read_len] > missed-regions-15k.txt
+python3 scripts/kan_post.py [reference.fa.fai] [WD] [avg_read_len] > missed-regions-15k.txt
 
 # get a .bed from the log (missed regions wrt graph with 32 samples)
 grep "# 32" missed-regions-15k.txt | cut -f3 -d" " | tr ":-" "\t" > missed-regions-15k.32.bed
