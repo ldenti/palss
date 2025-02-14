@@ -63,8 +63,11 @@ bedtools getfasta -fi [reference.fa] -bed missed-regions-15k.32.bed > missed-reg
 bedtools genomecov -i missed-regions-15k.32.bed -g [reference.fa.fai]
 
 # download sedefSegDups.bb and chm13v2.0_rmsk.bb (on chm13) from genome browser
+wget https://hgdownload.soe.ucsc.edu/gbdb/hs1/sedefSegDups/sedefSegDups.bb
+wget https://hgdownload.soe.ucsc.edu/gbdb/hs1/t2tRepeatMasker/chm13v2.0_rmsk.bb
 # convert to bed using bigBedToBed
-# e.g., bigBedToBed chm13v2.0_rmsk.bb -chrom=chr20 rmsk.chr20.bed
+# e.g., bigBedToBed chm13v2.0_rmsk.bb -chrom=chr1 chm13v2.0_rmsk.1.bed
+
 
 # Get reads and get solid anchors from them
 wget https://storage.googleapis.com/brain-genomics-public/publications/kolesnikov2023_dv_haplotagging/evaluation/ont_simplex_HG002_chr20/downsampled_bams/HG002_R1041_StandardSpeed_Guppy6_sup_2_GRCh38.pass.chr20.10x.bam
