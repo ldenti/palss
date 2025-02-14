@@ -164,8 +164,8 @@ int main_sketch(int argc, char *argv[]) {
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
     if (s.s[0] == 'S') {
       ++nvertices;
-      if (nvertices % 5000 == 0) {
-        fprintf(stderr, "[M::%s] sketched 5000 vertices in %.3f sec\n",
+      if (nvertices % 25000 == 0) {
+        fprintf(stderr, "[M::%s] sketched 25000 vertices in %.3f sec\n",
                 __func__, realtime() - rt1);
         rt1 = realtime();
       }
@@ -182,14 +182,17 @@ int main_sketch(int argc, char *argv[]) {
       qkmer = (uint8_t *)kmer;
       rb3_char2nt6(klen, qkmer);
       qint = qints[kmer_d & ((1 << (mklen * 2)) - 1)];
-      hits = search(&fmd, qint, qkmer, klen - mklen, nh);
+      hits = 1;
+      if (qint.size > nh) {
+        hits = search(&fmd, qint, qkmer, klen - mklen, nh);
+        /* int hitsf = search_full(&fmd, qkmer, klen, nh); */
+        /* assert(hits == hitsf); */
+        assert(hits > 0);
+      }
 
-      /* assert(hits == search_full(&fmd, qkmer, klen, nh)); */
-
-      assert(hits > 0);
       if (hits <= nh)
         // TODO: keep track of number of skipped anchors
-        sk_add(sketch, ckmer_d, seg->idx, 0, hits <= nh);
+        sk_add(sketch, ckmer_d, seg->idx, 0, 1);
 
       for (p = klen; p < seg->l; ++p) {
         c = to_int[seg->seq[p]] - 1; // A is 1 but it should be 0
@@ -201,13 +204,16 @@ int main_sketch(int argc, char *argv[]) {
         qkmer = (uint8_t *)kmer;
         rb3_char2nt6(klen, qkmer);
         qint = qints[kmer_d & ((1 << (mklen * 2)) - 1)];
-        hits = search(&fmd, qint, qkmer, klen - mklen, nh);
-        /* assert(hits == search_full(&fmd, qkmer, klen, nh)); */
-
-        assert(hits > 0);
+        hits = 1;
+        if (qint.size > nh) {
+          hits = search(&fmd, qint, qkmer, klen - mklen, nh);
+          /* hitsf = search_full(&fmd, qkmer, klen, nh); */
+          /* assert(hits == hitsf); */
+          assert(hits > 0);
+        }
         // TODO: keep track of number of skipped anchors
         if (hits <= nh)
-          sk_add(sketch, ckmer_d, seg->idx, p - klen + 1, hits <= nh);
+          sk_add(sketch, ckmer_d, seg->idx, p - klen + 1, 1);
       }
     }
   }

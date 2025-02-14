@@ -22,7 +22,7 @@ void sk_add(sketch_t *sk, uint64_t kmer_d, uint64_t v, uint16_t offset,
     k = kh_put(m64, sk, kmer_d, &ret);
     kh_value(sk, k) = sk_encode(v, offset, good);
   } else {
-    // fprintf(stderr, "XXX\n");
+    /* fprintf(stderr, "XXX %ld\n", kmer_d); */
     kh_value(sk, k) = 0;
   }
 }
@@ -47,8 +47,9 @@ void sk_clean(sketch_t *sk) {
     if (kh_exist(sk, k)) {
       /* fprintf(stderr, "%ld > %d exists\n", kh_key(sk, k), kh_value(sk, k));
        */
+
       if (kh_value(sk, k) == 0) {
-        // fprintf(stderr, "Deleting %d\n", k);
+        /* fprintf(stderr, "Deleting %d\n", sk->keys[k]); */
         kh_del(m64, sk, k);
       }
     }
