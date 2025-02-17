@@ -1,6 +1,6 @@
 #include "misc.h"
 
-static inline double realtime() {
+double realtime() {
   struct timeval tp;
   struct timezone tzp;
   gettimeofday(&tp, &tzp);

@@ -22,7 +22,6 @@ void sk_add(sketch_t *sk, uint64_t kmer_d, uint64_t v, uint16_t offset,
     k = kh_put(m64, sk, kmer_d, &ret);
     kh_value(sk, k) = sk_encode(v, offset, good);
   } else {
-    /* fprintf(stderr, "XXX %ld\n", kmer_d); */
     kh_value(sk, k) = 0;
   }
 }
@@ -45,11 +44,7 @@ void sk_clean(sketch_t *sk) {
   khiter_t k;
   for (k = kh_begin(sk); k != kh_end(sk); ++k) {
     if (kh_exist(sk, k)) {
-      /* fprintf(stderr, "%ld > %d exists\n", kh_key(sk, k), kh_value(sk, k));
-       */
-
       if (kh_value(sk, k) == 0) {
-        /* fprintf(stderr, "Deleting %d\n", sk->keys[k]); */
         kh_del(m64, sk, k);
       }
     }
@@ -97,7 +92,7 @@ int sk_store(sketch_t *sk, char *fn) {
     exit(1);
   }
 
-  if (fwrite(sk->vals, 2, sk->n_buckets, fp) != sk->n_buckets) {
+  if (fwrite(sk->vals, 8, sk->n_buckets, fp) != sk->n_buckets) {
     fprintf(stderr, "[M::%s] failed to write sketch (vals)\n", __func__);
     exit(1);
   }
@@ -141,7 +136,7 @@ int sk_load(sketch_t *sk, char *fn) {
   }
 
   int nf = __ac_fsize(sk->n_buckets);
-  sk->flags = malloc(sk->n_buckets * 4);
+  sk->flags = malloc(nf * 4);
   if (fread(sk->flags, sizeof(int32_t), nf, fp) != nf) {
     fprintf(stderr, "[M::%s] failed to read sketch (flags)\n", __func__);
     exit(1);
