@@ -41,7 +41,7 @@ def main():
         print(record, end="")
         kept.add(v)
 
-    print(f"{last_chrom}: {filt}/{tot}. Moving to {record.contig}", file=sys.stderr)
+    print(f"{last_chrom}: {filt}/{tot}. Done", file=sys.stderr)
 
 
 if __name__ == "__main__":
