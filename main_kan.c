@@ -1,16 +1,21 @@
-#include <cstdint>
-#include <cstring>
+#include <stdint.h>
+#include <string.h>
 #include <zlib.h>
 
 #include "ketopt.h"
 #include "kseq.h"
 
-#include "sketch.hpp"
-#include "utils.h"
+#include "kmer.h"
+#include "misc.h"
+#include "sketch.h"
 
 KSEQ_INIT(gzFile, gzread)
 
-using namespace std;
+/* void d2s(uint64_t kmer_d, int klen, char *kmer_s) { */
+/*   for (int i = 1; i <= klen; ++i) */
+/*     kmer_s[i - 1] = "ACGT"[(kmer_d >> (klen - i) * 2) & 3]; */
+/*   kmer_s[klen] = '\0'; */
+/* } */
 
 int main_kan(int argc, char *argv[]) {
   int klen = 27; // kmer size
@@ -29,7 +34,7 @@ int main_kan(int argc, char *argv[]) {
   }
 
   if (argc - opt.ind != 2) {
-    fprintf(stderr, "Argh");
+    fprintf(stderr, "./palss kan [-r] <.skt> <.fx>\n");
     return 1;
   }
   char *skt_fn = argv[opt.ind++];
@@ -40,10 +45,10 @@ int main_kan(int argc, char *argv[]) {
   rt = rt0;
 
   // Graph sketching
-  sketch_t sketch;
+  sketch_t *sketch = sk_init();
   sk_load(sketch, skt_fn);
   fprintf(stderr, "[M::%s] loaded %lu sketches in %.3f sec\n", __func__,
-          sketch.size(), realtime() - rt);
+          kh_size(sketch), realtime() - rt);
   rt = realtime();
 
   // ---
@@ -57,35 +62,40 @@ int main_kan(int argc, char *argv[]) {
   uint64_t kmer_d = 0, rckmer_d = 0, ckmer_d = 0;
   uint8_t c; // new character to append
   int p;     // current position on sequence
+  int last_uncovered_p = -1;
   int tot = 0;
   int qidx = 0;
   while ((l = kseq_read(seq)) >= 0) {
+    last_uncovered_p = -1;
+
     strncpy(kmer, seq->seq.s, klen);
     kmer_d = k2d(kmer, klen);
     rckmer_d = rc(kmer_d, klen);
-    ckmer_d = std::min(kmer_d, rckmer_d);
+    ckmer_d = MIN(kmer_d, rckmer_d);
 
     hit = sk_get(sketch, ckmer_d);
-    if (hit.first != -1) {
-      if (out_bed)
-        printf("%s\t%d\t%d\t%lu:%d:%s\n", seq->name.s, p, p + klen, hit.first,
-               hit.second, print ? d2s(kmer_d, klen).c_str() : "");
-      else
-        ++tot;
+    if (hit.first == -1) {
+      last_uncovered_p = 0;
+      ++tot;
     }
     for (p = klen; p < seq->seq.l; ++p) {
       c = to_int[seq->seq.s[p]] - 1; // A is 1 but it should be 0
       kmer_d = lsappend(kmer_d, c, klen);
       rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
-      ckmer_d = std::min(kmer_d, rckmer_d);
+      ckmer_d = MIN(kmer_d, rckmer_d);
       hit = sk_get(sketch, ckmer_d);
-      if (hit.first != -1) {
-        if (out_bed)
-          printf("%s\t%d\t%d\t%lu:%d:%s\n", seq->name.s, p - klen + 1, p + 1,
-                 hit.first, hit.second,
-                 print ? d2s(kmer_d, klen).c_str() : ".");
-        else
-          ++tot;
+
+      if (hit.first == -1) {
+        if (last_uncovered_p == -1)
+          last_uncovered_p = p - klen + 1;
+        ++tot;
+      } else {
+        if (last_uncovered_p != -1) {
+          if (out_bed) {
+            printf("%s\t%d\t%d\n", seq->name.s, last_uncovered_p, p - klen + 1);
+          }
+        }
+        last_uncovered_p = -1;
       }
 
       if (out_bed && p % 10000000 == 0)
@@ -107,7 +117,7 @@ int main_kan(int argc, char *argv[]) {
 
   kseq_destroy(seq);
   gzclose(fp);
-
+  sk_destroy(sketch);
   // ---
 
   fprintf(stderr, "[M::%s] completed in %.3f sec\n", __func__,
