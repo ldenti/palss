@@ -29,7 +29,7 @@ for line in gzip.open(VCF, mode="rt"):
 
 rule run:
     input:
-        expand(pjoin(WD, "{n}", "k{k}", "reference-anchors.bed"), n=Ns, k=Ks),
+        expand(pjoin(WD, "{n}", "k{k}", "missed_regions.fa"), n=Ns, k=Ks),
 
 
 # ============================== #
@@ -104,12 +104,12 @@ rule vg_gbwt:
         """
 
 
-rule vg_extractgam:
+rule vg_extracthaplotypes:
     input:
         gbwt=rules.vg_gbwt.output.gbwt,
         vg=rules.vg_droppaths.output.vg,
     output:
-        gam=pjoin(WD, "{n}", "vg", "haplotypes.gam"),
+        fa=pjoin(WD, "{n}", "vg", "haplotypes.fa"),
     threads: workflow.cores
     log:
         time=pjoin(WD, "times", "{n}", "vg-extract.time"),
@@ -117,30 +117,64 @@ rule vg_extractgam:
         "./envs/vg.yml"
     shell:
         """
-        /usr/bin/time -vo {log.time} vg paths --extract-gam --gbwt {input.gbwt} -x {input.vg} > {output.gam}
+        
+        /usr/bin/time -vo {log.time} vg paths --extract-fasta --gbwt {input.gbwt} --xg {input.vg} > {output.fa}
         """
 
 
-rule vg_augment:
-    input:
-        vg=rules.vg_droppaths.output.vg,
-        gam=rules.vg_extractgam.output.gam,
-    output:
-        vg=pjoin(WD, "{n}", "pangenome.vg"),
-    threads: workflow.cores
-    log:
-        time=pjoin(WD, "times", "{n}", "vg-augment.time"),
-    conda:
-        "./envs/vg.yml"
-    shell:
-        """
-        /usr/bin/time -vo {log.time} vg augment --label-paths {input.vg} {input.gam} | vg mod --remove-non-path - > {output.vg}
-        """
+# rule vg_extractgam:
+#     input:
+#         gbwt=rules.vg_gbwt.output.gbwt,
+#         vg=rules.vg_droppaths.output.vg,
+#     output:
+#         gam=pjoin(WD, "{n}", "vg", "haplotypes.gam"),
+#     threads: workflow.cores
+#     log:
+#         time=pjoin(WD, "times", "{n}", "vg-extract.time"),
+#     conda:
+#         "./envs/vg.yml"
+#     shell:
+#         """
+#         /usr/bin/time -vo {log.time} vg paths --extract-gam --gbwt {input.gbwt} -x {input.vg} > {output.gam}
+#         """
+
+
+# rule vg_augment:
+#     input:
+#         vg=rules.vg_droppaths.output.vg,
+#         gam=rules.vg_extractgam.output.gam,
+#     output:
+#         vg=pjoin(WD, "{n}", "pangenome.vg"),
+#     threads: workflow.cores
+#     log:
+#         time=pjoin(WD, "times", "{n}", "vg-augment.time"),
+#     conda:
+#         "./envs/vg.yml"
+#     shell:
+#         """
+#         /usr/bin/time -vo {log.time} vg augment --label-paths {input.vg} {input.gam} | vg mod --remove-non-path - > {output.vg}
+#         """
+
+
+# rule vg_view:
+#     input:
+#         vg=rules.vg_augment.output.vg,
+#     output:
+#         gfa=pjoin(WD, "{n}", "pangenome.gfa"),
+#     threads: 1
+#     log:
+#         time=pjoin(WD, "times", "{n}", "vg-view.time"),
+#     conda:
+#         "./envs/vg.yml"
+#     shell:
+#         """
+#         /usr/bin/time -vo {log.time} vg view {input.vg} > {output.gfa}
+#         """
 
 
 rule vg_view:
     input:
-        vg=rules.vg_augment.output.vg,
+        vg=rules.vg_droppaths.output.vg,
     output:
         gfa=pjoin(WD, "{n}", "pangenome.gfa"),
     threads: 1
@@ -154,30 +188,31 @@ rule vg_view:
         """
 
 
-rule get_paths:
-    input:
-        gfa=rules.vg_view.output.gfa,
-    output:
-        fa=pjoin(WD, "{n}", "paths.fa"),
-    log:
-        time=pjoin(WD, "times", "{n}", "get_paths.time"),
-    shell:
-        """
-        /usr/bin/time -vo {log.time} vg paths --extract-fasta --xg {input.gfa} > {output.fa}
-        """
+# rule get_paths:
+#     input:
+#         gfa=rules.vg_view.output.gfa,
+#     output:
+#         fa=pjoin(WD, "{n}", "paths.fa"),
+#     log:
+#         time=pjoin(WD, "times", "{n}", "get_paths.time"),
+#     shell:
+#         """
+#         /usr/bin/time -vo {log.time} vg paths --extract-fasta --xg {input.gfa} > {output.fa}
+#         """
 
 
 rule rb3_index:
     input:
-        fa=rules.get_paths.output.fa,
+        rfa=FA,
+        hfa=rules.vg_extracthaplotypes.output.fa,
     output:
-        fmd=pjoin(WD, "{n}", "pangenome.paths.fa.fmd"),
+        fmd=pjoin(WD, "{n}", "pangenome.fmd"),
     log:
         time=pjoin(WD, "times", "{n}", "rb3-build.time"),
     threads: workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../build/rb3-prefix/src/rb3/ropebwt3 build -t {threads} -d {input.fa} > {output.fmd}
+        /usr/bin/time -vo {log.time} ../build/rb3-prefix/src/rb3/ropebwt3 build -t {threads} -m 3G -d {input.rfa} {input.hfa} > {output.fmd}
         """
 
 
@@ -204,10 +239,24 @@ rule kan_ref:
         skt=rules.sketch.output.skt,
         fa=FA,
     output:
-        bed=pjoin(WD, "{n}", "k{k}", "reference-anchors.bed"),
+        bed=pjoin(WD, "{n}", "k{k}", "missed_regions.bed"),
     log:
         time=pjoin(WD, "times", "{n}", "k{k}", "kan-reference.time"),
     shell:
         """
         /usr/bin/time -vo {log.time} ../palss kan -k{wildcards.k} {input.skt} {input.fa} > {output.bed}
+        """
+
+
+rule bed2fa:
+    input:
+        fa=FA,
+        bed=rules.kan_ref.output.bed,
+    output:
+        fa=pjoin(WD, "{n}", "k{k}", "missed_regions.fa"),
+    conda:
+        "./envs/bedtools.yml"
+    shell:
+        """
+        bedtools getfasta -fi {input.fa} -bed {input.bed} > {output.fa}
         """
