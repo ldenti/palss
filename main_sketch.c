@@ -85,8 +85,8 @@ int main_sketch(int argc, char *argv[]) {
   double rt = rt0, rt1;
 
   int klen = 27; // kmer size
-  int mklen = 7; // memoization kmer size
-  int nh = 1;    // expected number of haplotypes
+  int mklen = 9; // memoization kmer size
+  int nh = INT32_MAX;    // expected number of haplotypes
   int txt_f = 0; // 1: dump sketch in txt
   int threads = 4;
   static ko_longopt_t longopts[] = {{NULL, 0, 0}};
