@@ -45,10 +45,9 @@ int main_kan(int argc, char *argv[]) {
   rt = rt0;
 
   // Graph sketching
-  sketch_t *sketch = sk_init();
-  sk_load(sketch, skt_fn);
+  sketch_t *sketch = sk_load(skt_fn);
   fprintf(stderr, "[M::%s] loaded %lu sketches in %.3f sec\n", __func__,
-          kh_size(sketch), realtime() - rt);
+          sketch->n, realtime() - rt);
   rt = realtime();
 
   // ---
