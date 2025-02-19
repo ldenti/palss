@@ -33,14 +33,14 @@ typedef struct {
   int v2;
 } link_t;
 
-typedef struct path_t {
+typedef struct {
   char *idx;     // identifier (as in gfa)
   int *vertices; // identifiers of the vertices along the path (graph space)
   int l;         // actual length
   int capacity;  // capacity
 } path_t;
 
-typedef struct graph_t {
+typedef struct {
   char *fn; // file name
 
   int nv;           // number of vertices

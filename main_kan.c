@@ -11,12 +11,6 @@
 
 KSEQ_INIT(gzFile, gzread)
 
-/* void d2s(uint64_t kmer_d, int klen, char *kmer_s) { */
-/*   for (int i = 1; i <= klen; ++i) */
-/*     kmer_s[i - 1] = "ACGT"[(kmer_d >> (klen - i) * 2) & 3]; */
-/*   kmer_s[klen] = '\0'; */
-/* } */
-
 int main_kan(int argc, char *argv[]) {
   int klen = 27; // kmer size
   int print = 0; // print kmers

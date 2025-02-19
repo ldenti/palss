@@ -257,8 +257,8 @@ int main_sketch(int argc, char *argv[]) {
     if (s.s[0] == 'S') {
       ++nvertices;
       if (nvertices % 1000000 == 0) {
-        fprintf(stderr, "[M::%s] parsed 1000000 vertices in %.3f sec\n",
-                __func__, realtime() - rt1);
+        fprintf(stderr, "[M::%s] parsed 1M vertices in %.3f sec\n", __func__,
+                realtime() - rt1);
         rt1 = realtime();
       }
 
