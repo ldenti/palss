@@ -1,5 +1,5 @@
-#ifndef PSGRAPH_H
-#define PSGRAPH_H
+#ifndef PS_GRAPH_H
+#define PS_GRAPH_H
 
 #include <assert.h>
 #include <stdio.h>

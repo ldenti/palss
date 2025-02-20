@@ -1,5 +1,5 @@
-#ifndef SKETCH_HPP
-#define SKETCH_HPP
+#ifndef PS_SKETCH_H
+#define PS_SKETCH_H
 
 #include <assert.h>
 #include <stdint.h>

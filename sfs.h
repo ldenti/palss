@@ -1,5 +1,5 @@
-#ifndef PSSFS_H
-#define PSSFS_H
+#ifndef PS_SFS_H
+#define PS_SFS_H
 
 #include <stdint.h>
 #include <stdlib.h>

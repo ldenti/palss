@@ -1,5 +1,5 @@
-#ifndef PS_KMER_HPP
-#define PS_KMER_HPP
+#ifndef PS_KMER_H
+#define PS_KMER_H
 
 #include <stdint.h>
 #include <stdlib.h>
