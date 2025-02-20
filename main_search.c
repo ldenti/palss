@@ -328,7 +328,7 @@ int load_batch(kseq_t *seq, read_t **entries, int nb) {
   int i = 0;
   int l = 0;
   read_t *r;
-  while ((l = kseq_read(seq)) >= 0 && i < nb) {
+  while (i < nb && (l = kseq_read(seq)) >= 0) {
     r = entries[i];
     strncpy(r->idx, seq->name.s, seq->name.l);
     r->idx[seq->name.l] = '\0';
@@ -438,7 +438,7 @@ int main_search(int argc, char *argv[]) {
     fprintf(stderr, "[M::%s] loaded %d reads in %.3f sec\n", __func__, x,
             realtime() - rt1);
     rt1 = realtime();
-    // #pragma omp parallel for num_threads(nth) schedule(static, 1)
+#pragma omp parallel for num_threads(nth) schedule(static, 1)
     for (int qq = 0; qq < x; ++qq) {
       uint8_t *seq = (uint8_t *)entries[qq]->seq;
       sfs_t **out = output[qq];
