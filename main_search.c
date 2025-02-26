@@ -192,6 +192,7 @@ void anchor(sketch_t *sketch, graph_t *graph, sfs_t **SS, int nSS, char *Q,
 
     /* keep only unique anchors on read */
     for (int i1 = 0; i1 < nsa; ++i1) {
+      /* Starting anchors vs starting anchors */
       if (sanchors[i1].v == -1)
         continue;
       for (int i2 = i1 + 1; i2 < nsa; ++i2) {
@@ -202,8 +203,17 @@ void anchor(sketch_t *sketch, graph_t *graph, sfs_t **SS, int nSS, char *Q,
           sanchors[i2].v = -1;
         }
       }
+      /* Starting anchors vs ending anchors */
+      for (int i2 = 0; i2 < nea; ++i2) {
+        if (eanchors[i2].v == -1)
+          continue;
+        if (sanchors[i1].seq == eanchors[i2].seq) {
+          sanchors[i1].v = -1;
+          eanchors[i2].v = -1;
+        }
+      }
     }
-
+    /* Ending anchors vs ending anchors */
     for (int i1 = 0; i1 < nea; ++i1) {
       if (eanchors[i1].v == -1)
         continue;
