@@ -373,6 +373,24 @@ int compatible(graph_t *g, int x, int y) {
 }
 
 int load_edges(graph_t *g) {
+  if (g->nv == 0)
+    load_vertices(g);
+
+  // allocate more space if needed
+  if (g->nv > g->oe_c) {
+    g->out_edges = realloc(g->out_edges, g->nv * sizeof(kvec_t(int)));
+    for (int i = g->oe_c; i < g->nv; ++i)
+      kv_init(g->out_edges[i]);
+    g->oe_c = g->nv;
+  }
+  if (g->nv > g->ie_c) {
+    g->in_edges = realloc(g->in_edges, g->nv * sizeof(kvec_t(int)));
+    for (int i = g->ie_c; i < g->nv; ++i)
+      kv_init(g->in_edges[i]);
+    g->ie_c = g->nv;
+  }
+
+  // load edges
   kstring_t s = {0, 0, 0};
   int dret;
   gzFile fp = gzopen(g->fn, "r");
@@ -383,30 +401,18 @@ int load_edges(graph_t *g) {
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
     if (s.s[0] == 'L') {
       gfa_parse_L(s.s, &v1, &v2);
-      v1 = kh_value(g->v_map, kh_get(im, g->v_map, v1));
-      v2 = kh_value(g->v_map, kh_get(im, g->v_map, v2));
-
-      if (v1 >= g->oe_c) {
-        g->out_edges = realloc(g->out_edges, v1 * sizeof(int *));
-        for (int i = g->oe_c; i < v1; ++i)
-          kv_init(g->out_edges[i]);
-        g->oe_c = v1;
-      }
+      v1 = get_iidx(g, v1);
+      v2 = get_iidx(g, v2);
       kv_push(int, g->out_edges[v1], v2);
-      ++g->ne;
-
-      if (v2 >= g->ie_c) {
-        g->in_edges = realloc(g->in_edges, v2 * sizeof(int *));
-        for (int i = g->ie_c; i < v2; ++i)
-          kv_init(g->in_edges[i]);
-        g->ie_c = v2;
-      }
       kv_push(int, g->in_edges[v2], v1);
+      ++g->ne;
     }
   }
+
   free(s.s);
   ks_destroy(ks);
   gzclose(fp);
+
   return 0;
 }
 
@@ -430,7 +436,9 @@ void add_vertex(path_t *path, int v) {
 }
 
 int load_paths(graph_t *g) {
-  // XXX: assuming to have already loaded all segments
+  if (g->nv == 0)
+    load_vertices(g);
+
   kstring_t s = {0, 0, 0};
   int dret;
   gzFile fp = gzopen(g->fn, "r");

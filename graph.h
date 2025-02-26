@@ -28,10 +28,10 @@ typedef struct {
   kvec_t(int) paths;
 } seg_t;
 
-typedef struct {
-  int v1;
-  int v2;
-} link_t;
+/* typedef struct { */
+/*   int v1; */
+/*   int v2; */
+/* } link_t; */
 
 typedef struct {
   char *idx;     // identifier (as in gfa)
