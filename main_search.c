@@ -289,18 +289,20 @@ void anchor(sketch_t *sketch, graph_t *graph, sfs_t **SS, int nSS, char *Q,
     s->s = b;
     s->l = l;
     {
-      // memcpy(s->a, &sa, sizeof(anchor_t));
-      s->a->v = sa.v;
-      s->a->offset = sa.offset;
-      s->a->p = sa.p;
-      s->a->seq = sa.seq;
+      memcpy(s->a, &sa, sizeof(anchor_t));
+      /* s->a->v = sa.v; */
+      /* s->a->offset = sa.offset; */
+      /* s->a->p = sa.p; */
+      /* s->a->seq = sa.seq; */
+      s->a->closest = sax; // == 0;
     }
     {
-      // memcpy(s->v, &ea, sizeof(anchor_t));
-      s->b->v = ea.v;
-      s->b->offset = ea.offset;
-      s->b->p = ea.p;
-      s->b->seq = ea.seq;
+      memcpy(s->b, &ea, sizeof(anchor_t));
+      /* s->b->v = ea.v; */
+      /* s->b->offset = ea.offset; */
+      /* s->b->p = ea.p; */
+      /* s->b->seq = ea.seq; */
+      s->b->closest = eax; // == 0;
     }
     assert(sa.v == s->a->v);
     assert(ea.v == s->b->v);
@@ -496,14 +498,15 @@ int main_search(int argc, char *argv[]) {
         s = output[qq][j];
         if (s->qidx == -1) {
           ++unanchored_n;
-          printf("X %d %s %d %d . . .:.:. .:.:.\n", qq, entries[qq]->idx, s->s,
-                 s->l);
+          printf("X %d %s %d %d . . .:.:.:. .:.:.:.\n", qq, entries[qq]->idx,
+                 s->s, s->l);
         } else {
           ++anchored_n;
           char t = s->strand == 2 ? 'S' : 'O';
-          printf("%c %d %s %d %d %d %s %ld:%d:%ld %ld:%d:%ld\n", t, s->qidx,
-                 entries[qq]->idx, s->s, s->l, s->strand, ".", s->a->v,
-                 s->a->offset, s->a->seq, s->b->v, s->b->offset, s->b->seq);
+          printf("%c %d %s %d %d %d %s %ld:%d:%ld %ld:%d:%ld %d %d\n", t,
+                 s->qidx, entries[qq]->idx, s->s, s->l, s->strand, ".", s->a->v,
+                 s->a->offset, s->a->seq, s->b->v, s->b->offset, s->b->seq,
+                 s->a->closest, s->b->closest);
         }
       }
     }

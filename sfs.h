@@ -8,24 +8,25 @@
 /* #include "utils.h" */
 
 typedef struct {
-  int64_t v;    // = -1;    // vertex on graph
-  int offset;   // = -1;   // offset on vertex
-  int p;        // = -1;        // position on query
-  uint64_t seq; // = -1; // kmer
+  int64_t v;    // vertex on graph
+  int offset;   // offset on vertex
+  int p;        // position on query
+  uint64_t seq; // kmer
+  int closest;  // is this anchor the closest one to the specific string?
 } anchor_t;
 
 typedef struct {
   int qidx;     // read index
   int s;        // start on query
   int l;        // length
-  anchor_t *a;  // = {}; // left anchor
-  anchor_t *b;  // = {}; // right anchor
-  int strand;   // = 1; // inferred strand
-  uint64_t esk; // = -1,
-  uint64_t eek; // = -1; // expected starting and ending kmers (from cluster)
-  int good;     // = 1; // is it good for calling step?
-  char *rname;
-  uint8_t *seq; // sequence
+  anchor_t *a;  // left anchor
+  anchor_t *b;  // right anchor
+  int strand;   // inferred strand
+  uint64_t esk; // expected starting kmer (from cluster)
+  uint64_t eek; // expected ending kmer (from cluster)
+  int good;     // is it good for calling step?
+  char *rname;  // plain read name
+  uint8_t *seq; // 1-4encoded sequence
 } sfs_t;
 
 sfs_t *init_sfs();
