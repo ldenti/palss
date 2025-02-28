@@ -406,7 +406,7 @@ int main_search(int argc, char *argv[]) {
   rt = realtime();
 
   graph_t *graph = init_graph(gfa_fn);
-  load_vertices(graph);
+  load_vertices(graph, 1);
   load_paths(graph);
 
   fprintf(stderr, "[M::%s] loaded %d vertices and %d paths in %.3f sec\n",

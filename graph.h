@@ -11,38 +11,20 @@
 #include "kseq.h"
 #include "kvec.h"
 
+#include "path.h"
+#include "segment.h"
+
 KSTREAM_INIT(gzFile, gzread, 65536)
-KHASH_MAP_INIT_INT(im, int)
+/* INT2INT map is already init in path.h */
+/* KHASH_MAP_INIT_INT(im, int) */
 
 /* Some assumptions I made:
- * - graph is chopped (size of segments < 4096)
+ * - vertex identifiers in GFA are integers
  * - graph has less than INT_MAX nodes
- * - graph is topological sorted
  */
 
 typedef struct {
-  int idx;   // identifier (as in gfa) - assuming integer
-  char *seq; // actual sequence
-  int l;     // actual length
-  int c;     // capacity
-  kvec_t(int) paths;
-} seg_t;
-
-/* typedef struct { */
-/*   int v1; */
-/*   int v2; */
-/* } link_t; */
-
-typedef struct {
-  char *idx;     // identifier (as in gfa)
-  int *vertices; // identifiers of the vertices along the path (graph space)
-  int l;         // actual length
-  int capacity;  // capacity
-} path_t;
-
-typedef struct {
-  char *fn; // file name
-
+  char *fn;         // file name
   int nv;           // number of vertices
   int cv;           // allocated vertices
   seg_t **vertices; // vertices
@@ -70,7 +52,7 @@ void dump_gfa(graph_t *g, char *fn);
 void destroy_graph(graph_t *g);
 
 /* Load all vertices from gfa */
-int load_vertices(graph_t *g);
+int load_vertices(graph_t *g, int wseq);
 
 /* Load all edges from gfa */
 int load_edges(graph_t *g);
@@ -78,52 +60,37 @@ int load_edges(graph_t *g);
 /* Load all paths from gfa */
 int load_paths(graph_t *g);
 
-/* Extract subgraph in between vertices v1 and v2 */
-// XXX: assuming topological sorting
-graph_t *extract_subgraph(graph_t *g, int v1, int v2);
-
-/* Make graph canonical */
-graph_t *canonicalize(graph_t *g);
-
 /* Get internal identifier from GFA identifier */
 int get_iidx(graph_t *g, int v);
 
-/* Return the segment given the gfa idx */
-seg_t *get_vertex(graph_t *g, int v);
+/* Extract subgraph in between vertices v1 and v2 */
+// XXX: assuming topological sorting
+/* graph_t *extract_subgraph(graph_t *g, int v1, int v2); */
 
-int is_source(graph_t *g, int v);
-int is_sink(graph_t *g, int v);
-int contains(graph_t *g, path_t *p, int v);
-int get_father(graph_t *g, path_t *p, int v);
-char get_label(graph_t *g, int v);
+/* Make graph canonical */
+/* graph_t *canonicalize(graph_t *g); */
+
+/* Return the segment given the gfa idx */
+/* seg_t *get_vertex(graph_t *g, int v); */
+
+/* int is_source(graph_t *g, int v); */
+/* int is_sink(graph_t *g, int v); */
+/* int contains(graph_t *g, path_t *p, int v); */
+/* int get_father(graph_t *g, path_t *p, int v); */
+/* char get_label(graph_t *g, int v); */
 
 /* Extract subpath */
 // XXX: this function init the returned path. Maybe we should init it outside
-path_t *extract_subpath(graph_t *g, path_t *path, int x, int y);
+/* path_t *extract_subpath(graph_t *g, path_t *path, int x, int y); */
 
 /* Check if x and y are on at least one path */
-int compatible(graph_t *g, int x, int y);
-
-/* Initialize a segment */
-seg_t *init_seg();
-
-/* Destroy the segment */
-void destroy_seg(seg_t *seg);
-
-/* Initialize a path with capacity c*/
-path_t *init_path(int c);
-
-/* Add vertex v to path, reallocating it if needed */
-void add_vertex(path_t *path, int v);
+/* int compatible(graph_t *g, int x, int y); */
 
 /* Get path sequence */
-int get_sequence(graph_t *graph, path_t *path, char **pseq, int *pseq_c);
-
-/* Destroy a path */
-void destroy_path(path_t *p);
+/* int get_sequence(graph_t *graph, path_t *path, char **pseq, int *pseq_c); */
 
 /* GFA reading utilities */
-void gfa_parse_S(char *s, seg_t *ret);
+void gfa_parse_S(char *s, seg_t *ret, int wseq);
 void gfa_parse_L(char *s, int *idx1, int *idx2);
 void gfa_parse_P(char *s, path_t *path);
 void gfa_parse_W(char *s, path_t *path);

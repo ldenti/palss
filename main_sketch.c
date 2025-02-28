@@ -155,7 +155,7 @@ int main_sketch(int argc, char *argv[]) {
         rt1 = realtime();
       }
 
-      gfa_parse_S(s.s, seg);
+      gfa_parse_S(s.s, seg, 1);
       if (seg->l < klen)
         continue;
 
@@ -262,7 +262,7 @@ int main_sketch(int argc, char *argv[]) {
         rt1 = realtime();
       }
 
-      gfa_parse_S(s.s, seg);
+      gfa_parse_S(s.s, seg, 1);
       if (seg->l < klen)
         continue;
 

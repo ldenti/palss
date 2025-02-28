@@ -51,6 +51,326 @@ void destroy_graph(graph_t *g) {
   free(g);
 }
 
+void dump_gfa(graph_t *g, char *fn) {
+  FILE *fp = strcmp(fn, "-") ? fopen(fn, "w") : fdopen(fileno(stdout), "w");
+  if (fp == 0) {
+    fprintf(stderr, "Cannot open output file\n");
+    exit(1);
+  }
+  // H line
+  fprintf(fp, "H\tVN:Z:1.1\n");
+
+  // S lines
+  seg_t *s;
+  for (int i = 0; i < g->nv; ++i) {
+    s = g->vertices[i];
+    fprintf(fp, "S\t%d\t%s\n", s->idx, s->seq);
+  }
+  // L lines
+  for (int i = 0; i < g->nv; ++i) {
+    for (int x = 0; x < kv_size(g->out_edges[i]); ++x) {
+      fprintf(fp, "L\t%d\t+\t%d\t+\t0M\n", g->vertices[i]->idx,
+              g->vertices[kv_A(g->out_edges[i], x)]->idx);
+    }
+  }
+
+  // P lines
+  char sep = ',';
+  for (int i = 0; i < g->np; ++i) {
+    fprintf(fp, "P\t%s\t", g->paths[i]->idx);
+    sep = ',';
+    for (int y = 0; y < g->paths[i]->l; ++y) {
+      if (y == g->paths[i]->l - 1)
+        sep = '\t';
+      fprintf(fp, "%d%c%c", p_get_v(g->paths[i], y),
+              p_get_vs(g->paths[i], y) ? '+' : '-', sep);
+    }
+    fprintf(fp, "*\n");
+  }
+}
+
+int load_vertices(graph_t *g, int wseq) {
+  kstring_t s = {0, 0, 0};
+  int dret;
+  gzFile fp = gzopen(g->fn, "r");
+  if (fp == 0)
+    return 0;
+  kstream_t *ks = ks_init(fp);
+  int hret;
+  khint_t k;
+  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
+    if (s.s[0] == 'S') {
+      if (g->nv == g->cv) {
+        g->vertices = realloc(g->vertices, g->cv * 2 * sizeof(seg_t *));
+        g->cv *= 2;
+        for (int i = g->nv; i < g->cv; ++i)
+          g->vertices[i] = init_seg();
+      }
+      gfa_parse_S(s.s, g->vertices[g->nv], wseq);
+
+      k = kh_put(im, g->v_map, g->vertices[g->nv]->idx, &hret);
+      kh_value(g->v_map, k) = g->nv;
+
+      ++g->nv;
+    }
+  }
+  free(s.s);
+  ks_destroy(ks);
+  gzclose(fp);
+  return 0;
+}
+
+int get_iidx(graph_t *g, int v) {
+  return kh_value(g->v_map, kh_get(im, g->v_map, v));
+}
+
+int load_edges(graph_t *g) {
+  if (g->nv == 0)
+    load_vertices(g, 0);
+
+  // allocate more space if needed
+  if (g->nv > g->oe_c) {
+    g->out_edges = realloc(g->out_edges, g->nv * sizeof(kvec_t(int)));
+    for (int i = g->oe_c; i < g->nv; ++i)
+      kv_init(g->out_edges[i]);
+    g->oe_c = g->nv;
+  }
+  if (g->nv > g->ie_c) {
+    g->in_edges = realloc(g->in_edges, g->nv * sizeof(kvec_t(int)));
+    for (int i = g->ie_c; i < g->nv; ++i)
+      kv_init(g->in_edges[i]);
+    g->ie_c = g->nv;
+  }
+
+  // load edges
+  kstring_t s = {0, 0, 0};
+  int dret;
+  gzFile fp = gzopen(g->fn, "r");
+  if (fp == 0)
+    return 0;
+  kstream_t *ks = ks_init(fp);
+  int v1, v2;
+  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
+    if (s.s[0] == 'L') {
+      gfa_parse_L(s.s, &v1, &v2);
+      v1 = get_iidx(g, v1);
+      v2 = get_iidx(g, v2);
+      kv_push(int, g->out_edges[v1], v2);
+      kv_push(int, g->in_edges[v2], v1);
+      ++g->ne;
+    }
+  }
+
+  free(s.s);
+  ks_destroy(ks);
+  gzclose(fp);
+
+  return 0;
+}
+
+int load_paths(graph_t *g) {
+  if (g->nv == 0)
+    load_vertices(g, 0);
+
+  kstring_t s = {0, 0, 0};
+  int dret;
+  gzFile fp = gzopen(g->fn, "r");
+  if (fp == 0) {
+    exit(1); // return paths;
+  }
+  kstream_t *ks = ks_init(fp);
+
+  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
+    if (s.s[0] == 'P' || s.s[0] == 'W') {
+      /* current path: g->np */
+      if (g->np == g->cp) {
+        g->paths = realloc(g->paths, g->cp * 2 * sizeof(path_t *));
+        g->cp *= 2;
+        for (int i = g->np; i < g->cp; ++i)
+          g->paths[i] = init_path(16384); // XXX: find a better value
+      }
+      if (s.s[0] == 'P')
+        gfa_parse_P(s.s, g->paths[g->np]);
+      else
+        gfa_parse_W(s.s, g->paths[g->np]);
+      /* update vertices with path */
+      for (int v = 0; v < g->paths[g->np]->l; ++v) {
+        kv_push(
+            int,
+            g->vertices[get_iidx(g, g->paths[g->np]->vertices[v] >> 1)]->paths,
+            g->np);
+      }
+      ++g->np;
+    }
+  }
+  free(s.s);
+  ks_destroy(ks);
+  gzclose(fp);
+  return 0;
+}
+
+/** === GFA PARSING ======= **/
+void gfa_parse_S(char *s, seg_t *ret, int wseq) {
+  int i;       // , is_ok = 0;
+  char *p, *q; // *seg = 0, *seq = 0, *rest = 0;
+  for (i = 0, p = q = s + 2;; ++p) {
+    if (*p == 0 || *p == '\t') {
+      int c = *p;
+      *p = 0;
+      if (i == 0) {
+        ret->idx = atoi(q);
+        // strcpy(ret->idx, q);
+      } else if (i == 1) {
+        ret->l = p - q;
+        if (wseq) {
+          if (ret->l > ret->c) {
+            char *temp = realloc(ret->seq, (ret->l * 2) * sizeof(char));
+            if (temp == NULL) {
+              free(ret->seq);
+              fprintf(stderr,
+                      "Error while reallocating memory for segment %d\n",
+                      ret->idx);
+              exit(2);
+            } else {
+              ret->seq = temp;
+            }
+            ret->c = ret->l * 2;
+          }
+          strcpy(ret->seq, q);
+        }
+        // is_ok = 1, rest = c ? p + 1 : 0;
+        break;
+      }
+      ++i, q = p + 1;
+      if (c == 0)
+        break;
+    }
+  }
+  // if (!is_ok) { // something is missing
+}
+
+void gfa_parse_L(char *s, int *idx1, int *idx2) {
+  int i;       // , oriv = -1, oriw = -1, is_ok = 0;
+  char *p, *q; // , *segv = 0, *segw = 0, *rest = 0;
+  // int32_t ov = INT32_MAX, ow = INT32_MAX;
+  for (i = 0, p = q = s + 2;; ++p) {
+    if (*p == 0 || *p == '\t') {
+      int c = *p;
+      *p = 0;
+      if (i == 0) {
+        *idx1 = atoi(q);
+      } else if (i == 1) {
+        // if (*q != '+' && *q != '-')
+        //   ; // return -2;
+        // oriv = (*q != '+');
+      } else if (i == 2) {
+        *idx2 = atoi(q);
+      } else if (i == 3) {
+        // if (*q != '+' && *q != '-')
+        //   ; // return -2;
+        // oriw = (*q != '+');
+      }
+      ++i, q = p + 1;
+      if (c == 0)
+        break;
+    }
+  }
+  // return 0;
+}
+
+void gfa_parse_P(char *s, path_t *path) {
+  // int x = 0; // current index for insertion
+  int i;
+  char *p, *q, *qq;
+  for (i = 0, p = q = s + 2;; ++p) {
+    if (*p == 0 || *p == '\t') {
+      *p = 0;
+      if (i == 0) {
+        // TODO: check for duplicates
+        strcpy(path->idx, q);
+      } else if (i == 1) {
+        char strand = *(p - 1);
+        qq = q;
+        for (qq = q;; ++qq) {
+          if (*qq == 0 || *qq == ',') {
+            int c = *qq;
+            *qq = 0;
+            strand = *(qq - 1);
+            *(qq - 1) = 0;
+            p_add_v(path, atoi(q), strand == '+');
+            q = qq + 1;
+            if (c == 0)
+              break;
+          }
+        }
+        break;
+      }
+      ++i, q = p + 1;
+    }
+  }
+}
+
+void gfa_parse_W(char *s, path_t *path) {
+  // int x = 0; // current index for insertion
+  int i;
+  char *p, *q, *qq;
+  for (i = 0, p = q = s + 2;; ++p) {
+    if (*p == 0 || *p == '\t') {
+      *p = 0;
+      if (i == 0) {
+        strcpy(path->idx, q);
+        *(p + 2) = 0;
+        path->idx[p - q] = '#';
+        path->idx[p - q + 1] = *(p + 1);
+        path->idx[p - q + 2] = '\0';
+      } else if (i == 5) {
+        char strand = *q;
+        ++q;
+        for (qq = q;; ++qq) {
+          if (*qq == 0 || *qq == '>' || *qq == '<') {
+            int c = *qq;
+            *qq = 0;
+            p_add_v(path, atoi(q), strand == '>');
+            q = qq + 1;
+            if (c == 0)
+              break;
+            strand = c;
+          }
+        }
+        break;
+      }
+      ++i, q = p + 1;
+    }
+  }
+}
+
+int get_sequence(graph_t *graph, path_t *path, char **pseq, int *pseq_c) {
+  int l = 0;
+  for (int i = 0; i < path->l; ++i)
+    l += graph->vertices[path->vertices[i]]->l;
+  if (l + 1 > *pseq_c) {
+    char *temp = (char *)realloc(*pseq, (l + 1) * 2 * sizeof(char));
+    if (temp == NULL) {
+      free(pseq);
+      fprintf(stderr, "Error while reallocating memory for path string\n");
+      exit(2);
+    } else {
+      *pseq = temp;
+    }
+    *pseq_c = (l + 1) * 2;
+  }
+  int p = 0;
+  for (int i = 0; i < path->l; ++i) {
+    l = graph->vertices[path->vertices[i]]->l;
+    strncpy(*pseq + p, graph->vertices[path->vertices[i]]->seq, l);
+    p += l;
+  }
+  (*pseq)[p] = '\0';
+
+  return p;
+}
+
+/**
 graph_t *canonicalize(graph_t *g) {
   int total_size = 0;
   for (int v = 0; v < g->nv; ++v)
@@ -153,77 +473,6 @@ graph_t *canonicalize(graph_t *g) {
   return cg;
 }
 
-void dump_gfa(graph_t *g, char *fn) {
-  FILE *fp = strcmp(fn, "-") ? fopen(fn, "w") : fdopen(fileno(stdout), "w");
-  if (fp == 0) {
-    fprintf(stderr, "Cannot open output file\n");
-    exit(1);
-  }
-  // H line
-  fprintf(fp, "H\tVN:Z:1.1\n");
-
-  // S lines
-  seg_t *s;
-  for (int i = 0; i < g->nv; ++i) {
-    s = g->vertices[i];
-    fprintf(fp, "S\t%d\t%s\n", s->idx, s->seq);
-  }
-  // L lines
-  for (int i = 0; i < g->nv; ++i) {
-    for (int x = 0; x < kv_size(g->out_edges[i]); ++x) {
-      fprintf(fp, "L\t%d\t+\t%d\t+\t0M\n", g->vertices[i]->idx,
-              g->vertices[kv_A(g->out_edges[i], x)]->idx);
-    }
-  }
-
-  // P lines
-  char sep = ',';
-  for (int i = 0; i < g->np; ++i) {
-    fprintf(fp, "P\t%s\t", g->paths[i]->idx);
-    sep = ',';
-    for (int y = 0; y < g->paths[i]->l; ++y) {
-      if (y == g->paths[i]->l - 1)
-        sep = '\t';
-      fprintf(fp, "%d+%c", g->paths[i]->vertices[y], sep);
-      // fprintf(fp, "%d+%c", g->vertices[g->paths[i]->vertices[y]]->idx, sep);
-    }
-    fprintf(fp, "*\n");
-  }
-}
-
-int load_vertices(graph_t *g) {
-  kstring_t s = {0, 0, 0};
-  int dret;
-  gzFile fp = gzopen(g->fn, "r");
-  if (fp == 0)
-    return 0;
-  kstream_t *ks = ks_init(fp);
-  int hret;
-  khint_t k;
-  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-    if (s.s[0] == 'S') {
-      if (g->nv == g->cv) {
-        g->vertices = realloc(g->vertices, g->cv * 2 * sizeof(seg_t *));
-        g->cv *= 2;
-        for (int i = g->nv; i < g->cv; ++i)
-          g->vertices[i] = init_seg();
-      }
-      gfa_parse_S(s.s, g->vertices[g->nv]);
-
-      k = kh_put(im, g->v_map, g->vertices[g->nv]->idx, &hret);
-      kh_value(g->v_map, k) = g->nv;
-
-      // printf("%d:%d\n",g->vertices[g->nv]->idx, g->nv);
-
-      ++g->nv;
-    }
-  }
-  free(s.s);
-  ks_destroy(ks);
-  gzclose(fp);
-  return 0;
-}
-
 graph_t *extract_subgraph(graph_t *g, int v1, int v2) {
   // v1 and v2 are in GFA space
   graph_t *sg = init_graph(NULL);
@@ -306,10 +555,6 @@ graph_t *extract_subgraph(graph_t *g, int v1, int v2) {
   return sg;
 }
 
-int get_iidx(graph_t *g, int v) {
-  return kh_value(g->v_map, kh_get(im, g->v_map, v));
-}
-
 seg_t *get_vertex(graph_t *g, int v) {
   // XXX: check if key is not in map
   return g->vertices[get_iidx(g, v)];
@@ -341,7 +586,6 @@ int get_father(graph_t *g, path_t *p, int v) {
 
 // XXX: this should return a string, but I'll use it only for 1bp vertices
 char get_label(graph_t *g, int v) {
-  /* return g->vertices[get_iidx(g, v)]->seq[0]; */
   return g->vertices[v]->seq[0];
 }
 
@@ -359,118 +603,6 @@ int compatible(graph_t *g, int x, int y) {
         return 1;
     }
   }
-
-  /* for (int p = 0; p < g->np; ++p) { */
-  /*   int f = 0; //, ok = 0; */
-  /*   for (int i = 0; i < g->paths[p]->l; ++i) { */
-  /*     if (g->paths[p]->vertices[i] == x) */
-  /*       f = 1; */
-  /*     if (f && g->paths[p]->vertices[i] == y) */
-  /*       return f; */
-  /*   } */
-  /* } */
-  return 0;
-}
-
-int load_edges(graph_t *g) {
-  if (g->nv == 0)
-    load_vertices(g);
-
-  // allocate more space if needed
-  if (g->nv > g->oe_c) {
-    g->out_edges = realloc(g->out_edges, g->nv * sizeof(kvec_t(int)));
-    for (int i = g->oe_c; i < g->nv; ++i)
-      kv_init(g->out_edges[i]);
-    g->oe_c = g->nv;
-  }
-  if (g->nv > g->ie_c) {
-    g->in_edges = realloc(g->in_edges, g->nv * sizeof(kvec_t(int)));
-    for (int i = g->ie_c; i < g->nv; ++i)
-      kv_init(g->in_edges[i]);
-    g->ie_c = g->nv;
-  }
-
-  // load edges
-  kstring_t s = {0, 0, 0};
-  int dret;
-  gzFile fp = gzopen(g->fn, "r");
-  if (fp == 0)
-    return 0;
-  kstream_t *ks = ks_init(fp);
-  int v1, v2;
-  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-    if (s.s[0] == 'L') {
-      gfa_parse_L(s.s, &v1, &v2);
-      v1 = get_iidx(g, v1);
-      v2 = get_iidx(g, v2);
-      kv_push(int, g->out_edges[v1], v2);
-      kv_push(int, g->in_edges[v2], v1);
-      ++g->ne;
-    }
-  }
-
-  free(s.s);
-  ks_destroy(ks);
-  gzclose(fp);
-
-  return 0;
-}
-
-path_t *init_path(int c) {
-  path_t *path = malloc(1 * sizeof(path_t));
-  path->idx = malloc(128 * sizeof(char));
-  path->vertices = malloc(c * sizeof(int));
-  path->l = 0;
-  path->capacity = c;
-  return path;
-}
-
-void add_vertex(path_t *path, int v) {
-  if (path->l >= path->capacity) {
-    path->vertices =
-        (int *)realloc(path->vertices, path->capacity * 2 * sizeof(int));
-    path->capacity *= 2;
-  }
-  path->vertices[path->l] = v;
-  ++path->l;
-}
-
-int load_paths(graph_t *g) {
-  if (g->nv == 0)
-    load_vertices(g);
-
-  kstring_t s = {0, 0, 0};
-  int dret;
-  gzFile fp = gzopen(g->fn, "r");
-  if (fp == 0) {
-    exit(1); // return paths;
-  }
-  kstream_t *ks = ks_init(fp);
-
-  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-    if (s.s[0] == 'P' || s.s[0] == 'W') {
-      if (g->np == g->cp) {
-        g->paths = realloc(g->paths, g->cp * 2 * sizeof(path_t *));
-        g->cp *= 2;
-        for (int i = g->np; i < g->cp; ++i)
-          g->paths[i] = init_path(16384); // XXX: find a better value
-      }
-      if (s.s[0] == 'P')
-        gfa_parse_P(s.s, g->paths[g->np]);
-      else
-        gfa_parse_W(s.s, g->paths[g->np]);
-      // path must use "internal" idx
-      for (int v = 0; v < g->paths[g->np]->l; ++v) {
-        g->paths[g->np]->vertices[v] =
-            get_iidx(g, g->paths[g->np]->vertices[v]);
-        kv_push(int, g->vertices[g->paths[g->np]->vertices[v]]->paths, g->np);
-      }
-      ++g->np;
-    }
-  }
-  free(s.s);
-  ks_destroy(ks);
-  gzclose(fp);
   return 0;
 }
 
@@ -496,185 +628,4 @@ path_t *extract_subpath(graph_t *g, path_t *path, int x, int y) {
   }
   return subpath;
 }
-
-// Destroy the path
-void destroy_path(path_t *p) {
-  free(p->idx);
-  free(p->vertices);
-  free(p);
-}
-
-seg_t *init_seg() {
-  seg_t *seg = malloc(1 * sizeof(seg_t));
-  seg->l = 0;
-  // seg->idx = (char *)malloc(1024);
-  seg->seq = malloc(4096 * sizeof(char));
-  seg->c = 4096; // XXX: assuming chopped graph
-  kv_init(seg->paths);
-  return seg;
-}
-
-void destroy_seg(seg_t *seg) {
-  free(seg->seq);
-  kv_destroy(seg->paths);
-  free(seg);
-}
-
-void gfa_parse_S(char *s, seg_t *ret) {
-  int i;       // , is_ok = 0;
-  char *p, *q; // *seg = 0, *seq = 0, *rest = 0;
-  for (i = 0, p = q = s + 2;; ++p) {
-    if (*p == 0 || *p == '\t') {
-      int c = *p;
-      *p = 0;
-      if (i == 0) {
-        ret->idx = atoi(q);
-        // strcpy(ret->idx, q);
-      } else if (i == 1) {
-        ret->l = p - q;
-        if (ret->l > ret->c) {
-          char *temp = realloc(ret->seq, (ret->l * 2) * sizeof(char));
-          if (temp == NULL) {
-            free(ret->seq);
-            fprintf(stderr, "Error while reallocating memory for segment %d\n",
-                    ret->idx);
-            exit(2);
-          } else {
-            ret->seq = temp;
-          }
-          ret->c = ret->l * 2;
-        }
-        strcpy(ret->seq, q);
-        // is_ok = 1, rest = c ? p + 1 : 0;
-        break;
-      }
-      ++i, q = p + 1;
-      if (c == 0)
-        break;
-    }
-  }
-  // if (!is_ok) { // something is missing
-}
-
-void gfa_parse_L(char *s, int *idx1, int *idx2) {
-  int i;       // , oriv = -1, oriw = -1, is_ok = 0;
-  char *p, *q; // , *segv = 0, *segw = 0, *rest = 0;
-  // int32_t ov = INT32_MAX, ow = INT32_MAX;
-  for (i = 0, p = q = s + 2;; ++p) {
-    if (*p == 0 || *p == '\t') {
-      int c = *p;
-      *p = 0;
-      if (i == 0) {
-        *idx1 = atoi(q);
-      } else if (i == 1) {
-        // if (*q != '+' && *q != '-')
-        //   ; // return -2;
-        // oriv = (*q != '+');
-      } else if (i == 2) {
-        *idx2 = atoi(q);
-      } else if (i == 3) {
-        // if (*q != '+' && *q != '-')
-        //   ; // return -2;
-        // oriw = (*q != '+');
-      }
-      ++i, q = p + 1;
-      if (c == 0)
-        break;
-    }
-  }
-  // return 0;
-}
-
-void gfa_parse_P(char *s, path_t *path) {
-  // int x = 0; // current index for insertion
-  int i;
-  char *p, *q, *qq;
-  for (i = 0, p = q = s + 2;; ++p) {
-    if (*p == 0 || *p == '\t') {
-      *p = 0;
-      if (i == 0) {
-        // TODO: check for duplicates
-        strcpy(path->idx, q);
-      } else if (i == 1) {
-        char strand = *(p - 1);
-        qq = q;
-        for (qq = q;; ++qq) {
-          if (*qq == 0 || *qq == ',') {
-            int c = *qq;
-            *qq = 0;
-            if (*(qq - 1) != strand) {
-              fprintf(stderr, "Mixed +/- strands in path %s. Aborting...\n",
-                      path->idx);
-              exit(1);
-            }
-            *(qq - 1) = 0;
-            add_vertex(path, atoi(q));
-            q = qq + 1;
-            if (c == 0)
-              break;
-          }
-        }
-        break;
-      }
-      ++i, q = p + 1;
-    }
-  }
-}
-
-void gfa_parse_W(char *s, path_t *path) {
-  // int x = 0; // current index for insertion
-  int i;
-  char *p, *q, *qq;
-  for (i = 0, p = q = s + 2;; ++p) {
-    if (*p == 0 || *p == '\t') {
-      *p = 0;
-      if (i == 0) {
-        strcpy(path->idx, q);
-        *(p + 2) = 0;
-        path->idx[p - q] = '#';
-        path->idx[p - q + 1] = *(p + 1);
-        path->idx[p - q + 2] = '\0';
-      } else if (i == 5) {
-        ++q;
-        for (qq = q;; ++qq) {
-          if (*qq == 0 || *qq == '>') {
-            int c = *qq;
-            *qq = 0;
-            add_vertex(path, atoi(q));
-            q = qq + 1;
-            if (c == 0)
-              break;
-          }
-        }
-        break;
-      }
-      ++i, q = p + 1;
-    }
-  }
-}
-
-int get_sequence(graph_t *graph, path_t *path, char **pseq, int *pseq_c) {
-  int l = 0;
-  for (int i = 0; i < path->l; ++i)
-    l += graph->vertices[path->vertices[i]]->l;
-  if (l + 1 > *pseq_c) {
-    char *temp = (char *)realloc(*pseq, (l + 1) * 2 * sizeof(char));
-    if (temp == NULL) {
-      free(pseq);
-      fprintf(stderr, "Error while reallocating memory for path string\n");
-      exit(2);
-    } else {
-      *pseq = temp;
-    }
-    *pseq_c = (l + 1) * 2;
-  }
-  int p = 0;
-  for (int i = 0; i < path->l; ++i) {
-    l = graph->vertices[path->vertices[i]]->l;
-    strncpy(*pseq + p, graph->vertices[path->vertices[i]]->seq, l);
-    p += l;
-  }
-  (*pseq)[p] = '\0';
-
-  return p;
-}
+**/
