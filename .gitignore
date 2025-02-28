@@ -6,3 +6,4 @@ palss
 example/
 *.o
 *~
+utils/extract_subgraph
