@@ -25,8 +25,11 @@ typedef struct {
   int capacity; /* capacity */
 } path_t;
 
-/* Initialize a path with capacity c*/
+/* Initialize a path with capacity c */
 path_t *init_path(int c);
+
+/* Reset a path without deallocating memory */
+void clear_path(path_t *path);
 
 /* Destroy a path */
 void destroy_path(path_t *path);

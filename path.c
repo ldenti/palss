@@ -11,6 +11,12 @@ path_t *init_path(int c) {
   return path;
 }
 
+void clear_path(path_t *path) {
+  kh_clear(im, path->ord);
+  kh_clear(im, path->occ);
+  path->l = 0;
+}
+
 void destroy_path(path_t *path) {
   free(path->idx);
   free(path->vertices);
