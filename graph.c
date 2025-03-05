@@ -317,12 +317,16 @@ void gfa_parse_W(char *s, path_t *path) {
   for (i = 0, p = q = s + 2;; ++p) {
     if (*p == 0 || *p == '\t') {
       *p = 0;
-      if (i == 0) {
+      if (i < 2) {
+        *p = '#';
+        ++i;
+        continue;
+      } else if (i == 2) {
         strcpy(path->idx, q);
-        *(p + 2) = 0;
-        path->idx[p - q] = '#';
-        path->idx[p - q + 1] = *(p + 1);
-        path->idx[p - q + 2] = '\0';
+        /* *(p + 2) = 0; */
+        /* path->idx[p - q] = '#'; */
+        /* path->idx[p - q + 1] = *(p + 1); */
+        /* path->idx[p - q + 2] = '\0'; */
       } else if (i == 5) {
         char strand = *q;
         ++q;
