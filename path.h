@@ -7,6 +7,7 @@
 #include <string.h>
 #include <zlib.h>
 
+#include "ic.h"
 #include "khash.h"
 
 KHASH_MAP_INIT_INT(im, int)
@@ -14,14 +15,11 @@ KHASH_MAP_INIT_INT(im, int)
 static inline int p_encode(int v, int n) { return (v << 4) | (n & 0xF); }
 
 typedef struct {
-  char *idx;     /* path identifier (as in gfa) */
-  int *vertices; /* identifiers of the vertices in path order:  31 bits for id
-                  * in GFA space, 1 bit for strand */
-  khash_t(im) *
-      occ; /* number of times each vertex occur, key is just the vertex */
-  khash_t(im) *
-      ord; /* vertex ordering, 28 bits for vertex id 4 bits for cardinality */
-  int l;   /* actual length */
+  char *idx;      /* path identifier (as in gfa) */
+  uint *vertices; /* identifiers of the vertices in path order:  31 bits for id
+                   * in GFA space, 1 bit for strand */
+  unsigned char *cvertices;
+  int l;        /* actual length */
   int capacity; /* capacity */
 } path_t;
 
@@ -30,6 +28,8 @@ path_t *init_path(int c);
 
 /* Reset a path without deallocating memory */
 void clear_path(path_t *path);
+
+void compress_path(path_t *path);
 
 /* Destroy a path */
 void destroy_path(path_t *path);

@@ -4,47 +4,46 @@ graph_t *init_graph(char *fn) {
   graph_t *g = malloc(1 * sizeof(graph_t));
   g->fn = fn;
 
-  // vertices
+  /* vertices */
   g->nv = 0;
   g->cv = 16384;
   g->vertices = malloc(g->cv * sizeof(seg_t *));
-  for (int i = 0; i < g->cv; ++i)
-    g->vertices[i] = init_seg();
+
   g->v_map = kh_init(im);
 
-  // edges
-  g->ne = 0;
-  g->out_edges = malloc(16384 * sizeof(kvec_t(int)));
-  g->oe_c = 16384;
-  for (int i = 0; i < g->oe_c; ++i)
-    kv_init(g->out_edges[i]);
-  g->in_edges = malloc(16384 * sizeof(kvec_t(int)));
-  g->ie_c = 16384;
-  for (int i = 0; i < g->ie_c; ++i)
-    kv_init(g->in_edges[i]);
+  /* edges */
+  /* g->ne = 0; */
+  /* g->out_edges = malloc(16384 * sizeof(kvec_t(int))); */
+  /* g->oe_c = 16384; */
+  /* for (int i = 0; i < g->oe_c; ++i) */
+  /*   kv_init(g->out_edges[i]); */
+  /* g->in_edges = malloc(16384 * sizeof(kvec_t(int))); */
+  /* g->ie_c = 16384; */
+  /* for (int i = 0; i < g->ie_c; ++i) */
+  /*   kv_init(g->in_edges[i]); */
 
-  // paths
+  /* paths */
   g->np = 0;
   g->cp = 128;
   g->paths = malloc(g->cp * sizeof(path_t *));
   for (int i = 0; i < g->cp; ++i)
-    g->paths[i] = init_path(16384); // XXX: find a better value
+    g->paths[i] = init_path(4096); /* XXX: find a better value */
   return g;
 }
 
 void destroy_graph(graph_t *g) {
-  for (int i = 0; i < g->cv; ++i)
+  for (int i = 0; i < g->nv; ++i)
     destroy_seg(g->vertices[i]);
   free(g->vertices);
-
-  for (int i = 0; i < g->oe_c; ++i)
-    kv_destroy(g->out_edges[i]);
-  free(g->out_edges);
-  for (int i = 0; i < g->ie_c; ++i)
-    kv_destroy(g->in_edges[i]);
-  free(g->in_edges);
-
   kh_destroy(im, g->v_map);
+
+  /* for (int i = 0; i < g->oe_c; ++i) */
+  /*   kv_destroy(g->out_edges[i]); */
+  /* free(g->out_edges); */
+  /* for (int i = 0; i < g->ie_c; ++i) */
+  /*   kv_destroy(g->in_edges[i]); */
+  /* free(g->in_edges); */
+
   for (int i = 0; i < g->cp; ++i)
     destroy_path(g->paths[i]);
   free(g->paths);
@@ -103,9 +102,8 @@ int load_vertices(graph_t *g, int wseq) {
       if (g->nv == g->cv) {
         g->vertices = realloc(g->vertices, g->cv * 2 * sizeof(seg_t *));
         g->cv *= 2;
-        for (int i = g->nv; i < g->cv; ++i)
-          g->vertices[i] = init_seg();
       }
+      g->vertices[g->nv] = init_seg();
       gfa_parse_S(s.s, g->vertices[g->nv], wseq);
 
       k = kh_put(im, g->v_map, g->vertices[g->nv]->idx, &hret);
@@ -124,49 +122,49 @@ int get_iidx(graph_t *g, int v) {
   return kh_value(g->v_map, kh_get(im, g->v_map, v));
 }
 
-int load_edges(graph_t *g) {
-  if (g->nv == 0)
-    load_vertices(g, 0);
+/* int load_edges(graph_t *g) { */
+/*   if (g->nv == 0) */
+/*     load_vertices(g, 0); */
 
-  // allocate more space if needed
-  if (g->nv > g->oe_c) {
-    g->out_edges = realloc(g->out_edges, g->nv * sizeof(kvec_t(int)));
-    for (int i = g->oe_c; i < g->nv; ++i)
-      kv_init(g->out_edges[i]);
-    g->oe_c = g->nv;
-  }
-  if (g->nv > g->ie_c) {
-    g->in_edges = realloc(g->in_edges, g->nv * sizeof(kvec_t(int)));
-    for (int i = g->ie_c; i < g->nv; ++i)
-      kv_init(g->in_edges[i]);
-    g->ie_c = g->nv;
-  }
+/*   /\* allocate more space if needed *\/ */
+/*   if (g->nv > g->oe_c) { */
+/*     g->out_edges = realloc(g->out_edges, g->nv * sizeof(kvec_t(int))); */
+/*     for (int i = g->oe_c; i < g->nv; ++i) */
+/*       kv_init(g->out_edges[i]); */
+/*     g->oe_c = g->nv; */
+/*   } */
+/*   if (g->nv > g->ie_c) { */
+/*     g->in_edges = realloc(g->in_edges, g->nv * sizeof(kvec_t(int))); */
+/*     for (int i = g->ie_c; i < g->nv; ++i) */
+/*       kv_init(g->in_edges[i]); */
+/*     g->ie_c = g->nv; */
+/*   } */
 
-  // load edges
-  kstring_t s = {0, 0, 0};
-  int dret;
-  gzFile fp = gzopen(g->fn, "r");
-  if (fp == 0)
-    return 0;
-  kstream_t *ks = ks_init(fp);
-  int v1, v2;
-  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-    if (s.s[0] == 'L') {
-      gfa_parse_L(s.s, &v1, &v2);
-      v1 = get_iidx(g, v1);
-      v2 = get_iidx(g, v2);
-      kv_push(int, g->out_edges[v1], v2);
-      kv_push(int, g->in_edges[v2], v1);
-      ++g->ne;
-    }
-  }
+/*   /\* load edges *\/ */
+/*   kstring_t s = {0, 0, 0}; */
+/*   int dret; */
+/*   gzFile fp = gzopen(g->fn, "r"); */
+/*   if (fp == 0) */
+/*     return 0; */
+/*   kstream_t *ks = ks_init(fp); */
+/*   int v1 = -1, v2 = -1; */
+/*   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) { */
+/*     if (s.s[0] == 'L') { */
+/*       gfa_parse_L(s.s, &v1, &v2); */
+/*       v1 = get_iidx(g, v1); */
+/*       v2 = get_iidx(g, v2); */
+/*       kv_push(int, g->out_edges[v1], v2); */
+/*       kv_push(int, g->in_edges[v2], v1); */
+/*       ++g->ne; */
+/*     } */
+/*   } */
 
-  free(s.s);
-  ks_destroy(ks);
-  gzclose(fp);
+/*   free(s.s); */
+/*   ks_destroy(ks); */
+/*   gzclose(fp); */
 
-  return 0;
-}
+/*   return 0; */
+/* } */
 
 int load_paths(graph_t *g) {
   if (g->nv == 0)
@@ -176,7 +174,7 @@ int load_paths(graph_t *g) {
   int dret;
   gzFile fp = gzopen(g->fn, "r");
   if (fp == 0) {
-    exit(1); // return paths;
+    exit(1);
   }
   kstream_t *ks = ks_init(fp);
 
@@ -187,21 +185,24 @@ int load_paths(graph_t *g) {
         g->paths = realloc(g->paths, g->cp * 2 * sizeof(path_t *));
         g->cp *= 2;
         for (int i = g->np; i < g->cp; ++i)
-          g->paths[i] = init_path(16384); // XXX: find a better value
+          g->paths[i] = init_path(4096); // XXX: find a better value
       }
       if (s.s[0] == 'P')
         gfa_parse_P(s.s, g->paths[g->np]);
       else
         gfa_parse_W(s.s, g->paths[g->np]);
       /* update vertices with path */
+      seg_t *seg;
       for (int v = 0; v < g->paths[g->np]->l; ++v) {
-        kv_push(
-            int,
-            g->vertices[get_iidx(g, g->paths[g->np]->vertices[v] >> 1)]->paths,
-            g->np);
+        seg = g->vertices[get_iidx(g, g->paths[g->np]->vertices[v] >> 1)];
+        update_seg(seg, g->np, v /*g->paths[g->np]->vertices[v]*/);
       }
+      compress_path(g->paths[g->np]);
       ++g->np;
     }
+  }
+  for (int v = 0; v < g->nv; ++v) {
+    compress_seg(g->vertices[v]);
   }
   free(s.s);
   ks_destroy(ks);
@@ -249,44 +250,42 @@ void gfa_parse_S(char *s, seg_t *ret, int wseq) {
   // if (!is_ok) { // something is missing
 }
 
-void gfa_parse_L(char *s, int *idx1, int *idx2) {
-  int i;       // , oriv = -1, oriw = -1, is_ok = 0;
-  char *p, *q; // , *segv = 0, *segw = 0, *rest = 0;
-  // int32_t ov = INT32_MAX, ow = INT32_MAX;
-  for (i = 0, p = q = s + 2;; ++p) {
-    if (*p == 0 || *p == '\t') {
-      int c = *p;
-      *p = 0;
-      if (i == 0) {
-        *idx1 = atoi(q);
-      } else if (i == 1) {
-        // if (*q != '+' && *q != '-')
-        //   ; // return -2;
-        // oriv = (*q != '+');
-      } else if (i == 2) {
-        *idx2 = atoi(q);
-      } else if (i == 3) {
-        // if (*q != '+' && *q != '-')
-        //   ; // return -2;
-        // oriw = (*q != '+');
-      }
-      ++i, q = p + 1;
-      if (c == 0)
-        break;
-    }
-  }
-  // return 0;
-}
+/* void gfa_parse_L(char *s, int *idx1, int *idx2) { */
+/*   int i; */
+/*   char *p, *q; */
+/*   for (i = 0, p = q = s + 2;; ++p) { */
+/*     if (*p == 0 || *p == '\t') { */
+/*       int c = *p; */
+/*       *p = 0; */
+/*       if (i == 0) { */
+/*         *idx1 = atoi(q); */
+/*       } else if (i == 1) { */
+/*         /\* if (*q != '+' && *q != '-') *\/ */
+/*         /\*   ; /\\* return -2; *\\/ *\/ */
+/*         /\* oriv = (*q != '+'); *\/ */
+/*       } else if (i == 2) { */
+/*         *idx2 = atoi(q); */
+/*       } else if (i == 3) { */
+/*         /\* if (*q != '+' && *q != '-') *\/ */
+/*         /\* ; /\\* return -2; *\\/ *\/ */
+/*         /\* oriw = (*q != '+'); *\/ */
+/*       } */
+/*       ++i, q = p + 1; */
+/*       if (c == 0) */
+/*         break; */
+/*     } */
+/*   } */
+/*   /\* return 0; *\/ */
+/* } */
 
 void gfa_parse_P(char *s, path_t *path) {
-  // int x = 0; // current index for insertion
   int i;
   char *p, *q, *qq;
   for (i = 0, p = q = s + 2;; ++p) {
     if (*p == 0 || *p == '\t') {
       *p = 0;
       if (i == 0) {
-        // TODO: check for duplicates
+        /* TODO: check for duplicates */
         strcpy(path->idx, q);
       } else if (i == 1) {
         char strand = *(p - 1);
@@ -311,7 +310,6 @@ void gfa_parse_P(char *s, path_t *path) {
 }
 
 void gfa_parse_W(char *s, path_t *path) {
-  // int x = 0; // current index for insertion
   int i;
   char *p, *q, *qq;
   for (i = 0, p = q = s + 2;; ++p) {

@@ -9,8 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PALSS VERSION 0.0.1)
 
-add_executable(palss misc.c kmer.c sfs.c sketch.c segment.c path.c graph.c main_sketch.c main_dump.c main_kan.c main_search.c main.cpp)
-# add_executable(palss sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main.cpp) # main_map.cpp
+add_executable(palss misc.c kmer.c sfs.c sketch.c segment.c path.c graph.c main_sketch.c main_dump.c main_kan.c main_search.c main_test.c main.c)
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(palss PRIVATE -Wall -Wno-char-subscripts) # -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
 
@@ -73,23 +72,44 @@ SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
 # add_library(ABPOA STATIC IMPORTED)
 # set_target_properties(ABPOA PROPERTIES IMPORTED_LOCATION ${ABPOA_SOURCE_DIR}/lib/libabpoa.a)
 
+# abPOA
+########
+SET(PATCH_CMD "")
+ExternalProject_Add(pfor
+  GIT_REPOSITORY https://github.com/powturbo/TurboPFor-Integer-Compression.git
+  GIT_TAG 06d6aad98b4be5471289f35d5d04fac4469cf6df
+  BUILD_IN_SOURCE 1
+  UPDATE_COMMAND ""
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND make
+  INSTALL_COMMAND ""
+)
+ExternalProject_Get_Property(pfor SOURCE_DIR BINARY_DIR)
+SET(PFOR_SOURCE_DIR ${SOURCE_DIR})
+SET(PFOR_INCLUDE_DIR ${PFOR_SOURCE_DIR}/include)
+add_library(PFOR STATIC IMPORTED)
+set_target_properties(PFOR PROPERTIES IMPORTED_LOCATION ${PFOR_SOURCE_DIR}/libic.a)
+
+
 ############################################
 ### final setup (includes and libraries) ###
 ############################################
 
-add_dependencies(palss RB3 abpoa ksw2) # gbwt)
+add_dependencies(palss RB3 abpoa ksw2 PFOR) # gbwt)
 
 target_include_directories(palss
     PRIVATE ${RB3_INCLUDE_DIR}
     PRIVATE ${KSW2_INCLUDE_DIR}
     PRIVATE ${ABPOA_INCLUDE_DIR}
+    PRIVATE ${PFOR_INCLUDE_DIR}
     PRIVATE ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(palss
     PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz2_sse.o
     PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
-    PUBLIC ${BINARY_DIR}/lib/libabpoa.a
+    PUBLIC ${ABPOA_SOURCE_DIR}/lib/libabpoa.a
+    PUBLIC PFOR
     PUBLIC RB3
     PUBLIC z
     PUBLIC pthread

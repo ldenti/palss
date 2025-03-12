@@ -3,16 +3,13 @@
 
 #include "usage.h"
 
-extern "C" {
 int main_sketch(int argc, char *argv[]);
 int main_dump(int argc, char *argv[]);
 int main_kan(int argc, char *argv[]);
 int main_search(int argc, char *argv[]);
-}
+/* int main_call(int argc, char *argv[]); */
 
-// int main_call(int argc, char *argv[]);
-
-using namespace std;
+int main_test(int argc, char *argv[]);
 
 int main(int argc, char *argv[]) {
   if (argc == 1) {
@@ -27,8 +24,10 @@ int main(int argc, char *argv[]) {
     return main_kan(argc - 1, argv + 1);
   else if (strcmp(argv[1], "search") == 0)
     return main_search(argc - 1, argv + 1);
-  // else if (strcmp(argv[1], "call") == 0)
-  //   return main_call(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "test") == 0)
+    return main_test(argc - 1, argv + 1);
+  /* else if (strcmp(argv[1], "call") == 0) */
+  /*   return main_call(argc - 1, argv + 1); */
   else {
     fprintf(stderr, "%s", MAIN_USAGE);
     return 1;
