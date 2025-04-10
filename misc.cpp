@@ -1,4 +1,4 @@
-#include "misc.h"
+#include "misc.hpp"
 
 double realtime() {
   struct timeval tp;

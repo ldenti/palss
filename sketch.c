@@ -88,7 +88,7 @@ hit_t sk_get(sketch_t *sk, uint64_t kmer_d) {
   return hit;
 }
 
-int sk_dump(sketch_t *sk, char *fn) {
+int sk_dump(sketch_t *sk, const char *fn) {
   FILE *fp = strcmp(fn, "-") ? fopen(fn, "w") : fdopen(fileno(stdout), "w");
   if (fp == 0)
     return -1;
@@ -106,7 +106,7 @@ int sk_dump(sketch_t *sk, char *fn) {
   return 0;
 }
 
-int sk_store(sketch_t *sk, char *fn) {
+int sk_store(sketch_t *sk, const char *fn) {
   FILE *fp = strcmp(fn, "-") ? fopen(fn, "wb") : fdopen(fileno(stdout), "wb");
   if (fp == 0)
     return -1;
@@ -141,7 +141,7 @@ int sk_store(sketch_t *sk, char *fn) {
   return 0;
 }
 
-sketch_t *sk_load(char *fn) {
+sketch_t *sk_load(const char *fn) {
   sketch_t *sk = malloc(sizeof(sketch_t));
 
   FILE *fp = fopen(fn, "rb");

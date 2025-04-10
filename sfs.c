@@ -1,23 +1,23 @@
 #include "sfs.h"
 
-sfs_t *init_sfs() {
-  sfs_t *s = malloc(sizeof(sfs_t));
-  s->rname = NULL; // malloc(128 * sizeof(char));
-  s->seq = NULL;
-  s->a = malloc(sizeof(anchor_t));
-  s->b = malloc(sizeof(anchor_t));
-  return s;
-}
+// sfs_t *init_sfs() {
+//   sfs_t *s = malloc(sizeof(sfs_t));
+//   s->rname = NULL; // malloc(128 * sizeof(char));
+//   s->seq = NULL;
+//   s->a = malloc(sizeof(anchor_t));
+//   s->b = malloc(sizeof(anchor_t));
+//   return s;
+// }
 
-void destroy_sfs(sfs_t *s) {
-  if (s->rname != NULL)
-    free(s->rname);
-  if (s->seq != NULL)
-    free(s->seq);
-  free(s->a);
-  free(s->b);
-  free(s);
-}
+// void destroy_sfs(sfs_t *s) {
+//   if (s->rname != NULL)
+//     free(s->rname);
+//   if (s->seq != NULL)
+//     free(s->seq);
+//   free(s->a);
+//   free(s->b);
+//   free(s);
+// }
 
 // anchor_t parse_anchor(char *line) {
 //   anchor_t a;

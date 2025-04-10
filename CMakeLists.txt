@@ -3,38 +3,91 @@ cmake_minimum_required(VERSION 3.14)
 include(ExternalProject)
 include(FetchContent)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PALSS VERSION 0.0.1)
 
-add_executable(palss misc.c kmer.c sfs.c sketch.c segment.c path.c graph.c main_sketch.c main_dump.c main_kan.c main_search.c main_test.c main.c)
+add_executable(palss main.cpp main_index.cpp main_search.cpp graph.cpp sfs.c misc.cpp sketch.c kmer.c)
+# misc.c kmer.c sfs.c sketch.c segment.c path.c graph.c main_sketch.c main_dump.c main_kan.c main_search.c main_test.c main.c)
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
-target_compile_options(palss PRIVATE -Wall -Wno-char-subscripts) # -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
+target_compile_options(palss PRIVATE -Wall) # -Wno-char-subscripts -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
 
 # add_definitions("-Wp,-w")
 
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
 
-# ksw2
-########
-message(STATUS "gfatools will be built from source")
-ExternalProject_Add(ksw2
-    GIT_REPOSITORY https://github.com/lh3/ksw2.git
-    GIT_TAG ""
+# find_library(GPERFTOOLS_TCMALLOC NAMES tcmalloc REQUIRED)
+# find_library(GPERFTOOLS_PROFILER NAMES profiler REQUIRED)
+
+SET(INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
+SET(LIB_DIR ${CMAKE_SOURCE_DIR}/lib)
+
+# libhandlegraph
+message(STATUS "libhandlegraph will be built from source")
+ExternalProject_Add(lhg
+    GIT_REPOSITORY https://github.com/vgteam/libhandlegraph.git
+    GIT_TAG "0e70dadb5054568d8071e280b3b7b11b5658937f"
+    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_SOURCE_DIR} -DCMAKE_INSTALL_LIBDIR=${LIB_DIR}
+)
+
+# sdsl-lite
+message(STATUS "sdsl-lite will be built from source")
+ExternalProject_Add(sdsl
+    GIT_REPOSITORY https://github.com/vgteam/sdsl-lite.git
+    GIT_TAG "cf1c355981d0ee91bdca4b1882f997863d0fda16"
     BUILD_IN_SOURCE 1
     UPDATE_COMMAND ""
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND make
-    INSTALL_COMMAND ""
+    BUILD_COMMAND ""
+    INSTALL_COMMAND BUILD_PORTABLE=1 ./install.sh ${CMAKE_SOURCE_DIR}
 )
-ExternalProject_Get_Property(ksw2 SOURCE_DIR)
-SET(KSW2_INCLUDE_DIR ${SOURCE_DIR})
+ExternalProject_Get_Property(sdsl SOURCE_DIR)
+SET(SDSL_SRC_DIR ${SOURCE_DIR})
+
+# gbwt
+message(STATUS "gbwt will be built from source")
+ExternalProject_Add(gbwt
+    GIT_REPOSITORY https://github.com/jltsiren/gbwt.git
+    GIT_TAG "064921d47f1a2387005345759956dc3c7fcd0190"
+    BUILD_IN_SOURCE 1
+    UPDATE_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make SDSL_DIR=${SDSL_SRC_DIR}
+    INSTALL_COMMAND cp -r include/gbwt ${INCLUDE_DIR}
+    COMMAND cp lib/libgbwt.a ${LIB_DIR}
+)
+
+# gbwtgraph
+message(STATUS "gbwtgraph will be built from source")
+ExternalProject_Add(gbwtgraph
+    GIT_REPOSITORY https://github.com/jltsiren/gbwtgraph.git
+    GIT_TAG "e2b3586d61531c2085783c0a8756dd1a7655259b"
+    BUILD_IN_SOURCE 1
+    UPDATE_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make SDSL_DIR=${SDSL_SRC_DIR}
+    INSTALL_COMMAND cp -r include/gbwtgraph ${INCLUDE_DIR}
+    COMMAND cp lib/libgbwtgraph.a ${LIB_DIR}
+)
+
+# # ksw2
+# message(STATUS "ksw2 will be built from source")
+# ExternalProject_Add(ksw2
+#     GIT_REPOSITORY https://github.com/lh3/ksw2.git
+#     GIT_TAG ""
+#     BUILD_IN_SOURCE 1
+#     UPDATE_COMMAND ""
+#     CONFIGURE_COMMAND ""
+#     BUILD_COMMAND make
+#     INSTALL_COMMAND ""
+# )
+# ExternalProject_Get_Property(ksw2 SOURCE_DIR)
+# SET(KSW2_INCLUDE_DIR ${SOURCE_DIR})
 
 # ropebwt3
-############
 message(STATUS "ropebwt3 will be built from source")
 ExternalProject_Add(rb3
     GIT_REPOSITORY https://github.com/lh3/ropebwt3.git
@@ -53,66 +106,57 @@ set_source_files_properties(${rb3-src} PROPERTIES GENERATED TRUE)
 add_library(RB3 OBJECT ${rb3-src})
 add_dependencies(RB3 rb3)
 
-# abPOA
-########
-SET(PATCH_CMD "")
-ExternalProject_Add(abpoa
-  GIT_REPOSITORY https://github.com/yangao07/abPOA.git
-  GIT_TAG e6bb6fdfa40d573558e5e2b545bdf5769631eaaf # v1.5.3 with bug fixes
-  BUILD_IN_SOURCE 1
-  UPDATE_COMMAND ""
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND make
-  INSTALL_COMMAND ""
-)
-ExternalProject_Get_Property(abpoa SOURCE_DIR BINARY_DIR)
-SET(ABPOA_SOURCE_DIR ${SOURCE_DIR})
-SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
-# NOTE: abpoa library will be set manually
-# add_library(ABPOA STATIC IMPORTED)
-# set_target_properties(ABPOA PROPERTIES IMPORTED_LOCATION ${ABPOA_SOURCE_DIR}/lib/libabpoa.a)
-
-# abPOA
-########
-SET(PATCH_CMD "")
-ExternalProject_Add(pfor
-  GIT_REPOSITORY https://github.com/powturbo/TurboPFor-Integer-Compression.git
-  GIT_TAG 06d6aad98b4be5471289f35d5d04fac4469cf6df
-  BUILD_IN_SOURCE 1
-  UPDATE_COMMAND ""
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND make
-  INSTALL_COMMAND ""
-)
-ExternalProject_Get_Property(pfor SOURCE_DIR BINARY_DIR)
-SET(PFOR_SOURCE_DIR ${SOURCE_DIR})
-SET(PFOR_INCLUDE_DIR ${PFOR_SOURCE_DIR}/include)
-add_library(PFOR STATIC IMPORTED)
-set_target_properties(PFOR PROPERTIES IMPORTED_LOCATION ${PFOR_SOURCE_DIR}/libic.a)
+# # abPOA
+# ########
+# SET(PATCH_CMD "")
+# ExternalProject_Add(abpoa
+#   GIT_REPOSITORY https://github.com/yangao07/abPOA.git
+#   GIT_TAG e6bb6fdfa40d573558e5e2b545bdf5769631eaaf # v1.5.3 with bug fixes
+#   BUILD_IN_SOURCE 1
+#   UPDATE_COMMAND ""
+#   CONFIGURE_COMMAND ""
+#   BUILD_COMMAND make
+#   INSTALL_COMMAND ""
+# )
+# ExternalProject_Get_Property(abpoa SOURCE_DIR BINARY_DIR)
+# SET(ABPOA_SOURCE_DIR ${SOURCE_DIR})
+# SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
+# # NOTE: abpoa library will be set manually
+# # add_library(ABPOA STATIC IMPORTED)
+# # set_target_properties(ABPOA PROPERTIES IMPORTED_LOCATION ${ABPOA_SOURCE_DIR}/lib/libabpoa.a)
 
 
 ############################################
 ### final setup (includes and libraries) ###
 ############################################
 
-add_dependencies(palss RB3 abpoa ksw2 PFOR) # gbwt)
+add_dependencies(gbwt sdsl)
+add_dependencies(gbwtgraph gbwt lhg)
+add_dependencies(palss RB3 gbwtgraph) # abpoa ksw2)
 
 target_include_directories(palss
-    PRIVATE ${RB3_INCLUDE_DIR}
-    PRIVATE ${KSW2_INCLUDE_DIR}
-    PRIVATE ${ABPOA_INCLUDE_DIR}
-    PRIVATE ${PFOR_INCLUDE_DIR}
-    PRIVATE ${PROJECT_SOURCE_DIR}
+  PUBLIC ${CMAKE_SOURCE_DIR}/include
+  PUBLIC ${RB3_INCLUDE_DIR}
+  # PUBLIC ${KSW2_INCLUDE_DIR}
+  # PUBLIC ${ABPOA_INCLUDE_DIR}
+  PUBLIC ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(palss
-    PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz2_sse.o
-    PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
-    PUBLIC ${ABPOA_SOURCE_DIR}/lib/libabpoa.a
-    PUBLIC PFOR
+    # PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz2_sse.o
+    # PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
+    # PUBLIC ${ABPOA_SOURCE_DIR}/lib/libabpoa.a
+
+    PUBLIC ${CMAKE_SOURCE_DIR}/lib/libgbwtgraph.a
+    PUBLIC ${CMAKE_SOURCE_DIR}/lib/libgbwt.a
+    PUBLIC ${CMAKE_SOURCE_DIR}/lib/libsdsl.a
+    PUBLIC ${CMAKE_SOURCE_DIR}/lib/libhandlegraph.a
+
     PUBLIC RB3
     PUBLIC z
     PUBLIC pthread
     PUBLIC OpenMP::OpenMP_C
     PUBLIC OpenMP::OpenMP_CXX
+    # PUBLIC ${GPERFTOOLS_TCMALLOC}
+    # PUBLIC ${GPERFTOOLS_PROFILER}
 )

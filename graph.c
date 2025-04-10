@@ -166,6 +166,29 @@ int get_iidx(graph_t *g, int v) {
 /*   return 0; */
 /* } */
 
+int update_segments(graph_t *g) {
+  path_t *path;
+  int iv;
+  int min_v = 0, bsize = 2000000;
+  while (min_v < g->nv) {
+    fprintf(stderr, "Updating vertices [%d,%d)\n", min_v, min_v + bsize);
+    for (int p = 0; p < g->np; ++p) {
+      path = g->paths[p];
+      for (int v = 0; v < path->l; ++v) {
+        iv = get_iidx(g, vbgetx32(path->cvertices, v) >> 1);
+        /* iv = get_iidx(g, path->vertices[v] >> 1); */
+        if (iv >= min_v && iv < min_v + bsize)
+          update_seg(g->vertices[iv], p, v);
+      }
+    }
+    for (int v = min_v; v < MIN(g->nv, min_v + bsize); ++v) {
+      compress_seg(g->vertices[v]);
+    }
+    min_v += bsize;
+  }
+  return 0;
+}
+
 int load_paths(graph_t *g) {
   if (g->nv == 0)
     load_vertices(g, 0);
@@ -191,18 +214,9 @@ int load_paths(graph_t *g) {
         gfa_parse_P(s.s, g->paths[g->np]);
       else
         gfa_parse_W(s.s, g->paths[g->np]);
-      /* update vertices with path */
-      seg_t *seg;
-      for (int v = 0; v < g->paths[g->np]->l; ++v) {
-        seg = g->vertices[get_iidx(g, g->paths[g->np]->vertices[v] >> 1)];
-        update_seg(seg, g->np, v /*g->paths[g->np]->vertices[v]*/);
-      }
       compress_path(g->paths[g->np]);
       ++g->np;
     }
-  }
-  for (int v = 0; v < g->nv; ++v) {
-    compress_seg(g->vertices[v]);
   }
   free(s.s);
   ks_destroy(ks);
@@ -223,7 +237,7 @@ void gfa_parse_S(char *s, seg_t *ret, int wseq) {
         // strcpy(ret->idx, q);
       } else if (i == 1) {
         ret->l = p - q;
-        if (wseq) {
+        if (wseq == 1) {
           if (ret->l > ret->c) {
             char *temp = realloc(ret->seq, (ret->l * 2) * sizeof(char));
             if (temp == NULL) {
@@ -321,10 +335,6 @@ void gfa_parse_W(char *s, path_t *path) {
         continue;
       } else if (i == 2) {
         strcpy(path->idx, q);
-        /* *(p + 2) = 0; */
-        /* path->idx[p - q] = '#'; */
-        /* path->idx[p - q + 1] = *(p + 1); */
-        /* path->idx[p - q + 2] = '\0'; */
       } else if (i == 5) {
         char strand = *q;
         ++q;

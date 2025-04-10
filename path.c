@@ -11,8 +11,10 @@ path_t *init_path(int c) {
 }
 
 void compress_path(path_t *path) {
-  path->cvertices = malloc(vsbound32(path->l));
-  v8enc32(path->vertices, path->l, path->cvertices);
+  /* path->cvertices = malloc(p4nbound32(path->l)); */
+  /* p4nenc32(path->vertices, path->l, path->cvertices); */
+  path->cvertices = malloc(vbbound32(path->l));
+  vbenc32(path->vertices, path->l, path->cvertices);
   free(path->vertices);
   path->vertices = NULL;
 }

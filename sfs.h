@@ -19,8 +19,8 @@ typedef struct {
   int qidx;     // read index
   int s;        // start on query
   int l;        // length
-  anchor_t *a;  // left anchor
-  anchor_t *b;  // right anchor
+  anchor_t a;  // left anchor
+  anchor_t b;  // right anchor
   int strand;   // inferred strand
   uint64_t esk; // expected starting kmer (from cluster)
   uint64_t eek; // expected ending kmer (from cluster)

@@ -16,20 +16,20 @@ typedef struct {
   int l;     /* length */
   int c;     /* capacity */
 
-  /* Everything we need to build the rle bv of paths */
-  uint8_t *paths;
-  int paths_p;
-  int paths_c;
-  int paths_b; /* this is the same as *rle_nptr(paths) */
-  int lasth;
-  int lastp;
-  int rl1;
-  int64_t cnts[6];
-  /* --- */
+  /* /\* Everything we need to build the rle bv of paths *\/ */
+  /* uint8_t *paths; */
+  /* int paths_p; */
+  /* int paths_c; */
+  /* int paths_b; /\* this is the same as *rle_nptr(paths) *\/ */
+  /* int lasth; */
+  /* int lastp; */
+  /* int rl1; */
+  /* int64_t cnts[6]; */
+  /* /\* --- *\/ */
 
-  kvec_t(int) starts;   /* Offset of each path over pord */
-  kvec_t(int) pord;     /* Path-ordering */
-  unsigned char *cpord; /* Compressed path-ordering */
+  /* kvec_t(int) starts;   /\* Offset of each path over pord *\/ */
+  /* kvec_t(int) pord;     /\* Path-ordering *\/ */
+  /* unsigned char *cpord; /\* Compressed path-ordering *\/ */
 } seg_t;
 
 /* Initialize a segment */

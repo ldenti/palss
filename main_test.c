@@ -1,22 +1,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/resource.h>
-#include <sys/time.h>
-#include <unistd.h>
 
 #include "graph.h"
 #include "path.h"
 #include "segment.h"
 
 #include "rle.h"
-
-static inline double realtime() {
-  struct timeval tp;
-  struct timezone tzp;
-  gettimeofday(&tp, &tzp);
-  return (double)tp.tv_sec + (double)tp.tv_usec * 1e-6;
-}
 
 int main_test(int argc, char *argv[]) {
   /**
@@ -49,16 +39,21 @@ int main_test(int argc, char *argv[]) {
   fprintf(stderr, "loaded %d vertices in %.3f secs\n", graph->nv,
           realtime() - rt);
   rt = realtime();
-  load_paths(graph);
-  fprintf(stderr, "loaded %d paths in %.3f secs\n", graph->np, realtime() - rt);
-
+  /* load_paths(graph); */
+  /* fprintf(stderr, "loaded %d paths in %.3f secs\n", graph->np, realtime() -
+   * rt); */
+  /* rt = realtime(); */
+  /* update_segments(graph); */
+  /* fprintf(stderr, "updated %d segments in %.3f secs\n", graph->nv, */
+  /*         realtime() - rt); */
   /* for (int v = 0; v < graph->nv; ++v) { */
-  /*   printf("%d %d %s %d %d %d\n", v, graph->vertices[v]->idx, */
-  /*          graph->vertices[v]->seq, *rle_nptr(graph->vertices[v]->paths), */
+  /*   printf("%d %d %d %d %d\n", v, graph->vertices[v]->idx, */
+  /*          /\*graph->vertices[v]->seq,*\/
+   * *rle_nptr(graph->vertices[v]->paths), */
   /*          graph->vertices[v]->paths_b, kv_size(graph->vertices[v]->starts));
    */
 
-  /*   rle_print(graph->vertices[v]->paths, 0); */
+  /*   /\*   rle_print(graph->vertices[v]->paths, 0); *\/ */
   /* } */
   /* dump_gfa(graph, "-"); */
 

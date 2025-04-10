@@ -10,11 +10,11 @@
 /* sketch: 2bit encoded kmer -> (48[vertex, 16[offset) */
 
 typedef struct {
-  int k, m;                  // kmer size, prefix size
-  int64_t size;              // allocated size
-  int64_t n;                 // how many kmers we have
-  int64_t np;                // number of prefixes
-  uint64_t *pxs, *sxs, *vls; // arrays (prefixes, keys, values)
+  int k, m;                  /* kmer size, prefix size */
+  int64_t size;              /* allocated size */
+  int64_t n;                 /* how many kmers we have */
+  int64_t np;                /* number of prefixes */
+  uint64_t *pxs, *sxs, *vls; /* arrays (prefixes, keys, values) */
 } sketch_t;
 
 typedef struct {
@@ -30,11 +30,11 @@ int16_t sk_decode_off(uint64_t e);
 /* Init the sketch */
 sketch_t *sk_init(int64_t n, int k, int m);
 /* Init sketch by loading from file */
-sketch_t *sk_load(char *fn);
+sketch_t *sk_load(const char *fn);
 /* Dump sketch to file in .txt format */
-int sk_dump(sketch_t *sk, char *fn);
+int sk_dump(sketch_t *sk, const char *fn);
 /* Dump sketch to file in binary format */
-int sk_store(sketch_t *sk, char *fn);
+int sk_store(sketch_t *sk, const char *fn);
 /* Destroy the sketch */
 void sk_destroy(sketch_t *sk);
 
