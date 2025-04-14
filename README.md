@@ -31,7 +31,7 @@ LD_LIBRARY_PATH="$PWD/lib" ./build/gbwtgraph-prefix/src/gbwtgraph/bin/gbz_extrac
 ./palss search -k27 example/reference.gbz example/reference.paths.fa.fmd example/reads.fa > example/sfs.txt
 
 # cluster specific strings and analyze clusters
-./palss call -k27 example/reference.gfa example/reference-k27.skt example/sfs.txt example/reads.fa > example/new_portions.gaf
+./palss call -k27 example/reference.gbz example/sfs.txt example/reads.fa > example/new_portions.gaf
 
 # augment the graph
 vg augment --min-coverage 1 --gaf example/reference.gfa example/new_portions.gaf > example/reference-augmented.gfa

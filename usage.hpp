@@ -1,6 +1,8 @@
 #ifndef PALSS_USAGE_H
 #define PALSS_USAGE_H
 
+// FIXME: most of these are not updated to .gbz !!!
+
 static const char *const VERSION = "PALSS, v0.0.1";
 
 static const char *const MAIN_USAGE = "Usage: palss [sketch|search|call] -h\n";
@@ -35,6 +37,16 @@ static const char *const CALL_USAGE_MESSAGE =
     "        -k <INT>   kmer size (default: 27, maximum: 32)\n"
     "        -w <INT>   minimum support per cluster (default: 2)\n"
     "        -r <FLOAT> length ratio to split a cluster (default: 0.97)\n"
+    "        -h         display this help and exit\n"
+    "\n";
+
+static const char *const KAN_USAGE_MESSAGE =
+    "Usage: palss kan [options] <graph.gfa.skt> <file.fx> "
+    "<reads.fx>\n"
+    "Options:\n"
+    "        -k <INT>   kmer size (default: 27, maximum: 32)\n"
+    "        -r         input is FASTQ, so do not output a BED file (default: "
+    "FASTA, hence BED output)\n"
     "        -h         display this help and exit\n"
     "\n";
 

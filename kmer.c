@@ -18,7 +18,7 @@ uint64_t k2d(const char *kmer, uint8_t k) {
   uint64_t kmer_d = 0;
   uint8_t x;
   for (uint8_t i = 0; i < k; ++i) {
-    x = (kmer[i] < 6 ? kmer[i] : to_int[kmer[i]]) -
+    x = (kmer[i] < 6 ? kmer[i] : to_int[(int)kmer[i]]) -
         1; // we assume sequence to be encoded as A:1 but in kmer A is 0
     kmer_d = (kmer_d << 2) | (x < 4 ? x : rand() % 4);
   }

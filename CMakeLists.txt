@@ -9,8 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PALSS VERSION 0.0.1)
 
-add_executable(palss main.cpp main_index.cpp main_search.cpp graph.cpp sfs.c misc.cpp sketch.c kmer.c)
-# misc.c kmer.c sfs.c sketch.c segment.c path.c graph.c main_sketch.c main_dump.c main_kan.c main_search.c main_test.c main.c)
+add_executable(palss main.cpp main_index.cpp main_search.cpp main_kan.cpp graph.cpp sfs.c misc.cpp sketch.c kmer.c)
+# misc.c kmer.c sfs.c sketch.c segment.c path.c graph.c main_sketch.c main_dump.c main_kan.c main_search.c main_test.c main_call.cpp main.c)
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(palss PRIVATE -Wall) # -Wno-char-subscripts -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
 
@@ -73,19 +73,19 @@ ExternalProject_Add(gbwtgraph
     COMMAND cp lib/libgbwtgraph.a ${LIB_DIR}
 )
 
-# # ksw2
-# message(STATUS "ksw2 will be built from source")
-# ExternalProject_Add(ksw2
-#     GIT_REPOSITORY https://github.com/lh3/ksw2.git
-#     GIT_TAG ""
-#     BUILD_IN_SOURCE 1
-#     UPDATE_COMMAND ""
-#     CONFIGURE_COMMAND ""
-#     BUILD_COMMAND make
-#     INSTALL_COMMAND ""
-# )
-# ExternalProject_Get_Property(ksw2 SOURCE_DIR)
-# SET(KSW2_INCLUDE_DIR ${SOURCE_DIR})
+# ksw2
+message(STATUS "ksw2 will be built from source")
+ExternalProject_Add(ksw2
+    GIT_REPOSITORY https://github.com/lh3/ksw2.git
+    GIT_TAG ""
+    BUILD_IN_SOURCE 1
+    UPDATE_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make
+    INSTALL_COMMAND ""
+)
+ExternalProject_Get_Property(ksw2 SOURCE_DIR)
+SET(KSW2_INCLUDE_DIR ${SOURCE_DIR})
 
 # ropebwt3
 message(STATUS "ropebwt3 will be built from source")
@@ -106,24 +106,23 @@ set_source_files_properties(${rb3-src} PROPERTIES GENERATED TRUE)
 add_library(RB3 OBJECT ${rb3-src})
 add_dependencies(RB3 rb3)
 
-# # abPOA
-# ########
-# SET(PATCH_CMD "")
-# ExternalProject_Add(abpoa
-#   GIT_REPOSITORY https://github.com/yangao07/abPOA.git
-#   GIT_TAG e6bb6fdfa40d573558e5e2b545bdf5769631eaaf # v1.5.3 with bug fixes
-#   BUILD_IN_SOURCE 1
-#   UPDATE_COMMAND ""
-#   CONFIGURE_COMMAND ""
-#   BUILD_COMMAND make
-#   INSTALL_COMMAND ""
-# )
-# ExternalProject_Get_Property(abpoa SOURCE_DIR BINARY_DIR)
-# SET(ABPOA_SOURCE_DIR ${SOURCE_DIR})
-# SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
-# # NOTE: abpoa library will be set manually
-# # add_library(ABPOA STATIC IMPORTED)
-# # set_target_properties(ABPOA PROPERTIES IMPORTED_LOCATION ${ABPOA_SOURCE_DIR}/lib/libabpoa.a)
+# abPOA
+SET(PATCH_CMD "")
+ExternalProject_Add(abpoa
+  GIT_REPOSITORY https://github.com/yangao07/abPOA.git
+  GIT_TAG e6bb6fdfa40d573558e5e2b545bdf5769631eaaf # v1.5.3 with bug fixes
+  BUILD_IN_SOURCE 1
+  UPDATE_COMMAND ""
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND make
+  INSTALL_COMMAND ""
+)
+ExternalProject_Get_Property(abpoa SOURCE_DIR BINARY_DIR)
+SET(ABPOA_SOURCE_DIR ${SOURCE_DIR})
+SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
+# NOTE: abpoa library will be set manually
+# add_library(ABPOA STATIC IMPORTED)
+# set_target_properties(ABPOA PROPERTIES IMPORTED_LOCATION ${ABPOA_SOURCE_DIR}/lib/libabpoa.a)
 
 
 ############################################
@@ -132,20 +131,20 @@ add_dependencies(RB3 rb3)
 
 add_dependencies(gbwt sdsl)
 add_dependencies(gbwtgraph gbwt lhg)
-add_dependencies(palss RB3 gbwtgraph) # abpoa ksw2)
+add_dependencies(palss RB3 gbwtgraph abpoa ksw2)
 
 target_include_directories(palss
   PUBLIC ${CMAKE_SOURCE_DIR}/include
   PUBLIC ${RB3_INCLUDE_DIR}
-  # PUBLIC ${KSW2_INCLUDE_DIR}
-  # PUBLIC ${ABPOA_INCLUDE_DIR}
+  PUBLIC ${KSW2_INCLUDE_DIR}
+  PUBLIC ${ABPOA_INCLUDE_DIR}
   PUBLIC ${PROJECT_SOURCE_DIR}
 )
 
 target_link_libraries(palss
-    # PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz2_sse.o
-    # PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
-    # PUBLIC ${ABPOA_SOURCE_DIR}/lib/libabpoa.a
+    PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extz2_sse.o
+    PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
+    PUBLIC ${ABPOA_SOURCE_DIR}/lib/libabpoa.a
 
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libgbwtgraph.a
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libgbwt.a
