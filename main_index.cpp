@@ -121,6 +121,7 @@ int main_index(int argc, char *argv[]) {
   sdsl::simple_sds::load_from(gbz, gbz_fn);
   fprintf(stderr, "[M::%s] restored GBZ in %.3f sec\n", __func__,
           realtime() - rt);
+  gbwt::printStatistics(gbz.index, gbz_fn, std::cerr);
 
   rt = realtime();
   gbwt::FastLocate fl;
@@ -138,18 +139,18 @@ int main_index(int argc, char *argv[]) {
 
   // Path lengths
   // XXX: is this info really not somewhere in gbwt/gbwtgraph?
-  rt = realtime();
-  uint npaths = gbz.index.metadata.paths();
-  sdsl::int_vector<0> plens(npaths, 0, 32); // FIXME: is 32 enough?
-  for (uint p = 0; p < npaths; ++p) {
-    int pidx = gbwt::Path::encode(p, 0);
-    plens[p] = gbz.index.extract(pidx).size();
-  }
-  out.open(gbz_fn + ".pl", std::ofstream::out | std::ofstream::app);
-  plens.simple_sds_serialize(out);
-  out.close();
-  fprintf(stderr, "[M::%s] computed and stored path lengths in %.3f sec\n",
-          __func__, realtime() - rt);
+  // rt = realtime();
+  // uint npaths = gbz.index.metadata.paths();
+  // sdsl::int_vector<0> plens(npaths, 0, 32); // FIXME: is 32 enough?
+  // for (uint p = 0; p < npaths; ++p) {
+  //   int pidx = gbwt::Path::encode(p, 0);
+  //   plens[p] = gbz.index.extract(pidx).size();
+  // }
+  // out.open(gbz_fn + ".pl", std::ofstream::out | std::ofstream::app);
+  // plens.simple_sds_serialize(out);
+  // out.close();
+  // fprintf(stderr, "[M::%s] computed and stored path lengths in %.3f sec\n",
+  //         __func__, realtime() - rt);
 
   // FMD-index loading
   rb3_fmi_t fmd;
@@ -177,6 +178,7 @@ int main_index(int argc, char *argv[]) {
 
   char *kmer = (char *)malloc(sizeof(char) *
                               (klen + 1)); // first kmer on sequence (plain)
+  kmer[klen] = '\0';
   uint64_t kmer_d = 0;                     // kmer
   uint64_t rckmer_d = 0;                   // reverse and complemented kmer
   uint64_t ckmer_d = 0;                    // canonical kmer
@@ -205,6 +207,9 @@ int main_index(int argc, char *argv[]) {
     if (gbz.graph.get_length(vh) < klen)
       continue;
     std::string seg = gbz.graph.get_sequence(vh);
+    if (seg.find('N') != std::string::npos)
+      // XXX: instead of skipping the entire vertex, get the kmers we can without Ns
+      continue;
     // std::pair<std::string, std::pair<gbwtgraph::nid_t, gbwtgraph::nid_t>> x =
     //     gbz.graph.get_segment(vh);
     // std::cout << x.first << " " << seg << std::endl;
@@ -212,14 +217,13 @@ int main_index(int argc, char *argv[]) {
     strncpy(kmer, seg.c_str(), klen);
     kmer_d = k2d(kmer, klen);
     rckmer_d = rc(kmer_d, klen);
-    ckmer_d = MIN(kmer_d, rckmer_d);
+    ckmer_d = std::min(kmer_d, rckmer_d);
     kmers[totkmers++] = ckmer_d;
-
     for (p = klen; p < seg.size(); ++p) {
       c = to_int[(int)seg[p]] - 1; // A is 1 but it should be 0
       kmer_d = lsappend(kmer_d, c, klen);
       rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
-      ckmer_d = MIN(kmer_d, rckmer_d);
+      ckmer_d = std::min(kmer_d, rckmer_d);
       kmers[totkmers++] = ckmer_d;
     }
   }
@@ -247,8 +251,8 @@ int main_index(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] flagged kmers in %.3f sec\n", __func__,
           realtime() - rt);
 
-  fprintf(stderr, "[M::%s] searching kmers in the FMD-index using %d threads\n",
-          __func__, nth);
+  fprintf(stderr, "[M::%s] searching kmers in the FMD-index using %d threads (nh: %d)\n",
+          __func__, nth, nh);
   rt = realtime();
 
   // Flag all non-solid anchors by querying the FMD-index
@@ -292,8 +296,8 @@ int main_index(int argc, char *argv[]) {
       continue;
     sk_add(sketch, kmer_d);
   }
-  fprintf(stderr, "[M::%s] added %ld kmers to sketch in %.3f sec\n", __func__,
-          sketch->n, realtime() - rt);
+  fprintf(stderr, "[M::%s] added %ld kmers to sketch in %.3f sec (%.3f of total)\n", __func__,
+          sketch->n, realtime() - rt, (float)sketch->n / totkmers);
 
   // Reiterate over graph to assign values to solid anchors
   rt = realtime();
@@ -313,18 +317,21 @@ int main_index(int argc, char *argv[]) {
     if (gbz.graph.get_length(vh) < klen)
       continue;
     std::string seg = gbz.graph.get_sequence(vh);
+    if (seg.find('N') != std::string::npos)
+      // XXX: instead of skipping the entire vertex, get the kmers we can without Ns
+      continue;
 
     strncpy(kmer, seg.c_str(), klen);
     kmer_d = k2d(kmer, klen);
     rckmer_d = rc(kmer_d, klen);
-    ckmer_d = MIN(kmer_d, rckmer_d);
+    ckmer_d = std::min(kmer_d, rckmer_d);
     sk_add_v(sketch, ckmer_d, v, 0);
 
     for (p = klen; p < gbz.graph.get_length(vh); ++p) {
       c = to_int[(int)seg[p]] - 1; // A is 1 but it should be 0
       kmer_d = lsappend(kmer_d, c, klen);
       rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
-      ckmer_d = MIN(kmer_d, rckmer_d);
+      ckmer_d = std::min(kmer_d, rckmer_d);
       sk_add_v(sketch, ckmer_d, v, p - klen + 1);
     }
   }
