@@ -98,6 +98,7 @@ int main_index(int argc, char *argv[]) {
       break;
     case '@':
       nth = std::stoi(optarg);
+      break;
     case 'h':
       fprintf(stderr, "%s", SKETCH_USAGE_MESSAGE);
       return 0;
