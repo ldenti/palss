@@ -300,8 +300,8 @@ int main_search(int argc, char *argv[]) {
   double rt, rt1;
 
   int klen = 27;
-  int d = 0;        // merge specific strings this close
-  int bsize = 1000; // batch size
+  int d = 0;         // merge specific strings this close
+  int bsize = 10000; // batch size
   // int hd = 0;  // hamming distance for fixing anchors
   int NA = 20; // number of kmers to check for anchoring
   int nth = 4; // number of threads
@@ -346,7 +346,8 @@ int main_search(int argc, char *argv[]) {
   rt = realtime();
 
   // Graph sketching and extraction
-  sketch_t *sketch = sk_load((gbz_fn + ".skt").c_str());
+  sketch_t *sketch =
+      sk_load((gbz_fn + ".k" + std::to_string(klen) + ".skt").c_str());
   fprintf(stderr, "[M::%s] loaded %ld sketches in %.3f sec\n", __func__,
           sketch->n, realtime() - rt);
   // Graph
@@ -440,10 +441,12 @@ int main_search(int argc, char *argv[]) {
   // on graph. If read was on -, we have reversed the specific strings so
   // that everything is on + strand
 
-  fprintf(stderr,
-          "[M::%s] Computed %d specific strings (%d anchored, %d unanchored) "
-          "in %.3f sec\n",
-          __func__, assembled_n, anchored_n, unanchored_n, realtime() - rt);
+  fprintf(
+      stderr,
+      "[M::%s] Computed %d specific strings (%.3f%% anchored, %d unanchored) "
+      "in %.3f sec\n",
+      __func__, assembled_n, anchored_n / (float)assembled_n * 100,
+      unanchored_n, realtime() - rt);
 
   kseq_destroy(seq);
   gzclose(fp);

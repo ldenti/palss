@@ -179,12 +179,12 @@ int main_index(int argc, char *argv[]) {
   char *kmer = (char *)malloc(sizeof(char) *
                               (klen + 1)); // first kmer on sequence (plain)
   kmer[klen] = '\0';
-  uint64_t kmer_d = 0;                     // kmer
-  uint64_t rckmer_d = 0;                   // reverse and complemented kmer
-  uint64_t ckmer_d = 0;                    // canonical kmer
-  uint8_t c;                               // new character to append
-  uint p = 0;                              // current position on segment
-  int nvertices = 0;                       // number of vertices processed
+  uint64_t kmer_d = 0;   // kmer
+  uint64_t rckmer_d = 0; // reverse and complemented kmer
+  uint64_t ckmer_d = 0;  // canonical kmer
+  uint8_t c;             // new character to append
+  uint p = 0;            // current position on segment
+  int nvertices = 0;     // number of vertices processed
 
   rt1 = realtime();
   // vmin is usually 1
@@ -197,8 +197,8 @@ int main_index(int argc, char *argv[]) {
     if (!gbz.graph.has_node(v))
       continue;
     ++nvertices;
-    if (nvertices % 1000000 == 0) {
-      fprintf(stderr, "[M::%s] parsed 1M vertices in %.3f sec\n", __func__,
+    if (nvertices % 5000000 == 0) {
+      fprintf(stderr, "[M::%s] parsed 5M vertices in %.3f sec\n", __func__,
               realtime() - rt1);
       rt1 = realtime();
     }
@@ -208,7 +208,8 @@ int main_index(int argc, char *argv[]) {
       continue;
     std::string seg = gbz.graph.get_sequence(vh);
     if (seg.find('N') != std::string::npos)
-      // XXX: instead of skipping the entire vertex, get the kmers we can without Ns
+      // XXX: instead of skipping the entire vertex, get the kmers we can
+      // without Ns
       continue;
     // std::pair<std::string, std::pair<gbwtgraph::nid_t, gbwtgraph::nid_t>> x =
     //     gbz.graph.get_segment(vh);
@@ -251,8 +252,10 @@ int main_index(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] flagged kmers in %.3f sec\n", __func__,
           realtime() - rt);
 
-  fprintf(stderr, "[M::%s] searching kmers in the FMD-index using %d threads (nh: %d)\n",
-          __func__, nth, nh);
+  fprintf(
+      stderr,
+      "[M::%s] searching kmers in the FMD-index using %d threads (nh: %d)\n",
+      __func__, nth, nh);
   rt = realtime();
 
   // Flag all non-solid anchors by querying the FMD-index
@@ -276,10 +279,11 @@ int main_index(int argc, char *argv[]) {
     // XXX: assuming nh>0
     if (qint.size > nh) {
       hits = search(&fmd, qint, qkmers_t[tidx], klen - mklen, nh);
-      assert(hits > 0);
+      // assert(hits > 0);
     }
-    if (hits > nh)
+    if (hits > nh) {
       kmers[i] = 0;
+    }
   }
   free(qkmers_t);
   for (int i = 0; i < nth; ++i)
@@ -296,8 +300,9 @@ int main_index(int argc, char *argv[]) {
       continue;
     sk_add(sketch, kmer_d);
   }
-  fprintf(stderr, "[M::%s] added %ld kmers to sketch in %.3f sec (%.3f of total)\n", __func__,
-          sketch->n, realtime() - rt, (float)sketch->n / totkmers);
+  fprintf(stderr,
+          "[M::%s] added %ld kmers to sketch in %.3f sec (%.3f of total)\n",
+          __func__, sketch->n, realtime() - rt, (float)sketch->n / totkmers);
 
   // Reiterate over graph to assign values to solid anchors
   rt = realtime();
@@ -307,8 +312,8 @@ int main_index(int argc, char *argv[]) {
     if (!gbz.graph.has_node(v))
       continue;
     ++nvertices;
-    if (nvertices % 1000000 == 0) {
-      fprintf(stderr, "[M::%s] parsed 1M vertices in %.3f sec\n", __func__,
+    if (nvertices % 5000000 == 0) {
+      fprintf(stderr, "[M::%s] parsed 5M vertices in %.3f sec\n", __func__,
               realtime() - rt1);
       rt1 = realtime();
     }
@@ -318,7 +323,8 @@ int main_index(int argc, char *argv[]) {
       continue;
     std::string seg = gbz.graph.get_sequence(vh);
     if (seg.find('N') != std::string::npos)
-      // XXX: instead of skipping the entire vertex, get the kmers we can without Ns
+      // XXX: instead of skipping the entire vertex, get the kmers we can
+      // without Ns
       continue;
 
     strncpy(kmer, seg.c_str(), klen);
@@ -343,7 +349,7 @@ int main_index(int argc, char *argv[]) {
   if (txt_f)
     sk_dump(sketch, "-");
   else
-    sk_store(sketch, (gbz_fn + ".skt").c_str());
+    sk_store(sketch, (gbz_fn + ".k" + std::to_string(klen) + ".skt").c_str());
   fprintf(stderr, "[M::%s] dumped sketch in %.3f sec\n", __func__,
           realtime() - rt);
 

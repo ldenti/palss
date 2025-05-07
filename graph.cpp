@@ -18,12 +18,12 @@ int Graph::load() {
   fprintf(stderr, "[M::%s] restored R-index in %.3f sec\n", __func__,
           realtime() - rt);
 
-  rt = realtime();
-  uint npaths = gbz.index.metadata.paths();
-  plens = sdsl::int_vector<0>(npaths, 0, 32);
-  sdsl::simple_sds::load_from(plens, fn + ".pl");
-  fprintf(stderr, "[M::%s] restored path lengths in %.3f sec\n", __func__,
-          realtime() - rt);
+  // rt = realtime();
+  // uint npaths = gbz.index.metadata.paths();
+  // plens = sdsl::int_vector<0>(npaths, 0, 32);
+  // sdsl::simple_sds::load_from(plens, fn + ".pl");
+  // fprintf(stderr, "[M::%s] restored path lengths in %.3f sec\n", __func__,
+  //         realtime() - rt);
 
   return 0;
 }
