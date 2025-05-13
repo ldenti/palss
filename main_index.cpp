@@ -196,6 +196,7 @@ int main_index(int argc, char *argv[]) {
   for (gbwtgraph::nid_t v = vmin; v <= vmax; ++v) {
     if (!gbz.graph.has_node(v))
       continue;
+
     ++nvertices;
     if (nvertices % 5000000 == 0) {
       fprintf(stderr, "[M::%s] parsed 5M vertices in %.3f sec\n", __func__,
@@ -213,7 +214,7 @@ int main_index(int argc, char *argv[]) {
       continue;
     // std::pair<std::string, std::pair<gbwtgraph::nid_t, gbwtgraph::nid_t>> x =
     //     gbz.graph.get_segment(vh);
-    // std::cout << x.first << " " << seg << std::endl;
+    // std::cout << v << " " << gbz.graph.get_segment_name(vh) << std::endl;
 
     strncpy(kmer, seg.c_str(), klen);
     kmer_d = k2d(kmer, klen);
@@ -311,6 +312,7 @@ int main_index(int argc, char *argv[]) {
   for (gbwtgraph::nid_t v = vmin; v <= vmax; ++v) {
     if (!gbz.graph.has_node(v))
       continue;
+
     ++nvertices;
     if (nvertices % 5000000 == 0) {
       fprintf(stderr, "[M::%s] parsed 5M vertices in %.3f sec\n", __func__,
@@ -331,6 +333,10 @@ int main_index(int argc, char *argv[]) {
     kmer_d = k2d(kmer, klen);
     rckmer_d = rc(kmer_d, klen);
     ckmer_d = std::min(kmer_d, rckmer_d);
+    // vertex in sketch is gbwtgraph::nid_t, e.g., internal GBWT integer
+    // identifiers (not the S string names). If there is translation, we can get
+    // S names (see
+    // https://github.com/jltsiren/gbwtgraph/blob/master/SERIALIZATION.md#node-to-segment-translation)
     sk_add_v(sketch, ckmer_d, v, 0);
 
     for (p = klen; p < gbz.graph.get_length(vh); ++p) {

@@ -17,11 +17,13 @@
 class Graph {
 private:
   std::string fn;
-  gbwtgraph::GBZ gbz;
   gbwt::FastLocate fl;
   sdsl::int_vector<0> plens;
 
 public:
+  // XXX: make this private (breaks main_map)
+  gbwtgraph::GBZ gbz;
+
   Graph(const std::string &fn);
   int load();
   int distance(gbwtgraph::nid_t a, gbwtgraph::nid_t b) const;

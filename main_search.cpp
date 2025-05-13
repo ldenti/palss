@@ -388,6 +388,7 @@ int main_search(int argc, char *argv[]) {
 
       // if (n == 0)
       //   continue;
+
       assemble(output[qq], d);
       anchor(sketch, graph, output[qq], entries[qq].seq.data(), l, klen, NA);
 
@@ -426,6 +427,14 @@ int main_search(int argc, char *argv[]) {
         } else {
           ++anchored_n;
           char t = s.strand == 2 ? 'S' : 'O';
+
+          // gbwtgraph::handle_t vh = graph.gbz.graph.get_handle(s.a.v);
+          // std::cout << ">" << s.a.v << "\n"
+          //           << graph.gbz.graph.get_sequence(vh) << std::endl;
+          // vh = graph.gbz.graph.get_handle(s.b.v);
+          // std::cout << ">" << s.b.v << "\n"
+          //           << graph.gbz.graph.get_sequence(vh) << std::endl;
+
           printf("%c %d %s %d %d %d %s %ld:%d:%ld %ld:%d:%ld %d %d\n", t,
                  s.qidx, entries[qq].idx.c_str(), s.s, s.l, s.strand, ".",
                  s.a.v, s.a.offset, s.a.seq, s.b.v, s.b.offset, s.b.seq,
