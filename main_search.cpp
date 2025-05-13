@@ -372,6 +372,7 @@ int main_search(int argc, char *argv[]) {
   int assembled_n = 0;
 
   int x;
+  int analyzed = 0;
   rt1 = realtime();
   while ((x = load_batch(seq, entries, bsize)) > 0) {
     fprintf(stderr, "[M::%s] loaded %d reads in %.3f sec\n", __func__, x,
@@ -383,12 +384,8 @@ int main_search(int argc, char *argv[]) {
       int l = entries[qq].seq.size();
       rb3_char2nt6(l, seq);
 
-      output[qq] =
-          ping_pong_search(&fmd, seq, l, qq); // query idx is local to the batch
-
-      // if (n == 0)
-      //   continue;
-
+      int qidx = analyzed + qq;
+      output[qq] = ping_pong_search(&fmd, seq, l, qidx);
       assemble(output[qq], d);
       anchor(sketch, graph, output[qq], entries[qq].seq.data(), l, klen, NA);
 
@@ -442,6 +439,7 @@ int main_search(int argc, char *argv[]) {
         }
       }
     }
+    analyzed += x;
 
     fprintf(stderr, "[M::%s] output in %.3f sec\n", __func__, realtime() - rt1);
   }

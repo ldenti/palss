@@ -12,46 +12,6 @@ extern "C" {
 
 using namespace std;
 
-typedef struct {
-  map<string, int> references;
-  map<int, string> v2ref;
-  map<int, int> offsets;
-} positions_t;
-
-// Get positions of vertices in a given path with name pidx
-positions_t get_positions(const Graph &graph, const std::string &pidx) {
-  positions_t output;
-  uint npaths = graph.gbz.index.metadata.paths();
-  for (uint pp = 0; pp < npaths; ++pp) {
-    int p = gbwt::Path::encode(pp, 0);
-    // here we need the path identifier without strand
-    std::string sample_name = graph.gbz.index.metadata.fullPath(pp).sample_name;
-    std::string contig_name = graph.gbz.index.metadata.fullPath(pp).contig_name;
-    // size_t haplotype = graph.gbz.index.metadata.fullPath(pp).haplotype;
-    // std::cerr << sample_name << " " << contig_name << " " << haplotype
-    //           << std::endl;
-    int cp = 0;
-    // here we need the encoded path identifier (with strand)
-    if (sample_name.compare("_gbwt_ref") == 0) {
-      gbwt::vector_type path = graph.gbz.index.extract(p);
-      // std::cerr << path.size() << std::endl;
-      for (const gbwt::node_type v : path) {
-        // v has strand information
-        gbwtgraph::nid_t vv = gbwt::Node::id(v);
-        // vv is internal node_id
-        gbwtgraph::handle_t hh = graph.gbz.graph.get_handle(vv);
-        // string name = graph.gbz.graph.get_segment_name(hh);
-        int l = graph.gbz.graph.get_length(hh);
-        output.offsets[vv] = cp;
-        output.v2ref[vv] = contig_name;
-        cp += l;
-      }
-      output.references[contig_name] = cp;
-    }
-  }
-  return output;
-}
-
 string d2s(const uint64_t kmer, int k) {
   string seq(k, 'N');
   for (int i = 1; i <= k; ++i)
@@ -64,16 +24,12 @@ int main_map(int argc, char *argv[]) {
   double rt = realtime();
 
   int klen = 27; // kmer size
-  std::string pidx = "";
 
   int _c;
-  while ((_c = getopt(argc, argv, "k:p:")) != -1) {
+  while ((_c = getopt(argc, argv, "k:")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
-      break;
-    case 'p':
-      pidx = optarg;
       break;
       // case 'h':
       //   fprintf(stderr, "%s", SEARCH_USAGE_MESSAGE);
@@ -102,7 +58,7 @@ int main_map(int argc, char *argv[]) {
   graph.load();
   // graph.print_stats();
 
-  positions_t positions = get_positions(graph, pidx);
+  positions_t positions = graph.get_positions();
   fprintf(stderr, "[M::%s] extracted %ld paths in %.3f sec\n", __func__,
           positions.references.size(), realtime() - rt);
   rt = realtime();

@@ -77,3 +77,36 @@ Graph::locate(gbwtgraph::nid_t v) const {
 // std::string Graph::get_gfa_idx(gbwt::node_type v) const {
 //   return gbz.graph.get_segment_name(gbz.graph.get_handle(v));
 // }
+
+positions_t Graph::get_positions() const {
+  positions_t output;
+  uint npaths = gbz.index.metadata.paths();
+  for (uint pp = 0; pp < npaths; ++pp) {
+    int p = gbwt::Path::encode(pp, 0);
+    // here we need the path identifier without strand
+    std::string sample_name = gbz.index.metadata.fullPath(pp).sample_name;
+    std::string contig_name = gbz.index.metadata.fullPath(pp).contig_name;
+    // size_t haplotype = gbz.index.metadata.fullPath(pp).haplotype;
+    // std::cerr << sample_name << " " << contig_name << " " << haplotype
+    //           << std::endl;
+    int cp = 0;
+    // here we need the encoded path identifier (with strand)
+    if (sample_name.compare("_gbwt_ref") == 0) {
+      gbwt::vector_type path = gbz.index.extract(p);
+      // std::cerr << path.size() << std::endl;
+      for (const gbwt::node_type v : path) {
+        // v has strand information
+        gbwtgraph::nid_t vv = gbwt::Node::id(v);
+        // vv is internal node_id
+        gbwtgraph::handle_t hh = gbz.graph.get_handle(vv);
+        // string name = gbz.graph.get_segment_name(hh);
+        int l = gbz.graph.get_length(hh);
+        output.offsets[vv] = cp;
+        output.v2ref[vv] = contig_name;
+        cp += l;
+      }
+      output.references[contig_name] = cp;
+    }
+  }
+  return output;
+}

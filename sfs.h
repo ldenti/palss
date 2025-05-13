@@ -26,7 +26,7 @@ typedef struct {
   uint64_t eek; // expected ending kmer (from cluster)
   int good;     // is it good for calling step?
   char *rname;  // plain read name
-  // uint8_t *seq; // 1-4encoded sequence
+  uint8_t *seq; // 1-4encoded sequence
 } sfs_t;
 
 /* sfs_t *init_sfs(); */
