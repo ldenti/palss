@@ -139,18 +139,19 @@ int main_index(int argc, char *argv[]) {
 
   // Path lengths
   // XXX: is this info really not somewhere in gbwt/gbwtgraph?
-  // rt = realtime();
-  // uint npaths = gbz.index.metadata.paths();
-  // sdsl::int_vector<0> plens(npaths, 0, 32); // FIXME: is 32 enough?
-  // for (uint p = 0; p < npaths; ++p) {
-  //   int pidx = gbwt::Path::encode(p, 0);
-  //   plens[p] = gbz.index.extract(pidx).size();
-  // }
-  // out.open(gbz_fn + ".pl", std::ofstream::out | std::ofstream::app);
-  // plens.simple_sds_serialize(out);
-  // out.close();
-  // fprintf(stderr, "[M::%s] computed and stored path lengths in %.3f sec\n",
-  //         __func__, realtime() - rt);
+  rt = realtime();
+  uint npaths = gbz.index.metadata.paths();
+  sdsl::int_vector<0> plens(npaths, 0, 32); // FIXME: is 32 enough?
+
+  for (uint p = 0; p < npaths; ++p) {
+    int pidx = gbwt::Path::encode(p, 0);
+    plens[p] = gbz.index.extract(pidx).size();
+  }
+  out.open(gbz_fn + ".pl", std::ofstream::out | std::ofstream::app);
+  plens.simple_sds_serialize(out);
+  out.close();
+  fprintf(stderr, "[M::%s] computed and stored path lengths in %.3f sec\n",
+          __func__, realtime() - rt);
 
   // FMD-index loading
   rb3_fmi_t fmd;

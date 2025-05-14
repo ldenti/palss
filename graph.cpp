@@ -18,12 +18,12 @@ int Graph::load() {
   fprintf(stderr, "[M::%s] restored R-index in %.3f sec\n", __func__,
           realtime() - rt);
 
-  // rt = realtime();
-  // uint npaths = gbz.index.metadata.paths();
-  // plens = sdsl::int_vector<0>(npaths, 0, 32);
-  // sdsl::simple_sds::load_from(plens, fn + ".pl");
-  // fprintf(stderr, "[M::%s] restored path lengths in %.3f sec\n", __func__,
-  //         realtime() - rt);
+  rt = realtime();
+  uint npaths = gbz.index.metadata.paths();
+  plens = sdsl::int_vector<0>(npaths, 0, 32);
+  sdsl::simple_sds::load_from(plens, fn + ".pl");
+  fprintf(stderr, "[M::%s] restored path lengths in %.3f sec\n", __func__,
+          realtime() - rt);
 
   return 0;
 }
@@ -60,9 +60,12 @@ Graph::locate(gbwtgraph::nid_t v) const {
   for (const gbwt::size_type &x : xxx) {
     gbwt::size_type pidx = fl.seqId(x);
     int is_reverse = gbwt::Path::is_reverse(pidx);
+    // std::cerr << x << " " << pidx << " " << is_reverse << std::endl;
     gbwt::size_type p = pidx >> 1;
     int pl = plens[p];
     int o = is_reverse ? fl.seqOffset(x) : pl - fl.seqOffset(x) - 1;
+    // std::cerr << "  " << p << " " << pl << " "
+    //           << " " << fl.seqOffset(x) << " " << o << std::endl;
     result[p].push_back(o);
   }
 
@@ -77,6 +80,19 @@ Graph::locate(gbwtgraph::nid_t v) const {
 // std::string Graph::get_gfa_idx(gbwt::node_type v) const {
 //   return gbz.graph.get_segment_name(gbz.graph.get_handle(v));
 // }
+
+void Graph::get_subpaths(gbwtgraph::nid_t v1, gbwtgraph::nid_t v2) const {
+  // std::map<gbwt::size_type, std::vector<gbwt::size_type>> occs1 = locate(v1);
+  // fprintf(stderr, "-- %ld --\n", v1);
+  // for (auto &[k, val] : occs1) {
+  //   fprintf(stderr, "%ld:", k);
+  //   for (auto &v : val)
+  //     fprintf(stderr, " %ld", v);
+  //   fprintf(stderr, "\n");
+  // }
+  // exit(1);
+  // std::map<gbwt::size_type, std::vector<gbwt::size_type>> occs2 = locate(v2);
+}
 
 positions_t Graph::get_positions() const {
   positions_t output;

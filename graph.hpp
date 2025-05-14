@@ -36,6 +36,8 @@ public:
   locate(gbwtgraph::nid_t v) const;
   void print_stats() const;
 
+  // Get subpaths going from v1 to v2
+  void get_subpaths(gbwtgraph::nid_t v1, gbwtgraph::nid_t v2) const;
   // Get positions of vertices on reference paths
   positions_t get_positions() const;
 };
