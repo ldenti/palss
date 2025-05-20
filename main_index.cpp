@@ -131,7 +131,7 @@ int main_index(int argc, char *argv[]) {
 
   rt = realtime();
   std::ofstream out;
-  out.open(gbz_fn + ".ri", std::ofstream::out | std::ofstream::app);
+  out.open(gbz_fn + ".ri", std::ofstream::out);
   fl.serialize(out);
   out.close();
   fprintf(stderr, "[M::%s] stored R-index in %.3f sec\n", __func__,
