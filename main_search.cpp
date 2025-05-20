@@ -109,6 +109,72 @@ void assemble(std::vector<sfs_t> &S, int d) {
   S.resize(new_n);
 }
 
+// Merge anchored specifics strings overlapping on same read
+void assemble2(std::vector<sfs_t> &S, int d) {
+  if (S.size() > 0 && S[0].strand == 0) {
+    // Reverse the vector
+    std::reverse(S.begin(), S.end());
+  }
+
+  // for (const auto &s : S) {
+  //   if (s.qidx == -1 || s.strand == 2)
+  //     continue;
+  //   std::cerr << s.s << ":" << s.l << std::endl;
+  // }
+
+  size_t i = 0;
+  while (i < S.size()) {
+    // skip unanchored or on wrong strand
+    if (S[i].qidx == -1 || S[i].strand == 2) {
+      ++i;
+      continue;
+    }
+
+    size_t j;
+    size_t last_j = i;
+    for (j = i + 1; j <= S.size(); ++j) {
+      // skip unanchored or on wrong strand
+      if (S[j].qidx == -1 || S[j].strand == 2)
+        continue;
+
+      if (j == S.size() || S[last_j].s + S[last_j].l <= S[j].s) {
+        // non-overlapping: update first, clean others
+        // if (i != last_j)
+        //   std::cerr << "XXX" << std::endl;
+        S[i].l = S[last_j].s + S[last_j].l - S[i].s;
+        S[i].b = S[last_j].b;
+        for (size_t j2 = i + 1; j2 < j; ++j2)
+          S[j2].l = 0;
+        break;
+      }
+      last_j = j;
+    }
+    i = j;
+  }
+
+  // Remove gaps by shifting left
+  int new_n = 0;
+  i = 0;
+  while (i < S.size()) {
+    if (S[i].l > 0) {
+      S[new_n].qidx = S[i].qidx;
+      S[new_n].s = S[i].s;
+      S[new_n].l = S[i].l;
+      ++new_n;
+    }
+    ++i;
+  }
+
+  // Resise to new size
+  S.resize(new_n);
+  // std::cerr << std::endl;
+  // for (const auto &s : S) {
+  //   if (s.qidx == -1 || s.strand == 2)
+  //     continue;
+  //   std::cerr << s.s << ":" << s.l << std::endl;
+  // }
+}
+
 // Anchor specific strings on graph using graph sketch
 void anchor(sketch_t *sketch, Graph &graph, std::vector<sfs_t> &SS, char *Q,
             int ql, int klen, int NA) {
@@ -406,6 +472,9 @@ int main_search(int argc, char *argv[]) {
         if (output[qq][ss].strand != strand)
           output[qq][ss].strand = 2;
       }
+
+      // Finally reassemble good ones
+      assemble2(output[qq], d);
     }
     fprintf(stderr, "[M::%s] searched in %.3f sec\n", __func__,
             realtime() - rt1);
@@ -413,6 +482,7 @@ int main_search(int argc, char *argv[]) {
 
     // output
     // TODO: use a thread to do this
+    // int last_qidx = -1, last_s = -1, last_l = 0;
     for (int qq = 0; qq < x; ++qq) {
       assembled_n += output[qq].size();
       for (uint j = 0; j < output[qq].size(); ++j) {
@@ -424,6 +494,7 @@ int main_search(int argc, char *argv[]) {
         } else {
           ++anchored_n;
           char t = s.strand == 2 ? 'S' : 'O';
+          // XXX: we may avoid printing strings on wrong strand
 
           // gbwtgraph::handle_t vh = graph.gbz.graph.get_handle(s.a.v);
           // std::cout << ">" << s.a.v << "\n"

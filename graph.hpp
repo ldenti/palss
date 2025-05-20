@@ -37,9 +37,12 @@ public:
   void print_stats() const;
 
   // Get subpaths going from v1 to v2
-  void get_subpaths(gbwtgraph::nid_t v1, gbwtgraph::nid_t v2) const;
+  std::map<gbwt::size_type, gbwt::vector_type>
+  get_subpaths(gbwtgraph::nid_t v1, gbwtgraph::nid_t v2) const;
   // Get positions of vertices on reference paths
   positions_t get_positions() const;
+  std::string get_sequence(gbwtgraph::nid_t v) const;
+  std::string get_gfa_idx(gbwtgraph::nid_t v) const;
 };
 
 #endif
