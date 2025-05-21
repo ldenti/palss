@@ -109,23 +109,39 @@ void assemble(std::vector<sfs_t> &S, int d) {
   S.resize(new_n);
 }
 
+bool gcolinear(const sfs_t &s1, const sfs_t &s2) {
+  assert(s1.a.v < s1.b.v || (s1.a.v == s1.b.v && s1.a.offset <= s1.b.offset));
+  assert(s2.a.v < s2.b.v || (s2.a.v == s2.b.v && s2.a.offset <= s2.b.offset));
+  int v11 = s1.a.v, v12 = s1.b.v;
+  int v21 = s2.a.v, v22 = s2.b.v;
+  int o11 = s1.a.offset, o12 = s1.b.offset;
+  int o21 = s2.a.offset, o22 = s2.b.offset;
+  bool ret = (v11 < v21 || (v11 == v21 && o11 <= o21)) && (v12 < v22 || (v12 == v22 && o12 <= o22));
+  return ret;
+}
+
 // Merge anchored specifics strings overlapping on same read
-void assemble2(std::vector<sfs_t> &S, int d) {
-  if (S.size() > 0 && S[0].strand == 0) {
+void assemble2(std::vector<sfs_t> &S, int strand) {
+  if (S.size() > 0 && strand == 0) {
     // Reverse the vector
     std::reverse(S.begin(), S.end());
   }
 
+  // std::cerr << "Strand: " << strand << std::endl;
+  // int ii = -1;
   // for (const auto &s : S) {
-  //   if (s.qidx == -1 || s.strand == 2)
+  //   ++ii;
+  //   if (s.qidx == -1 || s.strand != strand)
   //     continue;
-  //   std::cerr << s.s << ":" << s.l << std::endl;
+  //   std::cerr << ii << "\t" << s.qidx << " " << (s.strand == strand) << "\t"
+  //             << s.s << ":" << s.l << " " << s.a.v << ":" << s.a.offset << " - "
+  //             << s.b.v << ":" << s.b.offset << std::endl;
   // }
 
   size_t i = 0;
   while (i < S.size()) {
     // skip unanchored or on wrong strand
-    if (S[i].qidx == -1 || S[i].strand == 2) {
+    if (S[i].qidx == -1 || S[i].strand != strand) {
       ++i;
       continue;
     }
@@ -134,15 +150,19 @@ void assemble2(std::vector<sfs_t> &S, int d) {
     size_t last_j = i;
     for (j = i + 1; j <= S.size(); ++j) {
       // skip unanchored or on wrong strand
-      if (S[j].qidx == -1 || S[j].strand == 2)
+      if (S[j].qidx == -1 || S[j].strand != strand)
         continue;
 
-      if (j == S.size() || S[last_j].s + S[last_j].l <= S[j].s) {
+      if (j == S.size() || S[last_j].s + S[last_j].l <= S[j].s ||
+          !gcolinear(S[last_j], S[j])) {
         // non-overlapping: update first, clean others
         // if (i != last_j)
         //   std::cerr << "XXX" << std::endl;
         S[i].l = S[last_j].s + S[last_j].l - S[i].s;
+        // if (S[i].strand == 1)
         S[i].b = S[last_j].b;
+        // else
+        //   S[i].a = S[last_j].a;
         for (size_t j2 = i + 1; j2 < j; ++j2)
           S[j2].l = 0;
         break;
@@ -160,6 +180,8 @@ void assemble2(std::vector<sfs_t> &S, int d) {
       S[new_n].qidx = S[i].qidx;
       S[new_n].s = S[i].s;
       S[new_n].l = S[i].l;
+      S[new_n].a = S[i].a;
+      S[new_n].b = S[i].b;
       ++new_n;
     }
     ++i;
@@ -167,12 +189,19 @@ void assemble2(std::vector<sfs_t> &S, int d) {
 
   // Resise to new size
   S.resize(new_n);
+
   // std::cerr << std::endl;
   // for (const auto &s : S) {
-  //   if (s.qidx == -1 || s.strand == 2)
+  //   if (s.qidx == -1 || s.strand != strand)
   //     continue;
-  //   std::cerr << s.s << ":" << s.l << std::endl;
+  //   std::cerr << s.s << ":" << s.l << " " << s.a.v << ":" << s.a.offset << " - "
+  //             << s.b.v << ":" << s.b.offset << std::endl;
   // }
+
+  if (S.size() > 0 && strand == 0) {
+    // Reverse the vector
+    std::reverse(S.begin(), S.end());
+  }
 }
 
 // Anchor specific strings on graph using graph sketch
@@ -474,7 +503,7 @@ int main_search(int argc, char *argv[]) {
       }
 
       // Finally reassemble good ones
-      assemble2(output[qq], d);
+      assemble2(output[qq], strand);
     }
     fprintf(stderr, "[M::%s] searched in %.3f sec\n", __func__,
             realtime() - rt1);
