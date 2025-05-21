@@ -32,10 +32,13 @@ int main_call(int argc, char *argv[]) {
   // float lr = 0.97; // Ratio to cluster specific strings inside same cluster
 
   int _c;
-  while ((_c = getopt(argc, argv, "k:h")) != -1) {
+  while ((_c = getopt(argc, argv, "k:w:h")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
+      break;
+    case 'w':
+      min_w = std::stoi(optarg);
       break;
     case 'h':
       fprintf(stderr, "%s", "CALL_USAGE_MESSAGE");
@@ -197,6 +200,8 @@ int main_call(int argc, char *argv[]) {
   rt = realtime();
   for (auto &cluster : clusters) {
     ++cidx;
+    // if (cidx != 9037)
+    //   continue;
     if (cidx % 1000 == 0) {
       fprintf(stderr, "[M::%s] analyzed %d/%ld clusters in %.3f sec\n",
               __func__, cidx, clusters.size(), realtime() - rt);
@@ -263,7 +268,10 @@ int main_call(int argc, char *argv[]) {
     for (const auto &v : path) {
       std::string seq = graph.get_sequence(v >> 1);
       tot_plen += seq.size();
-      if ((v >> 1) == v1) {
+      if ((v >> 1) == v1 && v1 == v2) {
+        path_seq += seq.substr(ss.a.offset, ss.b.offset + klen - ss.a.offset);
+        lastprefix = seq.size() - ss.b.offset - klen;
+      } else if ((v >> 1) == v1) {
         path_seq += seq.substr(ss.a.offset, seq.size());
       } else if ((v >> 1) == v2) {
         path_seq += seq.substr(0, ss.b.offset + klen);
