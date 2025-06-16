@@ -54,8 +54,8 @@ uint64_t bfs(const Graph &graph, int v, int out) {
 }
 
 int distance(const Graph &graph, int v1, int v2,
-             std::vector<std::uint64_t> in_distances,
-             std::vector<std::uint64_t> out_distances) {
+             std::vector<uint64_t> in_distances,
+             std::vector<uint64_t> out_distances) {
   // assuming v1 precedes v2
   int ref1 = v1, d1 = 0;
   if (graph.vertices[v1].path == -1) {
@@ -110,8 +110,8 @@ int main_dist(int argc, char *argv[]) {
           realtime() - rt);
 
   rt = realtime();
-  std::vector<std::uint64_t> out_distances(graph.vertices.size());
-  std::vector<std::uint64_t> in_distances(graph.vertices.size());
+  std::vector<uint64_t> out_distances(graph.vertices.size());
+  std::vector<uint64_t> in_distances(graph.vertices.size());
   int index_size = 0;
   for (uint v = 0; v < graph.vertices.size(); ++v) {
     // check if vertex is on reference path
