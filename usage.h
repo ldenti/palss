@@ -9,8 +9,12 @@ static const char *const SKETCH_USAGE_MESSAGE =
     "Usage: palss sketch [options] <graph.gfa> <paths.fa.fmd>\n"
     "Options:\n"
     "        -k <INT>   kmer size (default: 27, maximum: 32)\n"
-    "        -g <INT>   number of haplotypes in the graph (default: 1)\n"
+    "        -m <INT>   mmer size (default: 9, maximum: k-1)\n"
+    "        -g <INT>   number of haplotypes in the graph (default: MAX_INT)\n"
     "        -@ <INT>   set threads (default: 4)\n"
+    "        -t         dump the sketch in txt format\n"
+    "        -b         big sketch for big graph (require 64GB+overhead, "
+    "realistically <40GB)\n"
     "        -h         display this help and exit\n"
     "\n";
 

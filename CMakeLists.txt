@@ -3,16 +3,19 @@ cmake_minimum_required(VERSION 3.14)
 include(ExternalProject)
 include(FetchContent)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PALSS VERSION 0.0.1)
-add_executable(palss sfs.cpp graph.c sketch.cpp main_sketch.cpp main_dump.cpp main_search.cpp main_kan.cpp main_call.cpp main.cpp) # main_map.cpp
-set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
-target_compile_options(palss PRIVATE) # -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
 
-add_definitions("-Wp,-w")
+add_executable(palss misc.cpp kmer.cpp graph.cpp sketch.cpp main_dist.cpp main_sketch.cpp main_search.cpp main_realign.cpp main.cpp)
+# palss misc.cpp kmer.cpp segments.cpp graph.cpp  main_sketch.cpp main_search.cpp main.cpp
+
+set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
+target_compile_options(palss PRIVATE -Wall -Wno-char-subscripts) # -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
+
+# add_definitions("-Wp,-w")
 
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
@@ -91,5 +94,6 @@ target_link_libraries(palss
     PUBLIC RB3
     PUBLIC z
     PUBLIC pthread
+    PUBLIC OpenMP::OpenMP_C
     PUBLIC OpenMP::OpenMP_CXX
 )

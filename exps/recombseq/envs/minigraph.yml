@@ -1,0 +1,5 @@
+name: minigraph
+channels:
+  - bioconda
+dependencies:
+  - minigraph=0.21
