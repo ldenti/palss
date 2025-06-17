@@ -37,17 +37,18 @@ wildcard_constraints:
 
 rule run:
     input:
-        expand(
-            pjoin(WD, "{n}", "alignments-{x}-augmented.k27.w{w}.s{s}.gaf"),
+        expand(pjoin(WD, "{n}", "recall.k27.w{w}.s{s}.png"),
             n=SAMPLES.keys(),
             x=["1out", "full"],
             w=[2], # , 3, 5],
             s=[0],
         ),
         expand(
-            pjoin(WD, "{n}", "alignments-{x}.gaf"),
+            pjoin(WD, "{n}", "precision-{x}-augmented.k27.w{w}.s{s}.png"),
             n=SAMPLES.keys(),
-            x=["1out", "full"], #, "mgcactus"],
+            x=["1out", "full"],
+            w=[2], # , 3, 5],
+            s=[0],
         ),
 
 
@@ -447,4 +448,35 @@ rule graphaligner_augmented:
     shell:
         """
         GraphAligner --graph {input.gfa} --reads {input.fq} --alignments-out {output.gaf} --preset vg --threads {threads}
+        """
+
+# ============= #
+# === PLOTS === #
+# ============= #
+rule precision:
+    input:
+        gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.w{w}.s{s}.gfa"),
+        gaf=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.w{w}.s{s}.gaf"),
+    output:
+        png=pjoin(WD, "{n}", "precision-{x}-augmented.k{k}.w{w}.s{s}.png"),
+        txt=pjoin(WD, "{n}", "precision-{x}-augmented.k{k}.w{w}.s{s}.txt"),
+    conda:
+        "./envs/seaborn.yml"
+    shell:
+        """
+        python3 ./scripts/get_precision.py {input.gfa} {input.gaf} {output.png} > {output.txt}
+        """
+
+rule recall:
+    input:
+        gaf1=pjoin(WD, "{n}", "alignments-1out-augmented.k{k}.w{w}.s{s}.gaf"),
+        gaf2=pjoin(WD, "{n}", "alignments-full.gaf"),
+        gaf3=pjoin(WD, "{n}", "alignments-1out.gaf"),
+    output:
+        png=pjoin(WD, "{n}", "recall.k{k}.w{w}.s{s}.png"),
+    conda:
+        "./envs/seaborn.yml"
+    shell:
+        """
+        python3 ./scripts/get_recall.py {input.gaf1} {input.gaf2} {input.gaf3} {output.png}
         """
