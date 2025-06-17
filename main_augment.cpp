@@ -753,7 +753,12 @@ int main_augment(int argc, char *argv[]) {
     std::string cmd = "GraphAligner --graph " + subgfa_fn + " --reads " +
                       subfa_fn + " --alignments-out " + subgaf_fn +
                       " --preset vg --threads 4 &> " + sublog_fn;
-    std::system(cmd.c_str());
+    int ret = std::system(cmd.c_str());
+    if (ret != 0) {
+      std::cerr << "Error in running GraphAligner. Return code: " << ret
+                << std::endl;
+      exit(EXIT_FAILURE);
+    }
     // === === ===
 
     // === Realign
