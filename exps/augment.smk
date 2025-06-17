@@ -63,7 +63,7 @@ rule get_sample_vcf:
         "./envs/bcftools.yml"
     shell:
         """
-        bcftools view -s {sample} {input.vcf} | bcftools view -c 1 -Oz > {output.vcf}
+        $CONDA_PREFIX/bin/bcftools view -s {sample} {input.vcf} | $CONDA_PREFIX/bin/bcftools view -c 1 -Oz > {output.vcf}
         tabix -p vcf {output.vcf}
         """
 
@@ -78,17 +78,18 @@ rule vg_construct_sample:
     output:
         vg=pjoin(WD, sample, "pangenome.vg"),
     params:
-        prefix=pjoin(WD, sample, "pangenome"),
-    threads: workflow.cores / 2
+        prefix=pjoin(WD, sample, "vg-tmp"),
+    threads: workflow.cores
     conda:
         "./envs/vg.yml"
     shell:
         """
-        vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max 512 --vcf {input.vcf} > {params.prefix}-walts.vg
-        vg gbwt --num-jobs {threads} --discard-overlaps --vcf-input {input.vcf} --xg-name {params.prefix}-walts.vg --output {params.prefix}-haplotypes.gbwt
-        vg paths --drop-paths --variant-paths -x {params.prefix}-walts.vg > {params.prefix}-ref.vg
-        vg paths --extract-gam --gbwt {params.prefix}-haplotypes.gbwt -x {params.prefix}-ref.vg > {params.prefix}-haplotypes.gam
-        vg augment --label-paths {params.prefix}-ref.vg {params.prefix}-haplotypes.gam | vg mod --remove-non-path - > {output.vg}
+        mkdir -p {params.prefix}
+        vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max 512 --vcf {input.vcf} > {params.prefix}/pangenome-walts.vg
+        vg gbwt --num-jobs {threads} --discard-overlaps --vcf-input {input.vcf} --xg-name {params.prefix}/pangenome-walts.vg --output {params.prefix}/haplotypes.gbwt
+        vg paths --drop-paths --variant-paths -x {params.prefix}/pangenome-walts.vg > {params.prefix}/pangenome-ref.vg
+        vg paths --extract-gam --gbwt {params.prefix}/haplotypes.gbwt -x {params.prefix}/pangenome-ref.vg > {params.prefix}/haplotypes.gam
+        vg augment --label-paths {params.prefix}/pangenome-ref.vg {params.prefix}/haplotypes.gam | vg mod --remove-non-path - > {output.vg}
         """
 
 
@@ -156,7 +157,7 @@ rule get_fullvcf:
         "./envs/bcftools.yml"
     shell:
         """
-        bcftools view -Ou -s {params.idxs} {input.vcf} | bcftools view -Oz -c1 > {output.vcf}
+        $CONDA_PREFIX/bin/bcftools view -s {params.idxs} {input.vcf} | $CONDA_PREFIX/bin/bcftools view -Oz -c1 > {output.vcf}
         sleep 3
         tabix -p vcf {output.vcf}
         """
@@ -173,7 +174,7 @@ rule get_reducedvcf:
         "./envs/bcftools.yml"
     shell:
         """
-        bcftools view -Ou -s {params.idxs} {input.vcf} | bcftools view -Oz -c1 > {output.vcf}
+        $CONDA_PREFIX/bin/bcftools view -s {params.idxs} {input.vcf} | $CONDA_PREFIX/bin/bcftools view -Oz -c1 > {output.vcf}
         sleep 5
         tabix -p vcf {output.vcf}
         """
@@ -187,17 +188,18 @@ rule build_pangenome:
         vg=pjoin(WD, "{n}", "pangenome-{x}.vg"),
         gfa=pjoin(WD, "{n}", "pangenome-{x}.gfa"),
     params:
-        prefix=pjoin(WD, "{n}", "vg-{x}", "pangenome"),
+        prefix=pjoin(WD, "{n}", "vg-{x}"),
     threads: workflow.cores
     conda:
         "./envs/vg.yml"
     shell:
         """
-        vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max 512 --vcf {input.vcf} > {params.prefix}-walts.vg
-        vg paths --drop-paths --variant-paths -x {params.prefix}-walts.vg > {params.prefix}-ref.vg
-        vg gbwt --num-jobs {threads} --discard-overlaps --vcf-input {input.vcf} --xg-name {params.prefix}-walts.vg --output {params.prefix}-haplotypes.gbwt
-        vg paths --extract-gam --gbwt {params.prefix}-haplotypes.gbwt -x {params.prefix}-ref.vg > {params.prefix}-haplotypes.gam
-        vg augment --label-paths {params.prefix}-ref.vg {params.prefix}-haplotypes.gam | vg mod --remove-non-path - > {output.vg}
+        mkdir -p {params.prefix}
+        vg construct --threads {threads} --reference {input.fa} --alt-paths --node-max 512 --vcf {input.vcf} > {params.prefix}/pangenome-walts.vg
+        vg paths --drop-paths --variant-paths -x {params.prefix}/pangenome-walts.vg > {params.prefix}/pangenome-ref.vg
+        vg gbwt --num-jobs {threads} --discard-overlaps --vcf-input {input.vcf} --xg-name {params.prefix}/pangenome-walts.vg --output {params.prefix}/haplotypes.gbwt
+        vg paths --extract-gam --gbwt {params.prefix}/haplotypes.gbwt -x {params.prefix}/pangenome-ref.vg > {params.prefix}/haplotypes.gam
+        vg augment --label-paths {params.prefix}/pangenome-ref.vg {params.prefix}/haplotypes.gam | vg mod --remove-non-path - > {output.vg}
         vg view {output.vg} > {output.gfa}
         """
 

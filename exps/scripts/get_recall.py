@@ -5,13 +5,17 @@ import re
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.metrics import auc
+import numpy as np
 
 
 def main():
+    GAFs = sys.argv[1:-1]
+    png_fn = sys.argv[-1]
     NM = []
     NAL = []
     COV = []
-    for i, gaf in enumerate(sys.argv[1:]):
+    for i, gaf in enumerate(GAFs):
         graph = "augmented"
         if i == 0:
             graph = "augmented"
@@ -93,11 +97,11 @@ def main():
     COV = pd.DataFrame(COV, columns=["Graph", "Coverage"])
     NM = pd.DataFrame(NM, columns=["Graph", "NM"])
 
-    # for graph in ["augmented", "full", "1out"]:
-    #     print(f"=== {graph} ===")
-    #     print(len(NM[NM["Graph"] == graph]))
-    #     print(len(COV[COV["Graph"] == graph]))
-    #     print(len(NAL[NAL["Graph"] == graph]))
+    for graph in ["augmented", "full", "1out"]:
+        #     print(f"=== {graph} ===")
+        #     print(len(NM[NM["Graph"] == graph]))
+        print(len(COV[(COV["Graph"] == graph) & (COV["Coverage"] == 1)]))
+        #     print(len(NAL[NAL["Graph"] == graph]))
 
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(11, 5))
 
@@ -127,19 +131,23 @@ def main():
     ax1.set_title("Number of alignments per read")
     ax1.set_xlabel("#Alignments")
 
-    sns.histplot(
+    y = sns.histplot(
         COV,
         x="Coverage",
         hue="Graph",
-        element="step",
+        element="step", # "bar"
         bins=100,
-        cumulative=True,
+        cumulative=True, # False
         legend=False,
         binrange=[0, 0.99],
         ax=ax2,
     )
     ax2.set_ylabel("")
     ax2.set_title("Alignment coverage per read (no 1.0)")
+
+    # print(".", sum(ax2.containers[0].datavalues))
+    # print(sum(ax2.containers[1].datavalues))
+    # print(sum(ax2.containers[2].datavalues))
 
     sns.histplot(
         NM,
@@ -155,8 +163,8 @@ def main():
     ax3.set_title("NM (per best/longest alignment)")
 
     plt.tight_layout()
-    plt.show()
-    # # plt.savefig("recall.png")
+    # plt.show()
+    plt.savefig(png_fn)
 
 
 if __name__ == "__main__":

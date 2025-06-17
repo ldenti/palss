@@ -6,11 +6,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def main(args):
+def main():
+    gfa_fn = sys.argv[1]
+    gaf_fn = sys.argv[2]
+    png_fn = sys.argv[3]
+
     Vseqs = {}
     V = set()
     print("Parsing paths...", file=sys.stderr)
-    for line in open(args.GFA):
+    for line in open(gfa_fn):
         path = []
         if line.startswith("P"):
             line = line.strip("\n").split("\t")
@@ -27,7 +31,7 @@ def main(args):
     # Vseqs = {}
     nV_len = {}
     print("Reiterating over graph...", file=sys.stderr)
-    for line in open(args.GFA):
+    for line in open(gfa_fn):
         if line.startswith("S"):
             _, v, seq, *_ = line.strip("\n").split("\t")
             v = int(v)
@@ -40,7 +44,7 @@ def main(args):
     print(len(nV), file=sys.stderr)
 
     print("Iterating over GAF...", file=sys.stderr)
-    for line in open(args.GAF):
+    for line in open(gaf_fn):
         line = line.strip("\n").split("\t")
 
         path = line[5]
@@ -65,20 +69,15 @@ def main(args):
         discrete=True,
         element="step",
         legend=None,
+        binrange=[0,30],
     )
-
+    plt.title("Support for novel vertices")
     plt.xlabel("Support")
     plt.ylabel("#Vertices")
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    plt.savefig(png_fn)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog="",
-        description="",
-    )
-    parser.add_argument("GFA", help="")
-    parser.add_argument("GAF", help="")
-    args = parser.parse_args()
-    main(args)
+    main()
