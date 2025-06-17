@@ -30,7 +30,8 @@ static const char *const AUGMENT_USAGE_MESSAGE =
     "        -s <INT>   minimum alignment score (default: 0)\n"
     "        -w <INT>   minimum support per cluster (default: 2)\n"
     "        -@ <INT>   set threads (default: 4)\n"
-    "        -d <PATH>  working directory (default: ./)\n"
+    "        -d <STR>   working directory (default: ./)\n"
+    "        -g <STR>   graphaligner binary (default: GraphAligner)\n"
     "        -v         verbose mode\n"
     "        -h         display this help and exit\n"
     "\n";

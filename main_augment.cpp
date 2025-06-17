@@ -416,10 +416,11 @@ int main_augment(int argc, char *argv[]) {
   uint min_w = 2; // minimum size for clusters
   int min_as = 0; // minimum alignment score
   std::string path_prefix = "CHM13";
+  std::string ga_bin = "GraphAligner";
   bool verbose = false;
   std::string wd = ".";
   int _c;
-  while ((_c = getopt(argc, argv, "k:w:a:b:s:@:d:p:vh")) != -1) {
+  while ((_c = getopt(argc, argv, "k:w:a:b:s:@:d:p:g:vh")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
@@ -444,6 +445,9 @@ int main_augment(int argc, char *argv[]) {
       break;
     case 'p':
       path_prefix = optarg;
+      break;
+    case 'g':
+      ga_bin = optarg;
       break;
     case 'v':
       verbose = true;
@@ -750,7 +754,7 @@ int main_augment(int argc, char *argv[]) {
     // === === ===
 
     // === Run graphaligner
-    std::string cmd = "GraphAligner --graph " + subgfa_fn + " --reads " +
+    std::string cmd = ga_bin + " --graph " + subgfa_fn + " --reads " +
                       subfa_fn + " --alignments-out " + subgaf_fn +
                       " --preset vg --threads 4 &> " + sublog_fn;
     int ret = std::system(cmd.c_str());
