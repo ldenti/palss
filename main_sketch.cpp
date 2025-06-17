@@ -1,24 +1,24 @@
+#include <algorithm>
 #include <assert.h>
+#include <getopt.h>
 #include <omp.h>
 #include <stdio.h>
 #include <zlib.h>
 
+extern "C" {
 #include "fm-index.h"
-#include "ketopt.h"
 #include "kseq.h"
-// #include "ksort.h"
+}
 
 #include "graph.hpp"
 #include "kmer.hpp"
 #include "misc.hpp"
 #include "sketch.hpp"
 #include "usage.h"
-#include <algorithm>
 
 KSTREAM_INIT(gzFile, gzread, 65536)
-// KSORT_INIT_GENERIC(uint64_t)
 
-/* Backward search until qinterval size is > than min_size */
+// Backward search until qinterval size is > than min_size
 int search(const rb3_fmi_t *fmd, rb3_sai_t ik, uint8_t *kmer, int k,
            int min_size) {
   int begin = k;
@@ -34,7 +34,7 @@ int search(const rb3_fmi_t *fmd, rb3_sai_t ik, uint8_t *kmer, int k,
   return ik.size;
 }
 
-/* Backward search a given kmer and set qinterval ik */
+// Backward search a given kmer and set qinterval ik
 void set_qint(const rb3_fmi_t *fmd, rb3_sai_t *ik, uint8_t *kmer, int k) {
   int begin;
   begin = k - 1;
@@ -49,7 +49,7 @@ void set_qint(const rb3_fmi_t *fmd, rb3_sai_t *ik, uint8_t *kmer, int k) {
   }
 }
 
-/* Q-intervals memoization (all mklen-mers) */
+// Q-intervals memoization (all mklen-mers)
 rb3_sai_t *memoize(const rb3_fmi_t *fmd, const int mklen) {
   int n = 1 << (mklen * 2);
   rb3_sai_t *qints = (rb3_sai_t *)malloc(n * sizeof(rb3_sai_t));
@@ -74,41 +74,46 @@ int main_sketch(int argc, char *argv[]) {
   int klen = 27;      // kmer size
   int mklen = 9;      // memoization kmer size
   int nh = INT32_MAX; // expected number of haplotypes
-  int txt_f = 0;      // dump sketch in txt
-  int big_f = 0;      // do we need big sketch?
+  bool txt_flag = 0;  // dump sketch in txt
+  bool big_flag = 0;  // do we need big sketch?
   int nth = 4;        // number of threads
   std::string out_fn = "-";
 
-  static ko_longopt_t longopts[] = {{NULL, 0, 0}};
-  ketopt_t opt = KETOPT_INIT;
   int _c;
-  while ((_c = ketopt(&opt, argc, argv, 1, "k:m:g:@:tbh", longopts)) >= 0) {
-    if (_c == 'k')
-      klen = atoi(opt.arg);
-    else if (_c == 'm')
-      mklen = atoi(opt.arg);
-    else if (_c == 'g')
-      nh = atoi(opt.arg);
-    else if (_c == 't')
-      txt_f = 1;
-    else if (_c == 'b')
-      big_f = 1;
-    else if (_c == '@')
-      nth = atoi(opt.arg);
-    else if (_c == 'h') {
+  while ((_c = getopt(argc, argv, "k:m:g:@:tbh")) != -1) {
+    switch (_c) {
+    case 'k':
+      klen = std::stoi(optarg);
+      break;
+    case 'm':
+      mklen = std::stoi(optarg);
+      break;
+    case 'g':
+      nh = std::stoi(optarg);
+      break;
+    case 't':
+      txt_flag = true;
+      break;
+    case 'b':
+      big_flag = true;
+      break;
+    case '@':
+      nth = std::stoi(optarg);
+      break;
+    case 'h':
       fprintf(stderr, "%s", SKETCH_USAGE_MESSAGE);
       return 0;
     }
   }
 
-  if (argc - opt.ind != 2) {
+  if (argc - optind != 2) {
     fprintf(stderr, "%s", SKETCH_USAGE_MESSAGE);
     return 1;
   }
-  char *gfa_fn = argv[opt.ind++];
-  char *fmd_fn = argv[opt.ind++];
+  char *gfa_fn = argv[optind++];
+  char *fmd_fn = argv[optind++];
 
-  /* FMD-index loading */
+  // FMD-index loading
   rb3_fmi_t fmd;
   rb3_fmi_restore(&fmd, fmd_fn, 0);
   if (fmd.e == 0 && fmd.r == 0) {
@@ -119,18 +124,18 @@ int main_sketch(int argc, char *argv[]) {
           realtime() - rt);
   rt = realtime();
 
-  /* Q-intervals memoization */
+  // Q-intervals memoization
   int memo_bm = (1 << (mklen * 2)) - 1;
   rb3_sai_t *qints = memoize(&fmd, mklen);
   fprintf(stderr, "[M::%s] memoization (all %d-mers) in %.3f sec\n", __func__,
           mklen, realtime() - rt);
   rt = realtime();
 
-  /* First pass over graph. Store all kmers in an array */
-  sketch_t *sketch =
-      sk_init((uint64_t)1 << (big_f ? 32 : 30), klen, mklen); // XXX: hardcoded
-  uint64_t *kmers = sketch->vls; // we are going to "reuse" values array
-  uint64_t totkmers = 0;         // index for insertion in kmers
+  // First pass over graph. Store all kmers in an array
+  sketch_t *sketch = sk_init((uint64_t)1 << (big_flag ? 32 : 30), klen,
+                             mklen); // XXX: hardcoded
+  uint64_t *kmers = sketch->vls;     // we are going to "reuse" values array
+  uint64_t totkmers = 0;             // index for insertion in kmers
   seg_t seg;
 
   char *kmer = (char *)malloc(sizeof(char) *
@@ -184,14 +189,13 @@ int main_sketch(int argc, char *argv[]) {
           __func__, totkmers, nvertices, realtime() - rt);
   rt = realtime();
 
-  /* Sort kmers */
+  // Sort kmers
   rt = realtime();
-  // ks_introsort(uint64_t, totkmers, kmers);
   std::sort(kmers, kmers + totkmers);
   fprintf(stderr, "[M::%s] sorted %ld kmers in %.3f sec\n", __func__, totkmers,
           realtime() - rt);
 
-  /* Flag all repeated anchors */
+  // Flag all repeated anchors
   rt = realtime();
   for (uint64_t i = 0; i < totkmers;) {
     kmer_d = kmers[i];
@@ -211,7 +215,7 @@ int main_sketch(int argc, char *argv[]) {
       __func__, nth, nh);
   rt = realtime();
 
-  /* Flag all non-solid anchors by querying the FMD-index */
+  // Flag all non-solid anchors by querying the FMD-index
   char **kmers_t = (char **)malloc(nth * sizeof(char *));
   for (int i = 0; i < nth; ++i)
     kmers_t[i] = (char *)malloc(sizeof(char) * (klen + 1));
@@ -244,7 +248,7 @@ int main_sketch(int argc, char *argv[]) {
           realtime() - rt);
   rt = realtime();
 
-  /* Add solid anchors to sketch */
+  // Add solid anchors to sketch
   for (uint64_t i = 0; i < totkmers; ++i) {
     kmer_d = kmers[i];
     if (kmer_d == 0)
@@ -254,7 +258,7 @@ int main_sketch(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] added %ld kmers to sketch in %.3f sec\n", __func__,
           sketch->n, realtime() - rt);
 
-  /* Reiterate over graph to assign values to solid anchors */
+  // Reiterate over graph to assign values to solid anchors
   fp = gzopen(gfa_fn, "r");
   ks = ks_init(fp);
 
@@ -293,16 +297,16 @@ int main_sketch(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] sketched %ld kmers in %.3f sec\n", __func__,
           sketch->n, realtime() - rt);
 
-  /* Dump sketch */
+  // Write sketch to stdout
   rt = realtime();
-  if (txt_f)
+  if (txt_flag)
     sk_dump(sketch, out_fn.c_str());
   else
     sk_store(sketch, out_fn.c_str());
   fprintf(stderr, "[M::%s] dumped sketch in %.3f sec\n", __func__,
           realtime() - rt);
 
-  /* Clean everything */
+  // Clean everything
   free(kmer);
   free(s.s);
   rb3_fmi_free(&fmd);

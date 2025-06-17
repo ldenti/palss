@@ -3,13 +3,13 @@ cmake_minimum_required(VERSION 3.14)
 include(ExternalProject)
 include(FetchContent)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PALSS VERSION 0.0.1)
 
-add_executable(palss misc.cpp kmer.cpp graph.cpp sketch.cpp main_dist.cpp main_sketch.cpp main_search.cpp main_realign.cpp main.cpp)
+add_executable(palss misc.cpp kmer.cpp graph.cpp sketch.cpp main_test.cpp main_sketch.cpp main_augment.cpp main.cpp)
 # palss misc.cpp kmer.cpp segments.cpp graph.cpp  main_sketch.cpp main_search.cpp main.cpp
 
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")

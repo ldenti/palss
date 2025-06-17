@@ -3,7 +3,7 @@
 
 static const char *const VERSION = "PALSS, v0.0.1";
 
-static const char *const MAIN_USAGE = "Usage: palss [sketch|search|call] -h\n";
+static const char *const MAIN_USAGE = "Usage: palss [sketch|augment] -h\n";
 
 static const char *const SKETCH_USAGE_MESSAGE =
     "Usage: palss sketch [options] <graph.gfa> <paths.fa.fmd>\n"
@@ -18,23 +18,20 @@ static const char *const SKETCH_USAGE_MESSAGE =
     "        -h         display this help and exit\n"
     "\n";
 
-static const char *const SEARCH_USAGE_MESSAGE =
+static const char *const AUGMENT_USAGE_MESSAGE =
     "Usage: palss search [options] <graph.gfa> <graph.gfa.skt> <paths.fa.fmd> "
     "<reads.fx>\n"
     "Options:\n"
     "        -k <INT>   kmer size (default: 27, maximum: 32)\n"
+    "        -p <STR>   load only paths containing this (default: CHM13)\n"
     "        -a <INT>   number of anchors to check on each side of a specific "
     "string (default: 20)\n"
-    "        -h         display this help and exit\n"
-    "\n";
-
-static const char *const CALL_USAGE_MESSAGE =
-    "Usage: palss call [options] <graph.gfa> <specific_strings.txt> <reads.fx> "
-    "<reads.fx>\n"
-    "Options:\n"
-    "        -k <INT>   kmer size (default: 27, maximum: 32)\n"
+    "        -b <INT>   batch size (default: 10000)\n"
+    "        -s <INT>   minimum alignment score (default: 0)\n"
     "        -w <INT>   minimum support per cluster (default: 2)\n"
-    "        -r <FLOAT> length ratio to split a cluster (default: 0.97)\n"
+    "        -@ <INT>   set threads (default: 4)\n"
+    "        -d <PATH>  working directory (default: ./)\n"
+    "        -v         verbose mode\n"
     "        -h         display this help and exit\n"
     "\n";
 

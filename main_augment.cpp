@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <getopt.h>
+#include <iostream>
 #include <map>
 #include <stdio.h>
 #include <string>
@@ -11,6 +13,7 @@ extern "C" {
 #include "abpoa.h"
 #include "fm-index.h"
 #include "kseq.h"
+#include "ksw2.h"
 }
 #include "graph.hpp"
 #include "kmer.hpp"
@@ -18,7 +21,6 @@ extern "C" {
 #include "sfs.hpp"
 #include "sketch.hpp"
 #include "usage.h"
-#include <iostream>
 
 KSEQ_INIT(gzFile, gzread)
 
@@ -131,10 +133,8 @@ bool gcolinear(const sfs_t &s1, const sfs_t &s2) {
   int v21 = s2.a.v, v22 = s2.b.v;
   int o11 = s1.a.offset, o12 = s1.b.offset;
   int o21 = s2.a.offset, o22 = s2.b.offset;
-  bool ret = (v11 < v21 || (v11 == v21 && o11 <= o21)) &&
-             (v12 < v22 || (v12 == v22 && o12 <= o22));
-  // std::cerr << ret << std::endl;
-  return ret;
+  return (v11 < v21 || (v11 == v21 && o11 <= o21)) &&
+         (v12 < v22 || (v12 == v22 && o12 <= o22));
 }
 
 // Merge anchored specifics strings overlapping on same read
@@ -169,7 +169,7 @@ void assemble2(std::vector<sfs_t> &S, int strand) {
     size_t last_j = i;
     for (j = i + 1; j <= S.size(); ++j) {
       // skip unanchored or on wrong strand
-      if (!S[j].good)
+      if (j < S.size() && !S[j].good)
         continue;
 
       if (j == S.size() || S[last_j].s + S[last_j].l <= S[j].s ||
@@ -404,7 +404,7 @@ int load_batch(kseq_t *seq, std::vector<read_t> &entries, int nb) {
   return n;
 }
 
-int main_search(int argc, char *argv[]) {
+int main_augment(int argc, char *argv[]) {
   double rt, rt1;
 
   int klen = 27;
@@ -414,8 +414,12 @@ int main_search(int argc, char *argv[]) {
   int NA = 20;    // number of kmers to check for anchoring
   int nth = 4;    // number of threads
   uint min_w = 2; // minimum size for clusters
+  int min_as = 0; // minimum alignment score
+  std::string path_prefix = "CHM13";
+  bool verbose = false;
+  std::string wd = ".";
   int _c;
-  while ((_c = getopt(argc, argv, "k:w:a:b:@:h")) != -1) {
+  while ((_c = getopt(argc, argv, "k:w:a:b:s:@:d:p:vh")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
@@ -429,16 +433,28 @@ int main_search(int argc, char *argv[]) {
     case 'a':
       NA = std::stoi(optarg);
       break;
+    case 's':
+      min_as = std::stoi(optarg);
+      break;
+    case 'd':
+      wd = optarg;
+      break;
     case '@':
       nth = std::stoi(optarg);
       break;
+    case 'p':
+      path_prefix = optarg;
+      break;
+    case 'v':
+      verbose = true;
+      break;
     case 'h':
-      fprintf(stderr, "%s", SEARCH_USAGE_MESSAGE);
+      fprintf(stderr, "%s", AUGMENT_USAGE_MESSAGE);
       return 0;
     }
   }
   if (argc - optind != 4) {
-    fprintf(stderr, "%s", SEARCH_USAGE_MESSAGE);
+    fprintf(stderr, "%s", AUGMENT_USAGE_MESSAGE);
     return 1;
   }
   std::string gfa_fn = argv[optind++];
@@ -446,7 +462,10 @@ int main_search(int argc, char *argv[]) {
   std::string fmd_fn = argv[optind++];
   std::string fq_fn = argv[optind++];
 
-  // Graph and sketch loading
+  // Create working directory
+  std::filesystem::create_directory(wd);
+
+  // === Graph and sketch loading
   rt = realtime();
   sketch_t *sketch = sk_load(skt_fn.c_str());
   fprintf(stderr, "[M::%s] loaded %ld sketches in %.3f sec\n", __func__,
@@ -456,18 +475,19 @@ int main_search(int argc, char *argv[]) {
   Graph graph(gfa_fn);
   graph.load_vertices();
   graph.load_edges();
-  graph.load_paths("CHM13"); // XXX: hardcoded
+  graph.load_paths(path_prefix);
   fprintf(stderr,
           "[M::%s] loaded %ld vertices, %d edges, and %ld paths in %.3f sec\n",
           __func__, graph.vertices.size(), graph.ne, graph.paths.size(),
           realtime() - rt);
+  if (graph.paths.size() == 0) {
+    std::cerr << "No path has been loaded. Please check `-p` argument"
+              << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  // === === ===
 
-  // rt = realtime();
-  // graph.build_distance_index();
-  // fprintf(stderr, "[M::%s] build distance index in %.3f sec\n", __func__,
-  //         realtime() - rt);
-
-  // FMD-index loading
+  // === FMD-index loading
   rt = realtime();
   rb3_fmi_t fmd;
   rb3_fmi_restore(&fmd, fmd_fn.c_str(), 0);
@@ -478,9 +498,9 @@ int main_search(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] restored FMD index in %.3f sec\n", __func__,
           realtime() - rt);
   rt = realtime();
+  // === === ===
 
-  // Specific strings computation and anchoring
-
+  // === Specific strings computation and anchoring
   std::vector<read_t> entries(bsize);
   std::vector<std::vector<sfs_t>> output(bsize);
   fprintf(stderr, "[M::%s] pre-allocation in %.3f sec\n", __func__,
@@ -490,12 +510,10 @@ int main_search(int argc, char *argv[]) {
   gzFile fp = gzopen(fq_fn.c_str(), "r");
   kseq_t *seq = kseq_init(fp);
 
-  // Some statistics
-  std::vector<sfs_t> specific_strings;
-
   int anchored_n = 0;
   int unanchored_n = 0;
   int assembled_n = 0;
+  std::vector<sfs_t> specific_strings;
 
   int x;
   int analyzed = 0;
@@ -553,16 +571,16 @@ int main_search(int argc, char *argv[]) {
         s.seq = (uint8_t *)malloc(s.l + 1);
         memcpy(s.seq, seq + s.s, s.l);
         s.seq[s.l] = '\0';
-        // -1 since abpoa works on 0123
         for (int i = 0; i < s.l; ++i)
-          --s.seq[i];
+          --s.seq[i]; // -1 since abpoa works on 0123
       }
     }
     fprintf(stderr, "[M::%s] searched in %.3f sec\n", __func__,
             realtime() - rt1);
     rt1 = realtime();
+    // === === ===
 
-    // output
+    // push good specific strings to vector (single-threaded)
     for (int qq = 0; qq < x; ++qq) {
       assembled_n += output[qq].size();
       for (uint j = 0; j < output[qq].size(); ++j) {
@@ -573,7 +591,6 @@ int main_search(int argc, char *argv[]) {
           //        entries[qq].idx.c_str(), s.s, s.l);
         } else {
           ++anchored_n;
-
           specific_strings.push_back(s);
           // printf("O %s %d %d %d %s %ld:%d:%ld %ld:%d:%ld %d %d\n",
           //        entries[qq].idx.c_str(), s.s, s.l, s.strand, ".", s.a.v,
@@ -585,9 +602,11 @@ int main_search(int argc, char *argv[]) {
     analyzed += x;
   }
 
-  // At this point, specific strings are anchored. Anchors follow + strand
-  // on graph. If read was on -, we have reversed the specific strings so
-  // that everything is on + strand
+  /**
+   * At this point, specific strings are anchored. Anchors follow + strand
+   * on graph. If read was on -, we have reversed the specific strings so
+   * that everything is on + strand
+   **/
 
   fprintf(
       stderr,
@@ -601,8 +620,11 @@ int main_search(int argc, char *argv[]) {
   sk_destroy(sketch);
   rb3_fmi_free(&fmd);
 
-  // Cluster specific strings based on their anchors
+  // === === ===
+
+  // === Cluster specific strings based on their anchors
   rt = realtime();
+  // --- TODO: function ---
   std::sort(specific_strings.begin(), specific_strings.end(),
             [](const sfs_t &a, const sfs_t &b) { return a.a.seq < b.a.seq; });
 
@@ -628,14 +650,12 @@ int main_search(int argc, char *argv[]) {
       last_c = clusters.size() - 1;
     }
   }
-
   fprintf(stderr, "[M::%s] Built %ld clusters in %.3f sec\n", __func__,
           clusters.size(), realtime() - rt);
+  // === === ===
 
-  // === Consensus via abpoa
-  rt = realtime();
-
-  // Init abpoa
+  // === Init everything we need to analyze the clusters
+  // abpoa
   abpoa_t *ab = abpoa_init();
   abpoa_para_t *abpt = abpoa_init_para();
   abpt->align_mode = 0; // global
@@ -653,10 +673,23 @@ int main_search(int argc, char *argv[]) {
   // XXX: Assuming clusters of size <= 64
   uint8_t **cseqs = (uint8_t **)malloc(sizeof(uint8_t *) * 64);
   int *cseqs_lens = (int *)malloc(sizeof(int) * 64);
-  int goods = 0;
+
+  // ksw2
+  // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
+  // asm5
+  // int sc_mch = 1, sc_mis = -19, gapo = 39, gape = 3, gapo2 = 81, gape2 = 1;
+  // asm10
+  int sc_mch = 1, sc_mis = -9, gapo = 16, gape = 2, gapo2 = 41, gape2 = 1;
+  int8_t a = (int8_t)sc_mch,
+         b = sc_mis < 0 ? (int8_t)sc_mis : -(int8_t)sc_mis; // a>0 and b<0
+  int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
+                    b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
+  ksw_extz_t ez;
+  memset(&ez, 0, sizeof(ksw_extz_t));
 
   int cidx = 0;
   rt = realtime();
+
   // TODO: parallelize
   for (auto &cluster : clusters) {
     ++cidx;
@@ -672,9 +705,18 @@ int main_search(int argc, char *argv[]) {
 
     sfs_t ss = cluster[0];
 
-    // std::ofstream ofs(std::to_string(cidx) + ".txt", std::ofstream::out);
+    std::string subgfa_fn = wd + "/" + std::to_string(cidx) + ".gfa";
+    std::string subfa_fn = wd + "/" + std::to_string(cidx) + ".consensus.fa";
+    std::string subgaf_fn = wd + "/" + std::to_string(cidx) + ".gaf";
+    std::string sublog_fn = wd + "/" + std::to_string(cidx) + ".log";
+
+    int v1 = ss.a.v, v2 = ss.b.v;
+    Graph subgraph = graph.subgraph(v1, v2);
+    subgraph.to_gfa(subgfa_fn);
+
+    // std::ofstream ofs(std::to_string(cidx) + ".sfs.txt", std::ofstream::out);
     // === Consensus via abpoa
-    goods = 0;
+    int goods = 0;
     for (sfs_t &s : cluster) {
       // ofs << s.qname << ":" + s.s << "-" << s.s + s.l << "/" << s.l << "/"
       //     << s.strand << "/" << s.a.v << ">" << s.b.v << "/" << s.a.offset
@@ -688,26 +730,210 @@ int main_search(int argc, char *argv[]) {
     assert(goods < 64);
     abpoa_msa(ab, abpt, goods, NULL, cseqs_lens, cseqs, NULL, NULL);
 
+    std::ofstream ofs(subfa_fn, std::ofstream::out);
     abpoa_cons_t *abc = ab->abc;
+    std::vector<std::string> consensus(abc->n_cons);
     for (int ci = 0; ci < abc->n_cons; ++ci) {
       int cons_l = abc->cons_len[ci];
-      // char *cons_seq = (char *)abc->cons_base[ci];
-      uint8_t *cons_seq = abc->cons_base[ci];
+      consensus[ci] = std::string(cons_l, '-');
       for (int i = 0; i < cons_l; ++i)
-        cons_seq[i] = "ACGT"[cons_seq[i]];
-      cons_seq[cons_l] = '\0';
-      int abpoa_supp = abc->clu_n_seq[ci];
+        consensus[ci][i] = "ACGT"[abc->cons_base[ci][i]];
+      // int abpoa_supp = abc->clu_n_seq[ci];
       // if (abpoa_supp < min_w)
       //   continue;
-      std::cout << ">" << cidx << "." << ci << "." << cons_l << "."
-                << abpoa_supp << "." << ss.a.v << ":" << ss.a.offset << "."
-                << ss.b.v << ":" << ss.b.offset << std::endl;
-      std::cout << cons_seq << std::endl;
+      ofs << ">" << ci << "\n";
+      ofs << consensus[ci] << "\n";
     }
-    // === === ===
-
+    ofs.close();
     for (sfs_t &s : cluster)
       free(s.seq);
+    // === === ===
+
+    // === Run graphaligner
+    std::string cmd = "GraphAligner --graph " + subgfa_fn + " --reads " +
+                      subfa_fn + " --alignments-out " + subgaf_fn +
+                      " --preset vg --threads 4 &> " + sublog_fn;
+    std::system(cmd.c_str());
+    // === === ===
+
+    // === Realign
+    std::ifstream gaf(subgaf_fn);
+    std::string line;
+    while (std::getline(gaf, line)) {
+      std::size_t start = 0, end = 0;
+      int i = 0;
+      int idx = -1;
+      std::string path_str, nm_str;
+      while ((end = line.find("\t", start)) != std::string::npos) {
+        if (i == 0)
+          idx = std::stoi(line.substr(start, end - start));
+        else if (i == 5)
+          path_str = line.substr(start, end - start);
+        else if (i == 12) {
+          nm_str = line.substr(start, end - start);
+          break;
+        }
+        start = end + 1;
+        ++i;
+      }
+
+      if (path_str[0] != '>' || path_str.find('<') != std::string::npos) {
+        // XXX: what should we do here?
+        if (verbose)
+          std::cerr << cidx << ":" << idx << " : " << "vertices on - strand"
+                    << std::endl;
+        continue;
+      }
+
+      // NM
+      int NM = std::stoi(nm_str.substr(5, nm_str.size()));
+      if (NM == 0) {
+        if (verbose)
+          std::cerr << cidx << ":" << idx << " : " << "NM = 0" << std::endl;
+        continue;
+      }
+
+      std::vector<int> path;
+      start = 1;
+      while ((end = path_str.find(">", start)) != std::string::npos) {
+        path.push_back(std::stoi(path_str.substr(start, end - start)));
+        start = end + 1;
+      }
+      path.push_back(std::stoi(path_str.substr(start, end - start)));
+      if (path.front() != ss.a.v || path.back() != ss.b.v) {
+        if (verbose)
+          std::cerr << cidx << ":" << idx << " : " << "wrong sink/source"
+                    << std::endl;
+        continue;
+      }
+
+      // XXX: pseq can be built directly without substr
+      std::string full_pseq;
+      int ps = ss.a.offset, pe = 0;
+      for (uint v = 0; v < path.size(); ++v) {
+        if (path[v] == v2)
+          pe = full_pseq.size() + ss.b.offset + klen;
+        full_pseq += graph.get_sequence(path[v]);
+      }
+      std::string pseq = full_pseq.substr(ps, pe - ps);
+
+      uint8_t *pseq_c = (uint8_t *)malloc(pseq.size() + 1);
+      for (uint i = 0; i < pseq.size(); ++i)
+        pseq_c[i] = to_int[pseq[i]] - 1;
+      pseq_c[pseq.size()] = '\0';
+
+      int cons_l = abc->cons_len[idx];
+      uint8_t *cons_seq = abc->cons_base[idx];
+
+      ksw_extd2_sse(0, cons_l, cons_seq, pseq.size(), pseq_c, 5, mat, gapo,
+                    gape, gapo2, gape2, -1, -1, -1, 0, &ez);
+
+      // === === ===
+
+      // === Output
+      // int clipped = 0;
+      if ((ez.cigar[0] & 0xf) != 0 || (ez.cigar[ez.n_cigar - 1] & 0xf) != 0) {
+        // clipped = 1;
+        continue; // XXX: do we want these?
+      }
+
+      if (ez.score < min_as) {
+        if (verbose)
+          std::cerr << cidx << ":" << idx << " : " << "low score " << ez.score
+                    << std::endl;
+        continue;
+      }
+
+      // Parse CIGAR
+      int opl;
+      int tot_cigar_len = 0;
+      int tot_res_matches = 0;
+
+      // XXX: avoid reallocation at each iteration
+      std::string cigar;
+      std::string cs;
+      int cons_p = 0;
+      int pseq_p = 0;
+
+      for (int i = 0; i < ez.n_cigar; ++i) {
+        opl = ez.cigar[i] >> 4;
+        tot_cigar_len += opl;
+
+        // cigar
+        cigar += std::to_string(opl) + "MID"[ez.cigar[i] & 0xf];
+
+        // difference string, residues, cigar length
+        if ((ez.cigar[i] & 0xf) == 0) {
+          // M
+          int l_tmp = 0;
+          for (int j = 0; j < opl; ++j) {
+            if (consensus[idx][cons_p + j] != pseq[pseq_p + j]) {
+              if (l_tmp > 0) {
+                cs += ":" + std::to_string(l_tmp);
+                l_tmp = 0;
+              }
+              cs += "*";
+              cs += pseq[pseq_p + j];
+              cs += consensus[idx][cons_p + j];
+            } else {
+              ++l_tmp;
+            }
+          }
+          if (l_tmp > 0) {
+            tot_res_matches += l_tmp;
+            cs += ":" + std::to_string(l_tmp);
+          }
+          cons_p += opl;
+          pseq_p += opl;
+        } else if ((ez.cigar[i] & 0xf) == 1) {
+          // I
+          cs += "+" + consensus[idx].substr(cons_p, opl);
+          cons_p += opl;
+        } else if ((ez.cigar[i] & 0xf) == 2) {
+          // D
+          cs += "-" + pseq.substr(pseq_p, opl);
+          pseq_p += opl;
+        } else {
+          fprintf(stderr,
+                  "Cluster %d --- We shouldn't be here while parsing ksw "
+                  "cigar. Halting.\n",
+                  cidx);
+          exit(EXIT_FAILURE);
+        }
+      }
+
+      // print GAF line
+      std::cout << cidx << "." << idx << "\t";
+      std::cout << consensus[idx].size() << "\t";
+      std::cout << 0 << "\t";
+      std::cout << consensus[idx].size() << "\t";
+      std::cout << "+\t";
+      std::cout << ">" << path[0];
+      for (uint i = 1; i < path.size(); ++i)
+        std::cout << ">" << path[i];
+      std::cout << "\t";
+      std::cout << full_pseq.size() << "\t";
+      std::cout << ss.a.offset << "\t";
+      std::cout << ss.a.offset + pseq.size() << "\t";
+      std::cout << tot_res_matches << "\t";
+      std::cout << tot_cigar_len << "\t";
+      std::cout << 60 << "\t";
+      std::cout << "AS:i:" << ez.score << "\t";
+      std::cout << "cg:Z:" << cigar << "\t";
+      std::cout << "cs:Z:" << cs << "\t";
+      // std::cout << "cl:Z:" << clipped << "\t";
+      // std::cout << "cw:Z:" << support << "\t";
+      // std::cout << "rp:Z:" << ref1 << ":" << pos1 + 1 << "-" << pos2 + klen
+      // << "\t";
+      std::cout << "qs:Z:" << consensus[idx] << "\t";
+      std::cout << "ps:Z:" << pseq;
+      std::cout << std::endl;
+
+      free(pseq_c);
+      // free(consensus_c);
+    }
+
+    gaf.close();
   }
 
   abpoa_free_para(abpt);

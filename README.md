@@ -30,20 +30,12 @@ vg paths -F -x example/reference.gfa > example/reference.paths.fa
 # !!! Set the number of expected haplotypes in the graph using the -g option !!!
 ./palss sketch -g1 -k27 example/reference.gfa example/reference.paths.fa.fmd > example/reference-k27.skt
 
-# search for specific strings in the haplotypes and cluster them using solid anchors
-./palss search -@4 -k27 ./example/reference.gfa ./example/reference-k27.skt ./example/reference.paths.fa.fmd ./example/reads.fa > ./example/clusters.fa
-
-# Align clusters using GraphAligner
-GraphAligner --graph ./example/reference.gfa --reads ./example/clusters.fa --alignments-out ./example/clusters.gaf --preset vg --threads 4
-
-# get good clusters that needs to be realigned
-python3 scripts/filter_gaf.py ./example/clusters.gaf ./example/clusters.fa > ./example/good_clusters.txt
-
-# realign clusters
-./palss realign ./example/reference.gfa ./example/good_clusters.txt > ./example/good_clusters.gaf
+# compute where graph needs to be augmented
+# since the reference path we are interested in starts with 19, we set this using the -p argument
+./palss augment -p 19 -@4 -k27 ./example/reference.gfa ./example/reference-k27.skt ./example/reference.paths.fa.fmd ./example/reads.fa > ./example/augmentation.gaf
 
 # augment the graph
-vg augment --min-coverage 1 --gaf ./example/reference.gfa ./example/good_clusters.gaf > example/reference-augmented.gfa
+vg augment --min-coverage 1 --gaf ./example/reference.gfa ./example/augmentation.gaf > example/reference-augmented.gfa
 ```
 
 ##### Solid anchors analysis (TODO)

@@ -56,6 +56,7 @@ public:                        // XXX: private
   std::map<int, uint64_t> out_distances;
 
 public:
+  Graph();
   Graph(const std::string &fn);
 
   // Load all vertices from gfa
@@ -75,6 +76,14 @@ public:
 
   // Get distance between two vertices
   uint distance(int v1, int v2);
+
+  // recursive dfs that stores good edges while backtracking
+  bool dfs(int v1, int v2, int d, std::map<int, std::set<int>> &edges) const;
+
+  // get subgraph between v1 and v2 using DFS
+  Graph subgraph(int v1, int v2) const;
+
+  int to_gfa(const std::string &fn) const;
 
   // Convert vertex from GFA space to graph space
   int get_iidx(int v) const;

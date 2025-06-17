@@ -2,6 +2,7 @@
 
 KSTREAM_INIT(gzFile, gzread, 65536)
 
+Graph::Graph() {}
 Graph::Graph(const std::string &_fn) { fn = _fn; }
 
 int Graph::load_vertices() {
@@ -232,11 +233,99 @@ uint Graph::distance(int v1, int v2) {
   return std::abs(vertices[ref1].pos - vertices[ref2].pos) + d1 + d2;
 }
 
+bool Graph::dfs(int v1, int v2, int d,
+                std::map<int, std::set<int>> &edges) const {
+  if (edges.find(v1) != edges.end())
+    // we already visited this vertex, that is a good vertex iif we have stored
+    // at least one outgoing edge
+    return edges[v1].size() > 0;
+  if (v1 == v2)
+    // we have reached the sink
+    return true;
+  if (d > 20) // XXX: hardcoded
+              // we do not want to visit the entire graph
+    return false;
+
+  bool res = false;
+  edges[v1] = std::set<int>();
+  for (const auto &vv : out_edges[v1]) {
+    bool res1 = dfs(vv, v2, d + 1, edges);
+    if (res1)
+      edges[v1].insert(vv);
+    res |= res1;
+  }
+
+  return res;
+}
+
+Graph Graph::subgraph(int v1, int v2) const {
+  // v1 and v2 are in GFA space
+  v1 = get_iidx(v1);
+  v2 = get_iidx(v2);
+
+  Graph subgraph;
+  std::map<int, std::set<int>> edges;
+  dfs(v1, v2, 0, edges);
+
+  // First, add vertices to have size for edges
+  seg_t seg;
+  for (auto const &[v, outs] : edges) {
+    seg = vertices.at(v);
+    if (subgraph.v_map.find(seg.idx) == subgraph.v_map.end()) {
+      subgraph.v_map[seg.idx] = subgraph.vertices.size();
+      subgraph.vertices.push_back(seg);
+    }
+    for (const auto &v1 : outs) {
+      seg = vertices.at(v1);
+      if (subgraph.v_map.find(seg.idx) == subgraph.v_map.end()) {
+        subgraph.v_map[seg.idx] = subgraph.vertices.size();
+        subgraph.vertices.push_back(seg);
+      }
+    }
+  }
+  subgraph.out_edges.resize(subgraph.vertices.size());
+  subgraph.in_edges.resize(subgraph.vertices.size());
+
+  // Now, reiterate to add edges
+  int i1, i2;
+  for (auto const &[v, outs] : edges) {
+    seg = vertices.at(v);
+    i1 = subgraph.get_iidx(seg.idx);
+    for (const auto &v1 : outs) {
+      seg = vertices.at(v1);
+      i2 = subgraph.get_iidx(seg.idx);
+      subgraph.out_edges[i1].push_back(i2);
+      subgraph.in_edges[i2].push_back(i1);
+    }
+  }
+
+  return subgraph;
+}
+
+int Graph::to_gfa(const std::string &fn) const {
+  FILE *fp = fn.compare("-") != 0 ? fopen(fn.c_str(), "w")
+                                  : fdopen(fileno(stdout), "w");
+  if (fp == 0)
+    return -1;
+
+  fprintf(fp, "H\tVN:Z:1.1\n");
+  for (const seg_t &seg : vertices)
+    fprintf(fp, "S\t%d\t%s\n", seg.idx, seg.seq.c_str());
+  for (uint v = 0; v < out_edges.size(); ++v) {
+    for (const auto &v1 : out_edges[v]) {
+      fprintf(fp, "L\t%d\t+\t%d\t+\t0M\n", vertices.at(v).idx,
+              vertices.at(v1).idx);
+    }
+  }
+  fclose(fp);
+  return 0;
+}
+
 int Graph::get_iidx(int v) const { return v_map.at(v); }
 
 std::string Graph::get_sequence(int v) const {
-  // v is in graph space
-  return vertices.at(v).seq;
+  // v is in GFA space
+  return vertices.at(get_iidx(v)).seq;
 }
 
 /** === GFA PARSING ======= **/
