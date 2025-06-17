@@ -712,7 +712,8 @@ int main_augment(int argc, char *argv[]) {
     std::string subgfa_fn = wd + "/" + std::to_string(cidx) + ".gfa";
     std::string subfa_fn = wd + "/" + std::to_string(cidx) + ".consensus.fa";
     std::string subgaf_fn = wd + "/" + std::to_string(cidx) + ".gaf";
-    std::string sublog_fn = wd + "/" + std::to_string(cidx) + ".log";
+    std::string gaout_fn = wd + "/" + std::to_string(cidx) + ".out";
+    std::string gaerr_fn = wd + "/" + std::to_string(cidx) + ".err";
 
     int v1 = ss.a.v, v2 = ss.b.v;
     Graph subgraph = graph.subgraph(v1, v2);
@@ -756,7 +757,7 @@ int main_augment(int argc, char *argv[]) {
     // === Run graphaligner
     std::string cmd = ga_bin + " --graph " + subgfa_fn + " --reads " +
                       subfa_fn + " --alignments-out " + subgaf_fn +
-                      " --preset vg --threads 4 &> " + sublog_fn;
+                      " --preset vg --threads 4 > " + gaout_fn + " 2> " + gaerr_fn;
     int ret = std::system(cmd.c_str());
     if (ret != 0) {
       std::cerr << "Error in running GraphAligner. Return code: " << ret
