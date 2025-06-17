@@ -265,7 +265,10 @@ Graph Graph::subgraph(int v1, int v2) const {
 
   Graph subgraph;
   std::map<int, std::set<int>> edges;
-  dfs(v1, v2, 0, edges);
+  if (v1 == v2)
+    edges[v1] = std::set<int>();
+  else
+    dfs(v1, v2, 0, edges);
 
   // First, add vertices to have size for edges
   seg_t seg;
