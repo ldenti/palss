@@ -283,66 +283,24 @@ rule search:
         fmd=rules.index_paths.output.fmd,
         fa=rules.hifiasm_ec.output.fa,
     output:
-        fa=pjoin(WD, "{n}", "clusters-{x}.k{k}.w{w}.fa"),
+        gaf=pjoin(WD, "{n}", "clusters-{x}.k{k}.w{w}.s{s}.gaf"),
+    params:
+        tmp_dir=pjoin(WD, "{n}", "clusters-{x}.k{k}.w{w}.s{s}.tmp"),
     log:
-        time=pjoin(WD, "{n}", "times", "search-{x}.k{k}.w{w}.time"),
-        log=pjoin(WD, "{n}", "logs", "search-{x}.k{k}.w{w}.log"),
-    threads: workflow.cores / 2
-    shell:
-        """
-        /usr/bin/time -vo {log.time} ../palss search -@{threads} -k{wildcards.k} -w{wildcards.w} {input.gfa} {input.skt} {input.fmd} {input.fa} > {output.fa} 2> {log.log}
-        """
-
-rule GraphAligner:
-    input:
-        gfa=pjoin(WD, "{n}", "pangenome-{x}.gfa"),
-        fa=rules.search.output.fa,
-    output:
-        gaf=pjoin(WD, "{n}", "clusters-{x}.k{k}.w{w}.gaf"),
-    log:
-        time=pjoin(WD, "{n}", "times", "graphaligner-{x}.k{k}.w{w}.time"),
+        time=pjoin(WD, "{n}", "times", "search-{x}.k{k}.w{w}.s{s}.time"),
+        log=pjoin(WD, "{n}", "logs", "search-{x}.k{k}.w{w}.s{s}.log"),
     conda:
         "./envs/graphaligner.yml"
     threads: workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} GraphAligner --graph {input.gfa} --reads {input.fa} --alignments-out {output.gaf} --preset vg --threads {threads}
-        """
-
-rule clean_graphaligner:
-    input:
-        gaf=rules.GraphAligner.output.gaf,
-        fa=rules.search.output.fa,
-    output:
-        txt=pjoin(WD, "{n}", "goodclusters-{x}.k{k}.w{w}.txt"),
-    log:
-        time=pjoin(WD, "{n}", "times", "filtergaf-{x}.k{k}.w{w}.time"),
-    conda:
-        "./envs/biopython.yml"
-    shell:
-        """
-        /usr/bin/time -vo {log.time} python3 ../scripts/filter_gaf.py {input.gaf} {input.fa} > {output.txt}
-        """
-
-rule realign:
-    input:
-        gfa=pjoin(WD, "{n}", "pangenome-{x}.gfa"),
-        txt=rules.clean_graphaligner.output.txt,
-    output:
-        gaf=pjoin(WD, "{n}", "goodclusters-{x}.k{k}.w{w}.s{s}.gaf"),
-    log:
-        time=pjoin(WD, "{n}", "times", "call-{x}.k{k}.w{w}.s{s}.time"),
-        log=pjoin(WD, "{n}", "logs", "call-{x}.k{k}.w{w}.s{s}.log"),
-    threads: workflow.cores / 2
-    shell:
-        """
-        /usr/bin/time -vo {log.time} ../palss realign -s{wildcards.s} {input.gfa} {input.txt} > {output.gaf} 2> {log.log}
+        /usr/bin/time -vo {log.time} ../palss augment -d{params.tmp_dir} -s{wildcards.s} -@{threads} -k{wildcards.k} -w{wildcards.w} {input.gfa} {input.skt} {input.fmd} {input.fa} > {output.gaf} 2> {log.log}
         """
 
 rule augment:
     input:
         gfa=pjoin(WD, "{n}", "pangenome-{x}.gfa"),
-        gaf=rules.realign.output.gaf,
+        gaf=rules.search.output.gaf,
     output:
         gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.w{w}.s{s}.gfa"),
     log:

@@ -56,24 +56,19 @@ def main():
 
         for qidx, (c, nm) in nms.items():
             NM.append([graph, nm])
+
         for qidx, fragments in coverages.items():
             fragments = list(set(fragments))
             l = fragments[0][-1]
             fragments.sort(key=lambda x: x[0])
-            c = fragments[0][1] - fragments[0][0]
-            last_r = fragments[0][1]
+            nonoverlapping = [[fragments[0][0], fragments[0][1]]]
             for s, e, _ in fragments[1:]:
-                if e <= last_r:
-                    pass
-                elif s < last_r and e > last_r:
-                    c += e - last_r
-                    last_r = e
+                if s < nonoverlapping[-1][1]:
+                    if e > nonoverlapping[-1][1]:
+                        nonoverlapping[-1][1] = e
                 else:
-                    c += e - s
-                    last_r = e
-            if c > l:
-                print(graph, qidx, c, l)
-            assert c <= l
+                    nonoverlapping.append([s,e])
+            c = sum([e-s for s,e in nonoverlapping])
             COV.append([graph, float(c) / l])
 
         print(f"=== {graph}: ", sum(nalignments.values()))
