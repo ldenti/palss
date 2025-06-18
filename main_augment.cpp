@@ -692,6 +692,8 @@ int main_augment(int argc, char *argv[]) {
   memset(&ez, 0, sizeof(ksw_extz_t));
 
   int cidx = 0;
+  int total_clusters = 0;
+  int final_clusters = 0;
   rt = realtime();
 
   // TODO: parallelize
@@ -738,6 +740,9 @@ int main_augment(int argc, char *argv[]) {
     std::ofstream ofs(subfa_fn, std::ofstream::out);
     abpoa_cons_t *abc = ab->abc;
     std::vector<std::string> consensus(abc->n_cons);
+
+    total_clusters += abc->n_cons;
+
     for (int ci = 0; ci < abc->n_cons; ++ci) {
       int cons_l = abc->cons_len[ci];
       consensus[ci] = std::string(cons_l, '-');
@@ -757,7 +762,8 @@ int main_augment(int argc, char *argv[]) {
     // === Run graphaligner
     std::string cmd = ga_bin + " --graph " + subgfa_fn + " --reads " +
                       subfa_fn + " --alignments-out " + subgaf_fn +
-                      " --preset vg --threads 4 > " + gaout_fn + " 2> " + gaerr_fn;
+                      " --preset vg --threads 4 > " + gaout_fn + " 2> " +
+                      gaerr_fn;
     int ret = std::system(cmd.c_str());
     if (ret != 0) {
       std::cerr << "Error in running GraphAligner. Return code: " << ret
@@ -769,6 +775,7 @@ int main_augment(int argc, char *argv[]) {
     // === Realign
     std::ifstream gaf(subgaf_fn);
     std::string line;
+    int flag = 0;
     while (std::getline(gaf, line)) {
       std::size_t start = 0, end = 0;
       int i = 0;
@@ -786,6 +793,10 @@ int main_augment(int argc, char *argv[]) {
         start = end + 1;
         ++i;
       }
+
+      if (flag & (1 << idx))
+        // we already output this subcluster
+        continue;
 
       if (path_str[0] != '>' || path_str.find('<') != std::string::npos) {
         // XXX: what should we do here?
@@ -939,6 +950,9 @@ int main_augment(int argc, char *argv[]) {
       std::cout << "ps:Z:" << pseq;
       std::cout << std::endl;
 
+      flag |= (1 << idx);
+      ++final_clusters;
+
       free(pseq_c);
       // free(consensus_c);
     }
@@ -951,8 +965,10 @@ int main_augment(int argc, char *argv[]) {
   free(cseqs);
   free(cseqs_lens);
 
-  fprintf(stderr, "[M::%s] Built consensus in %.3f sec\n", __func__,
-          realtime() - rt);
+  fprintf(stderr,
+          "[M::%s] Analyzed %d clusters (%d in output, %f) in %.3f sec.\n",
+          __func__, total_clusters, final_clusters,
+          (float)final_clusters / total_clusters, realtime() - rt);
 
   return 0;
 }
