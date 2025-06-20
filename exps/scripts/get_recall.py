@@ -4,7 +4,10 @@ import re
 
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 import seaborn as sns
+
+sns.set(style="whitegrid")
 
 
 def main():
@@ -13,14 +16,17 @@ def main():
     NM = []
     NAL = []
     COV = []
+
+    graphs = {
+        0: "augmented",
+        1: "full",
+        2: "1out",
+        # 3: "vg",
+        # 4: "minigraph-cactus",
+    }
     for i, gaf in enumerate(GAFs):
-        graph = "augmented"
-        if i == 0:
-            graph = "augmented"
-        elif i == 1:
-            graph = "full"
-        elif i == 2:
-            graph = "1out"
+        graph = graphs[i]
+
         nalignments = {}
         coverages = {}
         nms = {}
@@ -67,8 +73,8 @@ def main():
                     if e > nonoverlapping[-1][1]:
                         nonoverlapping[-1][1] = e
                 else:
-                    nonoverlapping.append([s,e])
-            c = sum([e-s for s,e in nonoverlapping])
+                    nonoverlapping.append([s, e])
+            c = sum([e - s for s, e in nonoverlapping])
             COV.append([graph, float(c) / l])
 
         print(f"=== {graph}: ", sum(nalignments.values()))
@@ -90,11 +96,31 @@ def main():
     COV = pd.DataFrame(COV, columns=["Graph", "Coverage"])
     NM = pd.DataFrame(NM, columns=["Graph", "NM"])
 
-    for graph in ["augmented", "full", "1out"]:
-        #     print(f"=== {graph} ===")
+    # STRAT = [0.25, 0.5, 0.75, 0.9, 0.99, 0.999, 0.9999, 1]
+    STRAT = [0.999, 0.9999, 0.99999, 1]
+    stratcov = []
+    nreads = {}
+    for graph in graphs.values():
+        print(f"=== {graph} ===")
         #     print(len(NM[NM["Graph"] == graph]))
-        print(len(COV[(COV["Graph"] == graph) & (COV["Coverage"] == 1)]))
-        #     print(len(NAL[NAL["Graph"] == graph]))
+        full = len(COV[(COV["Graph"] == graph) & (COV["Coverage"] <= 1)])
+        nreads[graph] = full
+        for n in STRAT:
+            partial = len(COV[(COV["Graph"] == graph) & (COV["Coverage"] <= n)])
+            stratcov.append(
+                [
+                    graph,
+                    n,
+                    partial,
+                    full,
+                    round(partial / full * 100 if full > 0 else 0, 2),
+                ]
+            )
+
+    print(nreads)
+    stratcov = pd.DataFrame(
+        stratcov, columns=["Graph", "n", "Partial", "Full", "Ratio"]
+    )
 
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(11, 5))
 
@@ -124,19 +150,34 @@ def main():
     ax1.set_title("Number of alignments per read")
     ax1.set_xlabel("#Alignments")
 
-    y = sns.histplot(
-        COV,
-        x="Coverage",
-        hue="Graph",
-        element="step", # "bar"
-        bins=100,
-        cumulative=True, # False
-        legend=False,
-        binrange=[0, 0.99],
-        ax=ax2,
-    )
+    # sns.histplot(
+    #     COV,
+    #     x="Coverage",
+    #     hue="Graph",
+    #     element="step",  # "bar"
+    #     bins=100,
+    #     cumulative=True,  # False
+    #     legend=False,
+    #     binrange=[0, 1],
+    #     ax=ax2,
+    # )
+
+    # sns.violinplot(COV[COV["Coverage"] > 0.9998], x="Graph", y="Coverage", ax=ax2)
+
+    cmap = sns.color_palette()
+    legend = []
+    for i, n in enumerate(reversed(STRAT)):
+        print(cmap[i])
+        sns.barplot(data=stratcov[stratcov["n"] == n], x="Graph", y="Ratio", ax=ax2)
+        legend.append(Patch(facecolor=cmap[i], edgecolor="w", label=n))
+        if i != 0:
+            ax2.bar_label(ax2.containers[i])
+        else:
+            ax2.bar_label(ax2.containers[0], labels=nreads.values())
+
+    ax2.legend(handles=legend)
     ax2.set_ylabel("")
-    ax2.set_title("Alignment coverage per read (no 1.0)")
+    ax2.set_title("Alignment coverage per read (%)")
 
     # print(".", sum(ax2.containers[0].datavalues))
     # print(sum(ax2.containers[1].datavalues))
@@ -149,15 +190,15 @@ def main():
         discrete=True,
         element="step",
         legend=True,
+        binrange=[0, 35],
         ax=ax3,
-        binrange=[0, 150],
     )
     ax3.set_ylabel("")
     ax3.set_title("NM (per best/longest alignment)")
 
     plt.tight_layout()
-    # plt.show()
-    plt.savefig(png_fn)
+    plt.show()
+    # plt.savefig(png_fn)
 
 
 if __name__ == "__main__":
