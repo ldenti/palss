@@ -2,12 +2,13 @@ from os.path import join as pjoin
 import gzip
 import random
 
-seed = 42 # 23
+seed = 42  # 23
 random.seed(seed)
 K = 27  # kmer size
 coverage = 7.5  # coverage per haplotype
 
-Ns = [1, 8, 32]  # , 2, 4, 8, 16, 32]
+Ns = [8]  # [1, 8, 32]  # , 2, 4, 8, 16, 32]
+Ws = [2, 3]  # , 4, 5]
 
 FA = config["fa"]
 VCF = config["vcf"]
@@ -32,22 +33,32 @@ print(sample, SAMPLES)
 
 
 wildcard_constraints:
-    x="(1out)|(full)", # |(mgcactus)",
+    x="(1out)|(full)|(mgcactus)",
 
 
 rule run:
     input:
-        expand(pjoin(WD, "{n}", "recall.k27.w{w}.s{s}.png"),
+        # read alignment to full "original" graph, 1out graph, and minigraph-cactus
+        expand(
+            pjoin(WD, "{n}", "alignments-{x}.gaf"),
+            n=SAMPLES.keys(),
+            x=["1out", "full", "mgcactus"],
+        ),
+        # read alignment to augmented graphs
+        expand(
+            pjoin(WD, "{n}", "alignments-{x}-augmented.k27.w{w}.s{s}.gaf"),
             n=SAMPLES.keys(),
             x=["1out", "full"],
-            w=[2], # , 3, 5],
+            w=Ws,
             s=[0],
         ),
+        # contigs around novel vertices
         expand(
-            pjoin(WD, "{n}", "precision-{x}-augmented.k27.w{w}.s{s}.png"),
+            pjoin(WD, "{n}", "novel-{y}-against-{x}.k27.w{w}.s{s}.gaf"),
             n=SAMPLES.keys(),
             x=["1out", "full"],
-            w=[2], # , 3, 5],
+            y=["1out", "full"],
+            w=Ws,
             s=[0],
         ),
 
@@ -205,9 +216,9 @@ rule build_pangenome:
         """
 
 
-# ============== #
-# === METHOD === #
-# ============== #
+# ============= #
+# === PALSS === #
+# ============= #
 rule hifiasm_ec:
     input:
         fq=rules.combine.output.fq,
@@ -297,6 +308,7 @@ rule search:
         /usr/bin/time -vo {log.time} ../palss augment -d{params.tmp_dir} -s{wildcards.s} -@{threads} -k{wildcards.k} -w{wildcards.w} {input.gfa} {input.skt} {input.fmd} {input.fa} > {output.gaf} 2> {log.log}
         """
 
+
 rule augment:
     input:
         gfa=pjoin(WD, "{n}", "pangenome-{x}.gfa"),
@@ -313,6 +325,7 @@ rule augment:
         vg augment --min-coverage 1 --gaf {input.gfa} {input.gaf} > {output.gfa}.tmp
         python3 ../scripts/clean_augmented_gfa.py {output.gfa}.tmp > {output.gfa}
         """
+
 
 # ======================== #
 # === MINIGRAPH-CACTUS === #
@@ -337,6 +350,7 @@ rule hifiasm:
         awk '/^S/{{print ">"$2;print $3}}' {params.prefix}.bp.hap2.p_ctg.gfa > {output.fa2}
         """
 
+
 rule install_minigraphcactus:
     output:
         pjoin(WD, "mgc-src", "cactus_env", "bin", "activate"),
@@ -356,6 +370,7 @@ rule install_minigraphcactus:
         python3 -m pip install -U -r ./toil-requirement.txt
         """
 
+
 rule minigraphcactus:
     input:
         ref=FA,
@@ -366,16 +381,17 @@ rule minigraphcactus:
     output:
         gfa=pjoin(WD, "{n}", "pangenome-mgcactus.gfa"),
     params:
-        prefix = pjoin(WD, "{n}", "mgcactus"),
+        prefix=pjoin(WD, "{n}", "mgcactus"),
     threads: workflow.cores
     log:
-        time = pjoin(WD, "{n}", "times", "mgcactus.time"),
-        log = pjoin(WD, "{n}", "logs", "mgcactus.log"),
+        time=pjoin(WD, "{n}", "times", "mgcactus.time"),
+        log=pjoin(WD, "{n}", "logs", "mgcactus.log"),
     shell:
         """
         set +u; source {input.venv}; set -u
         /usr/bin/time -vo {log.time} bash run_mgcactus.sh {input.ref} {input.vcf} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} > {output.gfa}
         """
+
 
 # ================ #
 # === ANALYSIS === #
@@ -389,10 +405,13 @@ rule graphaligner:
     threads: workflow.cores / 2
     conda:
         "./envs/graphaligner.yml"
+    log:
+        time=pjoin(WD, "{n}", "times", "graphaligner-{x}.time"),
     shell:
         """
-        GraphAligner --graph {input.gfa} --reads {input.fq} --alignments-out {output.gaf} --preset vg --threads {threads}
+        /usr/bin/time -vo {log.time} GraphAligner --graph {input.gfa} --reads {input.fq} --alignments-out {output.gaf} --preset vg --threads {threads}
         """
+
 
 rule graphaligner_augmented:
     input:
@@ -408,33 +427,98 @@ rule graphaligner_augmented:
         GraphAligner --graph {input.gfa} --reads {input.fq} --alignments-out {output.gaf} --preset vg --threads {threads}
         """
 
-# ============= #
-# === PLOTS === #
-# ============= #
-rule precision:
+
+rule get_novel_contigs:
     input:
         gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.w{w}.s{s}.gfa"),
         gaf=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.w{w}.s{s}.gaf"),
     output:
-        png=pjoin(WD, "{n}", "precision-{x}-augmented.k{k}.w{w}.s{s}.png"),
-        txt=pjoin(WD, "{n}", "precision-{x}-augmented.k{k}.w{w}.s{s}.txt"),
-    conda:
-        "./envs/seaborn.yml"
+        fa=pjoin(WD, "{n}", "novel-{x}.k{k}.w{w}.s{s}.fa"),
+    threads: workflow.cores / 4
     shell:
         """
-        python3 ./scripts/get_precision.py {input.gfa} {input.gaf} {output.png} > {output.txt}
+        python3 scripts/get_contigs.py {input.gfa} {input.gaf} > {output.fa}
         """
 
-rule recall:
+
+rule align_novel_contigs:
     input:
-        gaf1=pjoin(WD, "{n}", "alignments-1out-augmented.k{k}.w{w}.s{s}.gaf"),
-        gaf2=pjoin(WD, "{n}", "alignments-full.gaf"),
-        gaf3=pjoin(WD, "{n}", "alignments-1out.gaf"),
+        gfa=pjoin(WD, "{n}", "pangenome-{x}.gfa"),
+        fa=pjoin(WD, "{n}", "novel-{y}.k{k}.w{w}.s{s}.fa"),
     output:
-        png=pjoin(WD, "{n}", "recall.k{k}.w{w}.s{s}.png"),
+        gaf=pjoin(WD, "{n}", "novel-{y}-against-{x}.k{k}.w{w}.s{s}.gaf"),
+    threads: workflow.cores / 2
     conda:
-        "./envs/seaborn.yml"
+        "./envs/graphaligner.yml"
     shell:
         """
-        python3 ./scripts/get_recall.py {input.gaf1} {input.gaf2} {input.gaf3} {output.png}
+        GraphAligner --graph {input.gfa} --reads {input.fa} --alignments-out {output.gaf} --preset vg --threads {threads}
         """
+
+
+# ========== #
+# === VG === #
+# ========== #
+#
+# rule vg_index:
+#     input:
+#         gfa=pjoin(WD, "{n}", "pangenome-{x}.gfa"),
+#     output:
+#         gfa=pjoin(WD, "{n}", "pangenome-{x}.gfa"),
+#     shell:
+#         """
+#         /usr/bin/time -v vg autoindex --prefix pangenome-1out-vg --workflow lr-giraffe --gfa pangenome-1out.gfa
+#         """
+#
+#
+# # \time -v vg giraffe -b hifi -Z pangenome-1out-vg.giraffe.gbz -m pangenome-1out-vg.longread.withzip.min -d pangenome-1out-vg.dist -f ../HG01123.fq -o gaf > alignments-1out.giraffe.gaf
+#
+#
+# rule vg_augment:
+#     input:
+#         gfa=pjoin(WD, "{n}", "pangenome-{x}.gfa"),
+#         gaf=rules.graphaligner.output.gaf,
+#     output:
+#         gfa=pjoin(WD, "{n}", "pangenome-{x}-vg.w{w}.gfa"),
+#     log:
+#         time=pjoin(WD, "{n}", "times", "vgaugment-{x}.w{w}.time"),
+#     threads: workflow.cores
+#     conda:
+#         "./envs/vg.yml"
+#     shell:
+#         """
+#         vg augment --min-coverage {wildcards.w} --gaf {input.gfa} {input.gaf} > {output.gfa}.tmp
+#         python3 ../scripts/clean_augmented_gfa.py {output.gfa}.tmp > {output.gfa}
+#         """
+#
+#
+# ============= #
+# === PLOTS === #
+# ============= #
+# rule precision:
+#     input:
+#         gfa=pjoin(WD, "{n}", "pangenome-{x}-augmented.k{k}.w{w}.s{s}.gfa"),
+#         gaf=pjoin(WD, "{n}", "alignments-{x}-augmented.k{k}.w{w}.s{s}.gaf"),
+#     output:
+#         png=pjoin(WD, "{n}", "precision-{x}-augmented.k{k}.w{w}.s{s}.png"),
+#         txt=pjoin(WD, "{n}", "precision-{x}-augmented.k{k}.w{w}.s{s}.txt"),
+#     conda:
+#         "./envs/seaborn.yml"
+#     shell:
+#         """
+#         python3 ./scripts/get_precision.py {input.gfa} {input.gaf} {output.png} > {output.txt}
+#         """
+#
+# rule recall:
+#     input:
+#         gaf1=pjoin(WD, "{n}", "alignments-1out-augmented.k{k}.w{w}.s{s}.gaf"),
+#         gaf2=pjoin(WD, "{n}", "alignments-full.gaf"),
+#         gaf3=pjoin(WD, "{n}", "alignments-1out.gaf"),
+#     output:
+#         png=pjoin(WD, "{n}", "recall.k{k}.w{w}.s{s}.png"),
+#     conda:
+#         "./envs/seaborn.yml"
+#     shell:
+#         """
+#         python3 ./scripts/get_recall.py {input.gaf1} {input.gaf2} {input.gaf3} {output.png}
+#         """
