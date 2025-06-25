@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include <iostream>
 #include <map>
+#include <sstream>
 #include <stdio.h>
 #include <string>
 #include <zlib.h>
@@ -748,10 +749,10 @@ int main_augment(int argc, char *argv[]) {
       consensus[ci] = std::string(cons_l, '-');
       for (int i = 0; i < cons_l; ++i)
         consensus[ci][i] = "ACGT"[abc->cons_base[ci][i]];
-      // int abpoa_supp = abc->clu_n_seq[ci];
-      // if (abpoa_supp < min_w)
-      //   continue;
-      ofs << ">" << ci << "\n";
+      int abpoa_supp = abc->clu_n_seq[ci];
+      if (abpoa_supp < min_w)
+        continue;
+      ofs << ">" << ci << "." << abpoa_supp << "\n";
       ofs << consensus[ci] << "\n";
     }
     ofs.close();
@@ -762,7 +763,7 @@ int main_augment(int argc, char *argv[]) {
     // === Run graphaligner
     std::string cmd = ga_bin + " --graph " + subgfa_fn + " --reads " +
                       subfa_fn + " --alignments-out " + subgaf_fn +
-                      " --preset vg --threads 4 > " + gaout_fn + " 2> " +
+                      " --preset vg --threads 1 > " + gaout_fn + " 2> " +
                       gaerr_fn;
     int ret = std::system(cmd.c_str());
     if (ret != 0) {
@@ -779,12 +780,19 @@ int main_augment(int argc, char *argv[]) {
     while (std::getline(gaf, line)) {
       std::size_t start = 0, end = 0;
       int i = 0;
+      int support = 0;
       int idx = -1;
       std::string path_str, nm_str;
       while ((end = line.find("\t", start)) != std::string::npos) {
-        if (i == 0)
-          idx = std::stoi(line.substr(start, end - start));
-        else if (i == 5)
+        if (i == 0) {
+          // TODO: improve this
+          std::istringstream is(line.substr(start, end - start));
+          std::string token;
+          std::getline(is, token, '.');
+          idx = std::stoi(token);
+          std::getline(is, token, '.');
+          support = std::stoi(token);
+        } else if (i == 5)
           path_str = line.substr(start, end - start);
         else if (i == 12) {
           nm_str = line.substr(start, end - start);
@@ -801,8 +809,8 @@ int main_augment(int argc, char *argv[]) {
       if (path_str[0] != '>' || path_str.find('<') != std::string::npos) {
         // XXX: what should we do here?
         if (verbose)
-          std::cerr << cidx << ":" << idx << " : " << "vertices on - strand"
-                    << std::endl;
+          std::cerr << cidx << ":" << idx << " : "
+                    << "vertices on - strand" << std::endl;
         continue;
       }
 
@@ -810,7 +818,8 @@ int main_augment(int argc, char *argv[]) {
       int NM = std::stoi(nm_str.substr(5, nm_str.size()));
       if (NM == 0) {
         if (verbose)
-          std::cerr << cidx << ":" << idx << " : " << "NM = 0" << std::endl;
+          std::cerr << cidx << ":" << idx << " : "
+                    << "NM = 0" << std::endl;
         continue;
       }
 
@@ -823,8 +832,8 @@ int main_augment(int argc, char *argv[]) {
       path.push_back(std::stoi(path_str.substr(start, end - start)));
       if (path.front() != ss.a.v || path.back() != ss.b.v) {
         if (verbose)
-          std::cerr << cidx << ":" << idx << " : " << "wrong sink/source"
-                    << std::endl;
+          std::cerr << cidx << ":" << idx << " : "
+                    << "wrong sink/source" << std::endl;
         continue;
       }
 
@@ -860,8 +869,8 @@ int main_augment(int argc, char *argv[]) {
 
       if (ez.score < min_as) {
         if (verbose)
-          std::cerr << cidx << ":" << idx << " : " << "low score " << ez.score
-                    << std::endl;
+          std::cerr << cidx << ":" << idx << " : "
+                    << "low score " << ez.score << std::endl;
         continue;
       }
 
@@ -943,7 +952,7 @@ int main_augment(int argc, char *argv[]) {
       std::cout << "cg:Z:" << cigar << "\t";
       std::cout << "cs:Z:" << cs << "\t";
       // std::cout << "cl:Z:" << clipped << "\t";
-      // std::cout << "cw:Z:" << support << "\t";
+      std::cout << "cw:Z:" << support << "\t";
       // std::cout << "rp:Z:" << ref1 << ":" << pos1 + 1 << "-" << pos2 + klen
       // << "\t";
       std::cout << "qs:Z:" << consensus[idx] << "\t";
