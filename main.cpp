@@ -4,6 +4,7 @@
 #include "usage.h"
 
 int main_sketch(int argc, char *argv[]);
+int main_stats(int argc, char *argv[]);
 int main_augment(int argc, char *argv[]);
 
 // int main_test(int argc, char *argv[]);
@@ -21,8 +22,8 @@ int main(int argc, char *argv[]) {
     return main_sketch(argc - 1, argv + 1);
   else if (strcmp(argv[1], "augment") == 0)
     return main_augment(argc - 1, argv + 1);
-  // else if (strcmp(argv[1], "test") == 0)
-  //   return main_test(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "stats") == 0)
+    return main_stats(argc - 1, argv + 1);
   // else if (strcmp(argv[1], "dump") == 0)
   //   return main_dump(argc - 1, argv + 1);
   // else if (strcmp(argv[1], "kan") == 0)

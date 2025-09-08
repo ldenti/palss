@@ -22,12 +22,14 @@ void sk_destroy(sketch_t *sk) {
   free(sk);
 }
 
-uint64_t sk_encode(int64_t v, int16_t off) {
-  uint64_t e = (v << 16) | (off & 0xFFFF);
+uint64_t sk_encode(int64_t v, int16_t off, uint8_t isref) {
+
+  uint64_t e = (v << 16) | ((off & 0x7FFF) << 1) | (isref & 1);
   return e;
 }
 int64_t sk_decode_v(uint64_t e) { return e >> 16; }
-int16_t sk_decode_off(uint64_t e) { return e & 0xFFFF; }
+int16_t sk_decode_off(uint64_t e) { return (e >> 1) & 0x7FFF; }
+uint8_t sk_decode_isref(uint64_t e) { return e & 1; }
 
 /* Binary search sx in arr[l:r+1]*/
 int64_t binary_search(uint64_t *arr, int64_t l, int64_t r, uint64_t sx) {
@@ -71,11 +73,12 @@ void sk_add(sketch_t *sk, uint64_t kmer_d) {
   ++sk->n;
 }
 
-void sk_add_v(sketch_t *sk, uint64_t kmer_d, int64_t v, int16_t offset) {
+void sk_add_v(sketch_t *sk, uint64_t kmer_d, int64_t v, int16_t offset,
+              uint8_t isref) {
   int64_t p = sk_get_p(sk, kmer_d);
   if (p == -1)
     return;
-  sk->vls[p] = sk_encode(v, offset);
+  sk->vls[p] = sk_encode(v, offset, isref);
 }
 
 hit_t sk_get(sketch_t *sk, uint64_t kmer_d) {
@@ -84,6 +87,7 @@ hit_t sk_get(sketch_t *sk, uint64_t kmer_d) {
   if (p != -1) {
     hit.first = sk_decode_v(sk->vls[p]);
     hit.second = sk_decode_off(sk->vls[p]);
+    hit.third = sk_decode_isref(sk->vls[p]);
   }
   return hit;
 }

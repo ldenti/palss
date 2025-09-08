@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <getopt.h>
 #include <omp.h>
+#include <set>
 #include <stdio.h>
 #include <zlib.h>
 
@@ -77,10 +78,11 @@ int main_sketch(int argc, char *argv[]) {
   bool txt_flag = 0;  // dump sketch in txt
   bool big_flag = 0;  // do we need big sketch?
   int nth = 4;        // number of threads
+  std::string path_prefix = "CHM13";
   std::string out_fn = "-";
 
   int _c;
-  while ((_c = getopt(argc, argv, "k:m:g:@:tbh")) != -1) {
+  while ((_c = getopt(argc, argv, "k:m:g:@:p:tbh")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
@@ -97,6 +99,8 @@ int main_sketch(int argc, char *argv[]) {
     case 'b':
       big_flag = true;
       break;
+    case 'p':
+      path_prefix = optarg;
     case '@':
       nth = std::stoi(optarg);
       break;
@@ -187,7 +191,27 @@ int main_sketch(int argc, char *argv[]) {
   ks_destroy(ks);
   fprintf(stderr, "[M::%s] loaded %ld kmers (from %d vertices) in %.3f sec\n",
           __func__, totkmers, nvertices, realtime() - rt);
+
   rt = realtime();
+
+  fp = gzopen(gfa_fn, "r");
+  ks = ks_init(fp);
+  std::set<uint64_t> ref_vs; // vertices on reference paths (GFA space)
+  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
+    path_t path;
+    if (s.s[0] == 'P') {
+      gfa_parse_P(s.s, path, path_prefix);
+    } else if (s.s[0] == 'W') {
+      gfa_parse_W(s.s, path, path_prefix);
+    } else {
+      continue;
+    }
+    for (uint v = 0; v < path.vertices.size(); ++v) {
+      ref_vs.insert(path.vertices[v]);
+    }
+  }
+  gzclose(fp);
+  ks_destroy(ks);
 
   // Sort kmers
   rt = realtime();
@@ -281,14 +305,16 @@ int main_sketch(int argc, char *argv[]) {
       kmer_d = k2d(kmer, klen);
       rckmer_d = rc(kmer_d, klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
-      sk_add_v(sketch, ckmer_d, seg.idx, 0);
+      sk_add_v(sketch, ckmer_d, seg.idx, 0,
+               ref_vs.find(seg.idx) != ref_vs.end());
 
       for (p = klen; p < seg.l; ++p) {
         c = to_int[seg.seq[p]] - 1; // A is 1 but it should be 0
         kmer_d = lsappend(kmer_d, c, klen);
         rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
-        sk_add_v(sketch, ckmer_d, seg.idx, p - klen + 1);
+        sk_add_v(sketch, ckmer_d, seg.idx, p - klen + 1,
+                 ref_vs.find(seg.idx) != ref_vs.end());
       }
     }
   }

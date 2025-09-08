@@ -87,9 +87,9 @@ int Graph::load_paths(const std::string &ref) {
     if (s.s[0] == 'P' || s.s[0] == 'W') {
       path_t path;
       if (s.s[0] == 'P') {
-        gfa_parse_P(s.s, path, ref); // XXX: hardcoded
+        gfa_parse_P(s.s, path, ref);
       } else {
-        gfa_parse_W(s.s, path, ref); // XXX: hardcoded
+        gfa_parse_W(s.s, path, ref);
       }
 
       if (path.vertices.empty())
@@ -192,43 +192,44 @@ int Graph::build_distance_index() {
 }
 **/
 
-bool Graph::cyclic_helper(int v, std::vector<bool> &recStack,
-                          std::vector<bool> &visited) const {
-  // If the node is already in the recursion stack, a cycle is detected
-  if (recStack[v])
-    return true;
+// bool Graph::cyclic_helper(int v, std::vector<bool> &recStack,
+//                           std::vector<bool> &visited) const {
+//   // If the node is already in the recursion stack, a cycle is detected
+//   if (recStack[v])
+//     return true;
 
-  // If the node is already visited and not in recursion stack, no need to check
-  // again
-  if (visited[v])
-    return false;
+//   // If the node is already visited and not in recursion stack, no need to
+//   check
+//   // again
+//   if (visited[v])
+//     return false;
 
-  // Mark the current node as visited and add it to the recursion stack
-  visited[v] = true;
-  recStack[v] = true;
+//   // Mark the current node as visited and add it to the recursion stack
+//   visited[v] = true;
+//   recStack[v] = true;
 
-  // Recur for all neighbors
-  for (int x : out_edges.at(v)) {
-    if (cyclic_helper(x, visited, recStack))
-      return true;
-  }
+//   // Recur for all neighbors
+//   for (int x : out_edges.at(v)) {
+//     if (cyclic_helper(x, visited, recStack))
+//       return true;
+//   }
 
-  // Remove the node from the recursion stack
-  recStack[v] = false;
-  return false;
-}
+//   // Remove the node from the recursion stack
+//   recStack[v] = false;
+//   return false;
+// }
 
-bool Graph::cyclic() const {
-  int n = vertices.size();
-  std::vector<bool> visited(n, false);
-  std::vector<bool> recStack(n, false);
-  // Check for cycles starting from every unvisited node
-  for (int i = 0; i < n; ++i) {
-    if (!visited[i] && cyclic_helper(i, visited, recStack))
-      return true;
-  }
-  return false;
-}
+// bool Graph::cyclic() const {
+//   int n = vertices.size();
+//   std::vector<bool> visited(n, false);
+//   std::vector<bool> recStack(n, false);
+//   // Check for cycles starting from every unvisited node
+//   for (int i = 0; i < n; ++i) {
+//     if (!visited[i] && cyclic_helper(i, visited, recStack))
+//       return true;
+//   }
+//   return false;
+// }
 
 uint Graph::distance(int v1, int v2) {
   // v1 and v2 are in graph space
@@ -276,30 +277,31 @@ uint Graph::distance(int v1, int v2) {
   return std::abs(vertices[ref1].pos - vertices[ref2].pos) + d1 + d2;
 }
 
-bool Graph::dfs(int v1, int v2, int d,
-                std::map<int, std::set<int>> &edges) const {
-  if (edges.find(v1) != edges.end())
-    // we already visited this vertex, that is a good vertex iif we have stored
-    // at least one outgoing edge
-    return edges[v1].size() > 0;
-  if (v1 == v2)
-    // we have reached the sink
-    return true;
-  if (d > 20) // XXX: hardcoded
-              // we do not want to visit the entire graph
-    return false;
+// bool Graph::dfs(int v1, int v2, int d,
+//                 std::map<int, std::set<int>> &edges) const {
+//   if (edges.find(v1) != edges.end())
+//     // we already visited this vertex, that is a good vertex iif we have
+//     stored
+//     // at least one outgoing edge
+//     return edges[v1].size() > 0;
+//   if (v1 == v2)
+//     // we have reached the sink
+//     return true;
+//   if (d > 20) // XXX: hardcoded
+//               // we do not want to visit the entire graph
+//     return false;
 
-  bool res = false;
-  edges[v1] = std::set<int>();
-  for (const auto &vv : out_edges[v1]) {
-    bool res1 = dfs(vv, v2, d + 1, edges);
-    if (res1)
-      edges[v1].insert(vv);
-    res |= res1;
-  }
+//   bool res = false;
+//   edges[v1] = std::set<int>();
+//   for (const auto &vv : out_edges[v1]) {
+//     bool res1 = dfs(vv, v2, d + 1, edges);
+//     if (res1)
+//       edges[v1].insert(vv);
+//     res |= res1;
+//   }
 
-  return res;
-}
+//   return res;
+// }
 
 std::string Graph::get_path_sequence(int v1, int v2, int off1, int off2) const {
   // v1 and v2 are in GFA space
@@ -340,159 +342,160 @@ std::string Graph::get_path_sequence(int v1, int v2, int off1, int off2) const {
   return pseq;
 }
 
-Graph Graph::subgraph(int v1, int v2, int off1, int off2) const {
-  // v1 and v2 are in GFA space
-  v1 = get_iidx(v1);
-  v2 = get_iidx(v2);
+// Graph Graph::subgraph(int v1, int v2, int off1, int off2) const {
+//   // v1 and v2 are in GFA space
+//   v1 = get_iidx(v1);
+//   v2 = get_iidx(v2);
 
-  Graph subgraph;
-  std::map<int, std::set<int>> edges;
-  if (v1 == v2)
-    edges[v1] = std::set<int>();
-  else {
-    dfs(v1, v2, 0, edges);
+//   Graph subgraph;
+//   std::map<int, std::set<int>> edges;
+//   if (v1 == v2)
+//     edges[v1] = std::set<int>();
+//   else {
+//     dfs(v1, v2, 0, edges);
 
-    for (auto it = edges.cbegin(); it != edges.cend();) {
-      if (it->second.empty()) {
-        it = edges.erase(it);
-      } else {
-        ++it;
-      }
-    }
-  }
+//     for (auto it = edges.cbegin(); it != edges.cend();) {
+//       if (it->second.empty()) {
+//         it = edges.erase(it);
+//       } else {
+//         ++it;
+//       }
+//     }
+//   }
 
-  // First, add vertices to have size for edges
-  std::queue<int> qv;
-  qv.push(v1);
-  seg_t seg;
-  while (!qv.empty()) {
-    int v = qv.front();
-    qv.pop();
-    seg = vertices.at(v);
-    if (subgraph.v_map.find(seg.idx) == subgraph.v_map.end()) {
-      if (v == v1 && v == v2) {
-        seg.seq = seg.seq.substr(off1, off2 - off1);
-      } else {
-        if (v == v1) {
-          seg.seq = seg.seq.substr(off1, seg.seq.size());
-        } else if (v == v2) {
-          seg.seq = seg.seq.substr(0, off2);
-        }
-      }
-      seg.l = seg.seq.size();
-      subgraph.v_map[seg.idx] = subgraph.vertices.size();
-      subgraph.vertices.push_back(seg);
-    }
-    if (v == v2)
-      break;
-    if (edges.find(v) == edges.end())
-      continue;
-    for (const auto &vv : edges.at(v)) {
-      qv.push(vv);
-    }
-  }
-  assert(subgraph.v_map[vertices[v1].idx] == 0);
-  assert(subgraph.v_map[vertices[v2].idx] == subgraph.vertices.size() - 1);
-  subgraph.out_edges.resize(subgraph.vertices.size());
-  subgraph.in_edges.resize(subgraph.vertices.size());
-  subgraph.ne = 0;
+//   // First, add vertices to have size for edges
+//   std::queue<int> qv;
+//   qv.push(v1);
+//   seg_t seg;
+//   while (!qv.empty()) {
+//     int v = qv.front();
+//     qv.pop();
+//     seg = vertices.at(v);
+//     if (subgraph.v_map.find(seg.idx) == subgraph.v_map.end()) {
+//       if (v == v1 && v == v2) {
+//         seg.seq = seg.seq.substr(off1, off2 - off1);
+//       } else {
+//         if (v == v1) {
+//           seg.seq = seg.seq.substr(off1, seg.seq.size());
+//         } else if (v == v2) {
+//           seg.seq = seg.seq.substr(0, off2);
+//         }
+//       }
+//       seg.l = seg.seq.size();
+//       subgraph.v_map[seg.idx] = subgraph.vertices.size();
+//       subgraph.vertices.push_back(seg);
+//     }
+//     if (v == v2)
+//       break;
+//     if (edges.find(v) == edges.end())
+//       continue;
+//     for (const auto &vv : edges.at(v)) {
+//       qv.push(vv);
+//     }
+//   }
+//   assert(subgraph.v_map[vertices[v1].idx] == 0);
+//   assert(subgraph.v_map[vertices[v2].idx] == subgraph.vertices.size() - 1);
+//   subgraph.out_edges.resize(subgraph.vertices.size());
+//   subgraph.in_edges.resize(subgraph.vertices.size());
+//   subgraph.ne = 0;
 
-  // Now, reiterate to add edges
-  int i1, i2;
-  for (auto const &[v, outs] : edges) {
-    seg = vertices.at(v);
-    i1 = subgraph.get_iidx(seg.idx);
-    for (const auto &v1 : outs) {
-      seg = vertices.at(v1);
-      i2 = subgraph.get_iidx(seg.idx);
-      subgraph.out_edges[i1].push_back(i2);
-      subgraph.in_edges[i2].push_back(i1);
-      ++subgraph.ne;
-    }
-  }
+//   // Now, reiterate to add edges
+//   int i1, i2;
+//   for (auto const &[v, outs] : edges) {
+//     seg = vertices.at(v);
+//     i1 = subgraph.get_iidx(seg.idx);
+//     for (const auto &v1 : outs) {
+//       seg = vertices.at(v1);
+//       i2 = subgraph.get_iidx(seg.idx);
+//       subgraph.out_edges[i1].push_back(i2);
+//       subgraph.in_edges[i2].push_back(i1);
+//       ++subgraph.ne;
+//     }
+//   }
 
-  return subgraph;
-}
+//   return subgraph;
+// }
 
-Graph Graph::canonicalize() const {
-  int total_size = 0;
-  for (uint v = 0; v < vertices.size(); ++v)
-    total_size += vertices[v].l;
+// Graph Graph::canonicalize() const {
+//   int total_size = 0;
+//   for (uint v = 0; v < vertices.size(); ++v)
+//     total_size += vertices[v].l;
 
-  Graph cg;
+//   Graph cg;
 
-  // vertices
-  // cg.vertices.resize(total_size);
+//   // vertices
+//   // cg.vertices.resize(total_size);
 
-  // edges
-  cg.ne = 0;
-  cg.out_edges.resize(total_size);
-  cg.in_edges.resize(total_size);
+//   // edges
+//   cg.ne = 0;
+//   cg.out_edges.resize(total_size);
+//   cg.in_edges.resize(total_size);
 
-  // TODO: add paths if we need
+//   // TODO: add paths if we need
 
-  // for each vertex of original graph (internal id in [0,n)), store
-  // starting/ending canonical vertices in new graph
-  std::vector<int> starting(vertices.size(), 0);
-  std::vector<int> ending(vertices.size(), 0);
+//   // for each vertex of original graph (internal id in [0,n)), store
+//   // starting/ending canonical vertices in new graph
+//   std::vector<int> starting(vertices.size(), 0);
+//   std::vector<int> ending(vertices.size(), 0);
 
-  int v = 0;
-  for (const seg_t &seg : vertices) {
-    starting[v] = cg.vertices.size();
-    for (int c = 0; c < seg.l; ++c) {
-      seg_t new_seg;
-      new_seg.idx = cg.vertices.size();
-      new_seg.seq = seg.seq[c];
-      new_seg.l = 1;
-      cg.vertices.push_back(new_seg);
-      cg.v_map[new_seg.idx] = new_seg.idx;
+//   int v = 0;
+//   for (const seg_t &seg : vertices) {
+//     starting[v] = cg.vertices.size();
+//     for (int c = 0; c < seg.l; ++c) {
+//       seg_t new_seg;
+//       new_seg.idx = cg.vertices.size();
+//       new_seg.seq = seg.seq[c];
+//       new_seg.l = 1;
+//       cg.vertices.push_back(new_seg);
+//       cg.v_map[new_seg.idx] = new_seg.idx;
 
-      // internal link
-      if (c > 0) {
-        cg.out_edges[new_seg.idx - 1].push_back(new_seg.idx);
-        ++cg.ne;
-        cg.in_edges[new_seg.idx].push_back(new_seg.idx - 1);
-      }
-    }
-    ending[v] = cg.vertices.size() - 1;
-    ++v;
-  }
+//       // internal link
+//       if (c > 0) {
+//         cg.out_edges[new_seg.idx - 1].push_back(new_seg.idx);
+//         ++cg.ne;
+//         cg.in_edges[new_seg.idx].push_back(new_seg.idx - 1);
+//       }
+//     }
+//     ending[v] = cg.vertices.size() - 1;
+//     ++v;
+//   }
 
-  // links between original vertices
-  int vv;
-  for (int v = 0; v < vertices.size(); ++v) {
-    vv = ending[v];
-    for (const int &xx : out_edges[v]) {
-      cg.out_edges[vv].push_back(starting[xx]);
-      ++cg.ne;
-      cg.in_edges[starting[xx]].push_back(vv);
-    }
-  }
+//   // links between original vertices
+//   int vv;
+//   for (int v = 0; v < vertices.size(); ++v) {
+//     vv = ending[v];
+//     for (const int &xx : out_edges[v]) {
+//       cg.out_edges[vv].push_back(starting[xx]);
+//       ++cg.ne;
+//       cg.in_edges[starting[xx]].push_back(vv);
+//     }
+//   }
 
-  return cg;
-}
+//   return cg;
+// }
 
-int Graph::to_gfa(const std::string &fn) const {
-  // FILE *fp = fn.compare("-") != 0 ? fopen(fn.c_str(), "w")
-  //                                 : fdopen(fileno(stdout), "w");
-  // if (fp == 0)
-  //   return -1;
+// int Graph::to_gfa(const std::string &fn) const {
+//   // FILE *fp = fn.compare("-") != 0 ? fopen(fn.c_str(), "w")
+//   //                                 : fdopen(fileno(stdout), "w");
+//   // if (fp == 0)
+//   //   return -1;
 
-  // fprintf(fp, "H\tVN:Z:1.1\n");
-  printf("H\tVN:Z:1.1\n");
-  for (const seg_t &seg : vertices)
-    printf("S\t%d\t%s\n", seg.idx, seg.seq.c_str());
-  // fprintf(fp, "S\t%d\t%s\n", seg.idx, seg.seq.c_str());
-  for (uint v = 0; v < out_edges.size(); ++v) {
-    for (const auto &v1 : out_edges[v]) {
-      printf("L\t%d\t+\t%d\t+\t0M\n", vertices.at(v).idx, vertices.at(v1).idx);
-      // fprintf(fp, "L\t%d\t+\t%d\t+\t0M\n", vertices.at(v).idx,
-      //         vertices.at(v1).idx);
-    }
-  }
-  // fclose(fp);
-  return 0;
-}
+//   // fprintf(fp, "H\tVN:Z:1.1\n");
+//   printf("H\tVN:Z:1.1\n");
+//   for (const seg_t &seg : vertices)
+//     printf("S\t%d\t%s\n", seg.idx, seg.seq.c_str());
+//   // fprintf(fp, "S\t%d\t%s\n", seg.idx, seg.seq.c_str());
+//   for (uint v = 0; v < out_edges.size(); ++v) {
+//     for (const auto &v1 : out_edges[v]) {
+//       printf("L\t%d\t+\t%d\t+\t0M\n", vertices.at(v).idx,
+//       vertices.at(v1).idx);
+//       // fprintf(fp, "L\t%d\t+\t%d\t+\t0M\n", vertices.at(v).idx,
+//       //         vertices.at(v1).idx);
+//     }
+//   }
+//   // fclose(fp);
+//   return 0;
+// }
 
 int Graph::get_iidx(int v) const { return v_map.at(v); }
 
