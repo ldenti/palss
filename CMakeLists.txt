@@ -22,7 +22,7 @@ find_package(OpenMP REQUIRED)
 
 # ksw2
 ########
-message(STATUS "gfatools will be built from source")
+message(STATUS "ksw2 will be built from source")
 ExternalProject_Add(ksw2
     GIT_REPOSITORY https://github.com/lh3/ksw2.git
     GIT_TAG ""
@@ -40,7 +40,7 @@ SET(KSW2_INCLUDE_DIR ${SOURCE_DIR})
 message(STATUS "ropebwt3 will be built from source")
 ExternalProject_Add(rb3
     GIT_REPOSITORY https://github.com/lh3/ropebwt3.git
-    GIT_TAG 999c17f459d224e623ff4d517e027e50f82fb67b
+    GIT_TAG 0ea3919ed21f10d857d508b0ea728a27abbd8a35 # 3.9 (r259)
     BUILD_IN_SOURCE 1
     UPDATE_COMMAND ""
     CONFIGURE_COMMAND ""
@@ -60,7 +60,7 @@ add_dependencies(RB3 rb3)
 SET(PATCH_CMD "")
 ExternalProject_Add(abpoa
   GIT_REPOSITORY https://github.com/yangao07/abPOA.git
-  GIT_TAG e6bb6fdfa40d573558e5e2b545bdf5769631eaaf # v1.5.3 with bug fixes
+  GIT_TAG f01e0da57ca9398c5a7900026e18d7222b55ee9f # v1.5.4
   BUILD_IN_SOURCE 1
   UPDATE_COMMAND ""
   CONFIGURE_COMMAND ""
