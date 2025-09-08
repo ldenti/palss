@@ -146,18 +146,6 @@ void assemble2(std::vector<sfs_t> &S, int strand) {
     std::reverse(S.begin(), S.end());
   }
 
-  // std::cerr << "Strand: " << strand << std::endl;
-  // int ii = -1;
-  // for (const auto &s : S) {
-  //   ++ii;
-  //   // if (s.qidx == -1 || s.strand != strand)
-  //   //   continue;
-  //   std::cerr << ii << "\t" << s.qidx << " " << (s.strand == strand) << "\t"
-  //             << s.s << ":" << s.l << " " << s.a.v << ":" << s.a.offset << "
-  //             - "
-  //             << s.b.v << ":" << s.b.offset << std::endl;
-  // }
-
   size_t i = 0;
   while (i < S.size()) {
     // skip unanchored or on wrong strand
@@ -176,8 +164,6 @@ void assemble2(std::vector<sfs_t> &S, int strand) {
       if (j == S.size() || S[last_j].s + S[last_j].l <= S[j].s ||
           !gcolinear(S[last_j], S[j])) {
         // non-overlapping: update first, clean others
-        // if (i != last_j)
-        //   std::cerr << "XXX" << std::endl;
         S[i].l = S[last_j].s + S[last_j].l - S[i].s;
         // if (S[i].strand == 1)
         S[i].b = S[last_j].b;
@@ -209,16 +195,6 @@ void assemble2(std::vector<sfs_t> &S, int strand) {
 
   // Resise to new size
   S.resize(new_n);
-  // std::cerr << "--- " << new_n << std::endl;
-  // std::cerr << std::endl;
-  // for (const auto &s : S) {
-  //   if (s.qidx == -1 || s.strand != strand)
-  //     continue;
-  //   std::cerr << s.s << ":" << s.l << " " << s.a.v << ":" << s.a.offset << "
-  //   - "
-  //             << s.b.v << ":" << s.b.offset << std::endl;
-  // }
-
   if (S.size() > 0 && strand == 0) {
     // Reverse the vector
     std::reverse(S.begin(), S.end());
@@ -417,7 +393,6 @@ int main_augment(int argc, char *argv[]) {
   uint min_w = 2; // minimum size for clusters
   int min_as = 0; // minimum alignment score
   std::string path_prefix = "CHM13";
-  std::string ga_bin = "GraphAligner";
   bool verbose = false;
   std::string wd = ".";
   int _c;
@@ -447,9 +422,6 @@ int main_augment(int argc, char *argv[]) {
     case 'p':
       path_prefix = optarg;
       break;
-    case 'g':
-      ga_bin = optarg;
-      break;
     case 'v':
       verbose = true;
       break;
@@ -466,9 +438,6 @@ int main_augment(int argc, char *argv[]) {
   std::string skt_fn = argv[optind++];
   std::string fmd_fn = argv[optind++];
   std::string fq_fn = argv[optind++];
-
-  // Create working directory
-  std::filesystem::create_directory(wd);
 
   // === Graph and sketch loading
   rt = realtime();
@@ -707,22 +676,36 @@ int main_augment(int argc, char *argv[]) {
     }
     if (cluster.size() < min_w)
       continue;
-    if (cluster.size() > 63)
+    if (cluster.size() > 63) {
+      fprintf(stderr, "Skipping cluster since too big\n");
       continue;
+    }
 
     sfs_t ss = cluster[0];
 
-    std::string subgfa_fn = wd + "/" + std::to_string(cidx) + ".gfa";
-    std::string subfa_fn = wd + "/" + std::to_string(cidx) + ".consensus.fa";
-    std::string subgaf_fn = wd + "/" + std::to_string(cidx) + ".gaf";
-    std::string gaout_fn = wd + "/" + std::to_string(cidx) + ".out";
-    std::string gaerr_fn = wd + "/" + std::to_string(cidx) + ".err";
-
+    int vv1 = cluster.front().a.v;
+    int vv2 = cluster.front().b.v;
     int v1 = ss.a.v, v2 = ss.b.v;
-    Graph subgraph = graph.subgraph(v1, v2);
-    subgraph.to_gfa(subgfa_fn);
 
-    // std::ofstream ofs(std::to_string(cidx) + ".sfs.txt", std::ofstream::out);
+    if (!graph.is_on_ref(v1) || !graph.is_on_ref(v2)) {
+      fprintf(stderr,
+              "Skipping cluster since not on reference path (%d:%d > %d:%d)\n",
+              v1, graph.is_on_ref(v1), v2, graph.is_on_ref(v2));
+      continue;
+    }
+
+    std::string pseq =
+        graph.get_path_sequence(v1, v2, ss.a.offset, ss.b.offset + klen);
+    if (pseq.empty()) {
+      fprintf(stderr, "Skipping cluster since %d>%d are not on the same path\n",
+              v1, v2);
+      continue;
+    }
+    uint8_t *pseq_c = (uint8_t *)malloc(pseq.size() + 1);
+    for (uint i = 0; i < pseq.size(); ++i)
+      pseq_c[i] = to_int[pseq[i]] - 1;
+    pseq_c[pseq.size()] = '\0';
+
     // === Consensus via abpoa
     int goods = 0;
     for (sfs_t &s : cluster) {
@@ -737,142 +720,33 @@ int main_augment(int argc, char *argv[]) {
     // ofs.close();
     assert(goods < 64);
     abpoa_msa(ab, abpt, goods, NULL, cseqs_lens, cseqs, NULL, NULL);
-
-    std::ofstream ofs(subfa_fn, std::ofstream::out);
-    abpoa_cons_t *abc = ab->abc;
-    std::vector<std::string> consensus(abc->n_cons);
-
-    total_clusters += abc->n_cons;
-
-    for (int ci = 0; ci < abc->n_cons; ++ci) {
-      int cons_l = abc->cons_len[ci];
-      consensus[ci] = std::string(cons_l, '-');
-      for (int i = 0; i < cons_l; ++i)
-        consensus[ci][i] = "ACGT"[abc->cons_base[ci][i]];
-      int abpoa_supp = abc->clu_n_seq[ci];
-      if (abpoa_supp < min_w)
-        continue;
-      ofs << ">" << ci << "." << abpoa_supp << "\n";
-      ofs << consensus[ci] << "\n";
-    }
-    ofs.close();
     for (sfs_t &s : cluster)
       free(s.seq);
-    // === === ===
 
-    // === Run graphaligner
-    std::string cmd = ga_bin + " --graph " + subgfa_fn + " --reads " +
-                      subfa_fn + " --alignments-out " + subgaf_fn +
-                      " --preset vg --threads 1 > " + gaout_fn + " 2> " +
-                      gaerr_fn;
-    int ret = std::system(cmd.c_str());
-    if (ret != 0) {
-      std::cerr << "Error in running GraphAligner. Return code: " << ret
-                << std::endl;
-      exit(EXIT_FAILURE);
-    }
-    // === === ===
+    abpoa_cons_t *abc = ab->abc;
 
-    // === Realign
-    std::ifstream gaf(subgaf_fn);
-    std::string line;
-    int flag = 0;
-    while (std::getline(gaf, line)) {
-      std::size_t start = 0, end = 0;
-      int i = 0;
-      int support = 0;
-      int idx = -1;
-      std::string path_str, nm_str;
-      while ((end = line.find("\t", start)) != std::string::npos) {
-        if (i == 0) {
-          // TODO: improve this
-          std::istringstream is(line.substr(start, end - start));
-          std::string token;
-          std::getline(is, token, '.');
-          idx = std::stoi(token);
-          std::getline(is, token, '.');
-          support = std::stoi(token);
-        } else if (i == 5)
-          path_str = line.substr(start, end - start);
-        else if (i == 12) {
-          nm_str = line.substr(start, end - start);
-          break;
-        }
-        start = end + 1;
-        ++i;
-      }
-
-      if (flag & (1 << idx))
-        // we already output this subcluster
-        continue;
-
-      if (path_str[0] != '>' || path_str.find('<') != std::string::npos) {
-        // XXX: what should we do here?
-        if (verbose)
-          std::cerr << cidx << ":" << idx << " : "
-                    << "vertices on - strand" << std::endl;
-        continue;
-      }
-
-      // NM
-      int NM = std::stoi(nm_str.substr(5, nm_str.size()));
-      if (NM == 0) {
-        if (verbose)
-          std::cerr << cidx << ":" << idx << " : "
-                    << "NM = 0" << std::endl;
-        continue;
-      }
-
-      std::vector<int> path;
-      start = 1;
-      while ((end = path_str.find(">", start)) != std::string::npos) {
-        path.push_back(std::stoi(path_str.substr(start, end - start)));
-        start = end + 1;
-      }
-      path.push_back(std::stoi(path_str.substr(start, end - start)));
-      if (path.front() != ss.a.v || path.back() != ss.b.v) {
-        if (verbose)
-          std::cerr << cidx << ":" << idx << " : "
-                    << "wrong sink/source" << std::endl;
-        continue;
-      }
-
-      // XXX: pseq can be built directly without substr
-      std::string full_pseq;
-      int ps = ss.a.offset, pe = 0;
-      for (uint v = 0; v < path.size(); ++v) {
-        if (path[v] == v2)
-          pe = full_pseq.size() + ss.b.offset + klen;
-        full_pseq += graph.get_sequence(path[v]);
-      }
-      std::string pseq = full_pseq.substr(ps, pe - ps);
-
-      uint8_t *pseq_c = (uint8_t *)malloc(pseq.size() + 1);
-      for (uint i = 0; i < pseq.size(); ++i)
-        pseq_c[i] = to_int[pseq[i]] - 1;
-      pseq_c[pseq.size()] = '\0';
-
-      int cons_l = abc->cons_len[idx];
-      uint8_t *cons_seq = abc->cons_base[idx];
+    total_clusters += abc->n_cons;
+    std::string consensus;
+    for (int ci = 0; ci < abc->n_cons; ++ci) {
+      int cons_l = abc->cons_len[ci];
+      uint8_t *cons_seq = abc->cons_base[ci];
+      consensus = std::string(cons_l, '-');
+      for (int i = 0; i < cons_l; ++i)
+        consensus[i] = "ACGT"[cons_seq[i]];
 
       ksw_extd2_sse(0, cons_l, cons_seq, pseq.size(), pseq_c, 5, mat, gapo,
                     gape, gapo2, gape2, -1, -1, -1, 0, &ez);
 
-      // === === ===
-
       // === Output
-      // int clipped = 0;
+      int clipped = 0;
       if ((ez.cigar[0] & 0xf) != 0 || (ez.cigar[ez.n_cigar - 1] & 0xf) != 0) {
-        // clipped = 1;
-        continue; // XXX: do we want these?
+        clipped = 1;
+        // continue; // XXX: do we want these?
       }
 
-      if (ez.score < min_as) {
-        if (verbose)
-          std::cerr << cidx << ":" << idx << " : "
-                    << "low score " << ez.score << std::endl;
-        continue;
-      }
+      // if (ez.score < min_as) {
+      //   continue;
+      // }
 
       // Parse CIGAR
       int opl;
@@ -897,14 +771,14 @@ int main_augment(int argc, char *argv[]) {
           // M
           int l_tmp = 0;
           for (int j = 0; j < opl; ++j) {
-            if (consensus[idx][cons_p + j] != pseq[pseq_p + j]) {
+            if (consensus[cons_p + j] != pseq[pseq_p + j]) {
               if (l_tmp > 0) {
                 cs += ":" + std::to_string(l_tmp);
                 l_tmp = 0;
               }
               cs += "*";
               cs += pseq[pseq_p + j];
-              cs += consensus[idx][cons_p + j];
+              cs += consensus[cons_p + j];
             } else {
               ++l_tmp;
             }
@@ -917,7 +791,8 @@ int main_augment(int argc, char *argv[]) {
           pseq_p += opl;
         } else if ((ez.cigar[i] & 0xf) == 1) {
           // I
-          cs += "+" + consensus[idx].substr(cons_p, opl);
+          // TODO
+          cs += "+" + consensus.substr(cons_p, opl);
           cons_p += opl;
         } else if ((ez.cigar[i] & 0xf) == 2) {
           // D
@@ -933,40 +808,36 @@ int main_augment(int argc, char *argv[]) {
       }
 
       // print GAF line
-      std::cout << cidx << "." << idx << "\t";
-      std::cout << consensus[idx].size() << "\t";
-      std::cout << 0 << "\t";
-      std::cout << consensus[idx].size() << "\t";
-      std::cout << "+\t";
-      std::cout << ">" << path[0];
-      for (uint i = 1; i < path.size(); ++i)
-        std::cout << ">" << path[i];
-      std::cout << "\t";
-      std::cout << full_pseq.size() << "\t";
-      std::cout << ss.a.offset << "\t";
-      std::cout << ss.a.offset + pseq.size() << "\t";
-      std::cout << tot_res_matches << "\t";
-      std::cout << tot_cigar_len << "\t";
-      std::cout << 60 << "\t";
-      std::cout << "AS:i:" << ez.score << "\t";
-      std::cout << "cg:Z:" << cigar << "\t";
-      std::cout << "cs:Z:" << cs << "\t";
-      // std::cout << "cl:Z:" << clipped << "\t";
-      std::cout << "cw:Z:" << support << "\t";
+      std::cout << cidx << "." << ci << "\t";
+      std::cout << consensus.size() << "\t";
+      // std::cout << 0 << "\t";
+      // std::cout << consensus.size() << "\t";
+      // std::cout << "+\t";
+      // std::cout << ">" << path[0];
+      // for (uint i = 1; i < path.size(); ++i)
+      //   std::cout << ">" << path[i];
+      // std::cout << "\t";
+      // std::cout << full_pseq.size() << "\t";
+      // std::cout << ss.a.offset << "\t";
+      // std::cout << ss.a.offset + pseq.size() << "\t";
+      // std::cout << tot_res_matches << "\t";
+      // std::cout << tot_cigar_len << "\t";
+      // std::cout << 60 << "\t";
+      std::cout << /* "AS:i:" << */ ez.score << "\t";
+      std::cout << /* "cg:Z:" << */ cigar << "\t";
+      std::cout << /* "cs:Z:" << */ cs << "\t";
+      std::cout << /* "cl:Z:" << */ clipped << "\t";
+      // std::cout << "cw:Z:" << support << "\t";
       // std::cout << "rp:Z:" << ref1 << ":" << pos1 + 1 << "-" << pos2 + klen
       // << "\t";
-      std::cout << "qs:Z:" << consensus[idx] << "\t";
-      std::cout << "ps:Z:" << pseq;
+      std::cout << /* "qs:Z:" << */ consensus << "\t";
+      std::cout << /* "ps:Z:" << */ pseq;
       std::cout << std::endl;
 
-      flag |= (1 << idx);
-      ++final_clusters;
-
-      free(pseq_c);
-      // free(consensus_c);
+      //   flag |= (1 << idx);
+      //   ++final_clusters;
     }
-
-    gaf.close();
+    free(pseq_c);
   }
 
   abpoa_free_para(abpt);

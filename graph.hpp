@@ -9,6 +9,7 @@
 #include <zlib.h>
 
 #include <map>
+#include <queue>
 #include <set>
 #include <string>
 #include <vector>
@@ -68,8 +69,15 @@ public:
   // Load all paths from gfa
   int load_paths(const std::string &ref);
 
+  bool is_on_ref(int v);
+  std::string get_path_sequence(int v1, int v2, int off1, int off2) const;
+
   // Build distance index
   int build_distance_index();
+
+  bool cyclic_helper(int v, std::vector<bool> &recStack,
+                     std::vector<bool> &visited) const;
+  bool cyclic() const;
 
   // iterative bfs from vertex v, direction out
   uint64_t bfs(int v, int out) const;
@@ -81,7 +89,10 @@ public:
   bool dfs(int v1, int v2, int d, std::map<int, std::set<int>> &edges) const;
 
   // get subgraph between v1 and v2 using DFS
-  Graph subgraph(int v1, int v2) const;
+  Graph subgraph(int v1, int v2, int off1, int off2) const;
+
+  // Make graph canonical
+  Graph canonicalize() const;
 
   int to_gfa(const std::string &fn) const;
 
