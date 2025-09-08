@@ -23,10 +23,11 @@ int main_stats(int argc, char *argv[]) {
   int ref = 0;
   for (int v = 0; v < sketch->n; ++v) {
     ref += sk_decode_isref(sketch->vls[v]);
-    if (!sk_decode_isref(sketch->vls[v]))
-      printf("%ld\n", sk_decode_v(sketch->vls[v]));
+    // if (!sk_decode_isref(sketch->vls[v]))
+    //   printf("%ld\n", sk_decode_v(sketch->vls[v]));
   }
-  printf("Sketches on reference path(s): %d\n", ref);
+  printf("Sketches on reference path(s): %d (%f)\n", ref,
+         ref / (float)sketch->n);
 
   // sk_dump(sketch, "-");
 

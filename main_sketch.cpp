@@ -101,6 +101,7 @@ int main_sketch(int argc, char *argv[]) {
       break;
     case 'p':
       path_prefix = optarg;
+      break;
     case '@':
       nth = std::stoi(optarg);
       break;
@@ -212,6 +213,8 @@ int main_sketch(int argc, char *argv[]) {
   }
   gzclose(fp);
   ks_destroy(ks);
+  fprintf(stderr, "[M::%s] loaded %ld reference vertices in %.3f sec\n",
+          __func__, ref_vs.size(), realtime() - rt);
 
   // Sort kmers
   rt = realtime();
