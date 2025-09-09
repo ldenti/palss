@@ -48,12 +48,12 @@ int64_t binary_search(uint64_t *arr, int64_t l, int64_t r, uint64_t sx) {
 
 int64_t sk_get_p(sketch_t *sk, uint64_t kmer_d) {
   uint64_t px = (kmer_d >> (2 * (sk->k - sk->m))) & (sk->np - 1);
-  if (sk->pxs[px] == -1)
+  if (sk->pxs[px] == -1UL)
     return -1;
 
   int64_t npx = px + 1;
   // find next prefix
-  while (npx < sk->np && sk->pxs[npx] == -1)
+  while (npx < sk->np && sk->pxs[npx] == -1UL)
     ++npx;
   int64_t end;
   if (npx == sk->np)
@@ -65,7 +65,7 @@ int64_t sk_get_p(sketch_t *sk, uint64_t kmer_d) {
 
 void sk_add(sketch_t *sk, uint64_t kmer_d) {
   uint64_t px = (kmer_d >> (2 * (sk->k - sk->m))) & (sk->np - 1);
-  if (sk->pxs[px] == -1) {
+  if (sk->pxs[px] == -1UL) {
     // first kmer with this prefix will be at this position
     sk->pxs[px] = sk->n;
   }
@@ -127,15 +127,15 @@ int sk_store(sketch_t *sk, const char *fn) {
     fprintf(stderr, "[M::%s] failed to store sketch (n)\n", __func__);
     exit(1);
   }
-  if (fwrite(sk->pxs, sizeof sk->pxs, sk->np, fp) != sk->np) {
+  if ((int64_t)fwrite(sk->pxs, sizeof sk->pxs, sk->np, fp) != sk->np) {
     fprintf(stderr, "[M::%s] failed to store sketch (pxs)\n", __func__);
     exit(1);
   }
-  if (fwrite(sk->sxs, sizeof sk->sxs, sk->n, fp) != sk->n) {
+  if ((int64_t)fwrite(sk->sxs, sizeof sk->sxs, sk->n, fp) != sk->n) {
     fprintf(stderr, "[M::%s] failed to store sketch (sxs)\n", __func__);
     exit(1);
   }
-  if (fwrite(sk->vls, sizeof sk->vls, sk->n, fp) != sk->n) {
+  if ((int64_t)fwrite(sk->vls, sizeof sk->vls, sk->n, fp) != sk->n) {
     fprintf(stderr, "[M::%s] failed to store sketch (vls)\n", __func__);
     exit(1);
   }
@@ -167,19 +167,19 @@ sketch_t *sk_load(const std::string &fn) {
   sk->size = sk->n;
 
   sk->pxs = (uint64_t *)malloc(sk->np * sizeof sk->pxs);
-  if (fread(sk->pxs, sizeof sk->pxs, sk->np, fp) != sk->np) {
+  if ((int64_t)fread(sk->pxs, sizeof sk->pxs, sk->np, fp) != sk->np) {
     fprintf(stderr, "[M::%s] failed to read sketch (pxs)\n", __func__);
     exit(1);
   }
 
   sk->sxs = (uint64_t *)malloc(sk->n * sizeof sk->sxs);
-  if (fread(sk->sxs, sizeof sk->sxs, sk->n, fp) != sk->n) {
+  if ((int64_t)fread(sk->sxs, sizeof sk->sxs, sk->n, fp) != sk->n) {
     fprintf(stderr, "[M::%s] failed to read sketch (sxs)\n", __func__);
     exit(1);
   }
 
   sk->vls = (uint64_t *)malloc(sk->n * sizeof sk->vls);
-  if (fread(sk->vls, sizeof sk->vls, sk->n, fp) != sk->n) {
+  if ((int64_t)fread(sk->vls, sizeof sk->vls, sk->n, fp) != sk->n) {
     fprintf(stderr, "[M::%s] failed to read sketch (vls)\n", __func__);
     exit(1);
   }

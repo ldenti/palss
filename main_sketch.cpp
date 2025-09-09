@@ -130,6 +130,7 @@ int main_sketch(int argc, char *argv[]) {
   rt = realtime();
 
   // Q-intervals memoization
+  assert(mklen < 16);
   int memo_bm = (1 << (mklen * 2)) - 1;
   rb3_sai_t *qints = memoize(&fmd, mklen);
   fprintf(stderr, "[M::%s] memoization (all %d-mers) in %.3f sec\n", __func__,
@@ -139,8 +140,9 @@ int main_sketch(int argc, char *argv[]) {
   // First pass over graph. Store all kmers in an array
   sketch_t *sketch = sk_init((uint64_t)1 << (big_flag ? 32 : 30), klen,
                              mklen); // XXX: hardcoded
-  uint64_t *kmers = sketch->vls;     // we are going to "reuse" values array
-  uint64_t totkmers = 0;             // index for insertion in kmers
+
+  uint64_t *kmers = sketch->vls; // we are going to "reuse" values array
+  uint64_t totkmers = 0;         // index for insertion in kmers
   seg_t seg;
 
   char *kmer = (char *)malloc(sizeof(char) *
@@ -158,7 +160,7 @@ int main_sketch(int argc, char *argv[]) {
   if (fp == 0)
     return 0;
   kstream_t *ks = ks_init(fp);
-
+  std::set<uint64_t> ref_vs; // vertices on reference paths (GFA space)
   rt1 = realtime();
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
     if (s.s[0] == 'S') {
@@ -174,11 +176,12 @@ int main_sketch(int argc, char *argv[]) {
         continue;
 
       strncpy(kmer, seg.seq.c_str(), klen);
+      // first kmer
       kmer_d = k2d(kmer, klen);
       rckmer_d = rc(kmer_d, klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
       kmers[totkmers++] = ckmer_d;
-
+      // all other kmers
       for (p = klen; p < seg.l; ++p) {
         c = to_int[seg.seq[p]] - 1; // A is 1 but it should be 0
         kmer_d = lsappend(kmer_d, c, klen);
@@ -186,35 +189,24 @@ int main_sketch(int argc, char *argv[]) {
         ckmer_d = std::min(kmer_d, rckmer_d);
         kmers[totkmers++] = ckmer_d;
       }
+    } else if (s.s[0] == 'P' || s.s[0] == 'W') {
+      path_t path;
+      if (s.s[0] == 'P')
+        gfa_parse_P(s.s, path, path_prefix);
+      else if (s.s[0] == 'W')
+        gfa_parse_W(s.s, path, path_prefix);
+      for (uint v = 0; v < path.vertices.size(); ++v)
+        ref_vs.insert(path.vertices[v]);
     }
   }
   gzclose(fp);
   ks_destroy(ks);
-  fprintf(stderr, "[M::%s] loaded %ld kmers (from %d vertices) in %.3f sec\n",
-          __func__, totkmers, nvertices, realtime() - rt);
-
-  rt = realtime();
-
-  fp = gzopen(gfa_fn, "r");
-  ks = ks_init(fp);
-  std::set<uint64_t> ref_vs; // vertices on reference paths (GFA space)
-  while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
-    path_t path;
-    if (s.s[0] == 'P') {
-      gfa_parse_P(s.s, path, path_prefix);
-    } else if (s.s[0] == 'W') {
-      gfa_parse_W(s.s, path, path_prefix);
-    } else {
-      continue;
-    }
-    for (uint v = 0; v < path.vertices.size(); ++v) {
-      ref_vs.insert(path.vertices[v]);
-    }
-  }
-  gzclose(fp);
-  ks_destroy(ks);
-  fprintf(stderr, "[M::%s] loaded %ld reference vertices in %.3f sec\n",
-          __func__, ref_vs.size(), realtime() - rt);
+  fprintf(stderr,
+          "[M::%s] loaded %ld kmers (from %d vertices, reference vertices: "
+          "%ld, %f) "
+          "in %.3f sec\n",
+          __func__, totkmers, nvertices, ref_vs.size(),
+          ref_vs.size() / (float)nvertices, realtime() - rt);
 
   // Sort kmers
   rt = realtime();
@@ -304,13 +296,14 @@ int main_sketch(int argc, char *argv[]) {
       if (seg.l < klen)
         continue;
 
+      // first kmer
       strncpy(kmer, seg.seq.c_str(), klen);
       kmer_d = k2d(kmer, klen);
       rckmer_d = rc(kmer_d, klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
       sk_add_v(sketch, ckmer_d, seg.idx, 0,
                ref_vs.find(seg.idx) != ref_vs.end());
-
+      // all other kmers
       for (p = klen; p < seg.l; ++p) {
         c = to_int[seg.seq[p]] - 1; // A is 1 but it should be 0
         kmer_d = lsappend(kmer_d, c, klen);
@@ -326,7 +319,7 @@ int main_sketch(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] sketched %ld kmers in %.3f sec\n", __func__,
           sketch->n, realtime() - rt);
 
-  // Write sketch to stdout
+  // Write sketch
   rt = realtime();
   if (txt_flag)
     sk_dump(sketch, out_fn.c_str());
