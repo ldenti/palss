@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PALSS VERSION 0.0.1)
 
-add_executable(palss misc.cpp kmer.cpp graph.cpp sketch.cpp main_sketch.cpp main_stats.cpp main_augment.cpp main.cpp)
+add_executable(palss misc.cpp kmer.cpp graph.cpp sketch.cpp main_sketch.cpp main_kan.cpp main_stats.cpp main_augment.cpp main.cpp)
 # palss misc.cpp kmer.cpp segments.cpp graph.cpp  main_sketch.cpp main_search.cpp main.cpp
 
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
