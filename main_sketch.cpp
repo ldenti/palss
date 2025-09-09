@@ -153,6 +153,7 @@ int main_sketch(int argc, char *argv[]) {
   uint8_t c;                               // new character to append
   int p = 0;                               // current position on segment
   int nvertices = 0;                       // number of vertices processed
+  int nvertices_long = 0; // number of vertices processed (longer than k)
 
   kstring_t s = {0, 0, 0};
   int dret;
@@ -165,8 +166,8 @@ int main_sketch(int argc, char *argv[]) {
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
     if (s.s[0] == 'S') {
       ++nvertices;
-      if (nvertices % 1000000 == 0) {
-        fprintf(stderr, "[M::%s] parsed 1M vertices in %.3f sec\n", __func__,
+      if (nvertices % 10000000 == 0) {
+        fprintf(stderr, "[M::%s] parsed 10M vertices in %.3f sec\n", __func__,
                 realtime() - rt1);
         rt1 = realtime();
       }
@@ -174,6 +175,7 @@ int main_sketch(int argc, char *argv[]) {
       gfa_parse_S(s.s, seg);
       if (seg.l < klen)
         continue;
+      ++nvertices_long;
 
       strncpy(kmer, seg.seq.c_str(), klen);
       // first kmer
@@ -202,11 +204,10 @@ int main_sketch(int argc, char *argv[]) {
   gzclose(fp);
   ks_destroy(ks);
   fprintf(stderr,
-          "[M::%s] loaded %ld kmers (from %d vertices, reference vertices: "
-          "%ld, %f) "
-          "in %.3f sec\n",
-          __func__, totkmers, nvertices, ref_vs.size(),
-          ref_vs.size() / (float)nvertices, realtime() - rt);
+          "[M::%s] loaded %ld kmers from %d vertices (total vertices: %d; "
+          "reference vertices: %ld) in %.3f sec\n",
+          __func__, totkmers, nvertices_long, nvertices, ref_vs.size(),
+          realtime() - rt);
 
   // Sort kmers
   rt = realtime();
@@ -286,8 +287,8 @@ int main_sketch(int argc, char *argv[]) {
   while (ks_getuntil(ks, KS_SEP_LINE, &s, &dret) >= 0) {
     if (s.s[0] == 'S') {
       ++nvertices;
-      if (nvertices % 1000000 == 0) {
-        fprintf(stderr, "[M::%s] parsed 1M vertices in %.3f sec\n", __func__,
+      if (nvertices % 10000000 == 0) {
+        fprintf(stderr, "[M::%s] parsed 10M vertices in %.3f sec\n", __func__,
                 realtime() - rt1);
         rt1 = realtime();
       }
