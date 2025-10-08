@@ -1,0 +1,7 @@
+.vscode
+*~
+palss
+build/
+include/
+lib/
+example/
