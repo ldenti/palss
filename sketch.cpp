@@ -64,6 +64,7 @@ int64_t sk_get_p(sketch_t *sk, uint64_t kmer_d) {
 }
 
 void sk_insert(sketch_t *sk, uint64_t kmer_d, uint64_t value) {
+  assert(sk->n < sk->size);
   uint64_t px = (kmer_d >> (2 * (sk->k - sk->m))) & (sk->np - 1);
   if (sk->pxs[px] == -1UL) {
     // first kmer with this prefix will be at this position

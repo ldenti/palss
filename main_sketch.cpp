@@ -8,8 +8,9 @@
 #include "sdsl/simple_sds.hpp"
 
 #include "kmer.hpp"
+#include "misc.hpp"
 #include "sketch.hpp"
-#include "usage.h"
+#include "usage.hpp"
 
 typedef struct {
   uint64_t kmer;
@@ -26,18 +27,15 @@ typedef struct {
 // }
 
 int main_sketch(int argc, char *argv[]) {
-  uint klen = 31;    // kmer size
-  bool big_flag = 0; // do we need big sketch?
+  double rt;
+  uint klen = 31; // kmer size
   // int nth = 4;       // number of threads
 
   int _c;
-  while ((_c = getopt(argc, argv, "k:@:bh")) != -1) {
+  while ((_c = getopt(argc, argv, "k:@:h")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
-      break;
-    case 'b':
-      big_flag = true;
       break;
     // case '@':
     //   nth = std::stoi(optarg);
@@ -54,29 +52,35 @@ int main_sketch(int argc, char *argv[]) {
   }
   std::string gbz_fn = argv[optind++];
 
+  rt = realtime();
   gbwtgraph::GBZ gbz;
   sdsl::simple_sds::load_from(gbz, gbz_fn);
-  gbwt::printStatistics(gbz.index, gbz_fn, std::cerr);
+  // gbwt::printStatistics(gbz.index, gbz_fn, std::cerr);
+  fprintf(stderr, "[M::%s] Loaded GBZ in %.3fs\n", __func__, realtime() - rt);
   // R-index
+  rt = realtime();
   gbwt::FastLocate fl;
   fl = gbwt::FastLocate(gbz.index);
   std::ofstream out;
   out.open(gbz_fn + ".ri", std::ofstream::out);
   fl.serialize(out);
   out.close();
+  fprintf(stderr, "[M::%s] Built R-index in %.3fs\n", __func__,
+          realtime() - rt);
 
   std::vector<solid_anchor_t> ALL_KMERS;
 
   const gbwt::Metadata &metadata = gbz.index.metadata;
   for (gbwt::Metadata::size_type sample_id = 0; sample_id < metadata.samples();
        ++sample_id) {
+    rt = realtime();
     std::string sample_name = metadata.sample(sample_id);
-    std::vector<gbwt::size_type> paths = metadata.pathsForSample(sample_id);
-    std::cerr << sample_id << ": " << sample_name << " - " << paths.size()
-              << std::endl;
 
-    // XXX: reference has haplotype 0, other samples have haplotypes 1 and 2
-    std::vector<std::vector<solid_anchor_t>> anchors(3);
+    fprintf(stderr, "[M::%s] === %s ===\n", __func__, sample_name.c_str());
+
+    std::vector<gbwt::size_type> paths = metadata.pathsForSample(sample_id);
+    std::vector<int> contigs(2);
+    std::vector<std::vector<solid_anchor_t>> anchors(2);
     for (size_t pp = 0; pp < paths.size(); ++pp) {
       gbwt::size_type path_id = paths[pp];
       gbwt::size_type seq_id = gbwt::Path::encode(path_id, false);
@@ -86,7 +90,7 @@ int main_sketch(int argc, char *argv[]) {
           gbz.index.metadata.fullPath(path_id).contig_name;
       int haplotype = gbz.index.metadata.fullPath(path_id).haplotype;
       // int offset = gbz.index.metadata.fullPath(path_id).offset;
-      std::cerr << contig_name << " " << haplotype << std::endl;
+      // std::cerr << contig_name << " " << haplotype << std::endl;
 
       std::string sequence = ""; // full path sequence
       std::vector<gbwt::short_type> values;
@@ -114,7 +118,10 @@ int main_sketch(int argc, char *argv[]) {
       if (sequence.size() < klen)
         continue;
 
-      haplotype = haplotype < 0 ? 0 : haplotype; // P lines have haplotype -1
+      // reference has haplotype 0, other samples have haplotypes 1 and 2, P
+      // lines have haplotype -1
+      haplotype = haplotype - 1 < 0 ? 0 : haplotype - 1;
+      ++contigs[haplotype];
 
       char *kmer = (char *)malloc(sizeof(char) *
                                   (klen + 1)); // first kmer on sequence (plain)
@@ -140,14 +147,19 @@ int main_sketch(int argc, char *argv[]) {
         rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
         anchors[haplotype].push_back({ckmer_d, values[pos], true});
-        // if (ckmer_d == 184369)
-        //   std::cerr << " --- " << values[pos] << std::endl;
       }
 
       free(kmer);
     }
 
-    for (int hh = 0; hh < 3; ++hh) {
+    fprintf(
+        stderr,
+        "[M::%s] Extracted %ld/%ld kmers from %s (%d|%d=%d contigs) in %.3fs\n",
+        __func__, anchors[0].size(), anchors[1].size(), sample_name.c_str(),
+        contigs[0], contigs[1], contigs[0] + contigs[1], realtime() - rt);
+
+    rt = realtime();
+    for (int hh = 0; hh < 2; ++hh) {
       // Flag all repeated anchors by sorting
       std::sort(anchors[hh].begin(), anchors[hh].end(),
                 [](const solid_anchor_t &a, const solid_anchor_t &b) {
@@ -165,64 +177,82 @@ int main_sketch(int argc, char *argv[]) {
           anchors[hh][a].kmer = -1;
           ++a;
         }
-        // if (anchors[hh][aa].good)
+        // add anchor even if it's not good (we need it for filtering out the
+        // same anchor on other paths)
         ALL_KMERS.push_back(anchor);
       }
     }
-  }
+    fprintf(stderr, "[M::%s] Flagged and pushed kmers in %.3fs\n", __func__,
+            realtime() - rt);
 
-  std::cerr << "Total kmers: " << ALL_KMERS.size() << std::endl;
+    rt = realtime();
+    std::sort(ALL_KMERS.begin(), ALL_KMERS.end(),
+              [](const solid_anchor_t &a, const solid_anchor_t &b) {
+                return a.kmer < b.kmer;
+              });
+    fprintf(stderr, "[M::%s] Sorted %ld kmers in %.3fs\n", __func__,
+            ALL_KMERS.size(), realtime() - rt);
 
-  std::sort(ALL_KMERS.begin(), ALL_KMERS.end(),
-            [](const solid_anchor_t &a, const solid_anchor_t &b) {
-              return a.kmer < b.kmer;
-            });
-
-  for (uint64_t a = 0; a < ALL_KMERS.size();) {
-    solid_anchor_t anchor = ALL_KMERS[a];
-
-    uint64_t first_a = a;
-    ++a;
-    std::string gfa_idx = gbz.graph.get_segment_name(
-        gbwtgraph::GBWTGraph::node_to_handle(anchor.vertex << 1));
-    // if (anchor.kmer == 184369)
-    //   std::cerr << anchor.vertex << " " << (anchor.vertex >> 1) << " "
-    //             << anchor.good << " - " << gfa_idx << std::endl;
-    bool keep = anchor.good;
-    while (a < ALL_KMERS.size() && ALL_KMERS[a].kmer == anchor.kmer) {
-      // if (anchor.kmer == 184369)
-      //   std::cerr << anchor.vertex << " " << (anchor.vertex >> 1) << " "
-      //             << anchor.good << " - "
-      //             << gbz.graph.get_segment_name(
-      //                    gbwtgraph::GBWTGraph::node_to_handle(
-      //                        ALL_KMERS[a].vertex))
-      //             << std::endl;
-
-      keep &= gbz.graph
-                      .get_segment_name(gbwtgraph::GBWTGraph::node_to_handle(
-                          ALL_KMERS[a].vertex << 1))
-                      .compare(gfa_idx) == 0 &&
-              ALL_KMERS[a].good;
+    rt = realtime();
+    for (uint64_t a = 0; a < ALL_KMERS.size();) {
+      solid_anchor_t &anchor = ALL_KMERS[a];
+      uint64_t first_a = a;
+      ++a;
+      std::string gfa_idx = gbz.graph.get_segment_name(
+          gbwtgraph::GBWTGraph::node_to_handle(anchor.vertex << 1));
+      bool keep = anchor.good;
+      while (a < ALL_KMERS.size() && ALL_KMERS[a].kmer == anchor.kmer) {
+        keep &= gbz.graph
+                        .get_segment_name(gbwtgraph::GBWTGraph::node_to_handle(
+                            ALL_KMERS[a].vertex << 1))
+                        .compare(gfa_idx) == 0 &&
+                ALL_KMERS[a].good;
+        ++a;
+      }
+      ALL_KMERS[first_a].good = keep;
+      uint64_t j = first_a + 1;
+      while (j < a) {
+        ALL_KMERS[j].kmer = -1;
+        ++j;
+      }
+    }
+    // Remove gaps by shifting left
+    int new_n = 0;
+    uint64_t a = 0;
+    while (a < ALL_KMERS.size()) {
+      if (ALL_KMERS[a].kmer != (uint64_t)-1) {
+        ALL_KMERS[new_n].kmer = ALL_KMERS[a].kmer;
+        ALL_KMERS[new_n].vertex = ALL_KMERS[a].vertex;
+        ALL_KMERS[new_n].good = ALL_KMERS[a].good;
+        ++new_n;
+      }
       ++a;
     }
-
-    ALL_KMERS[first_a].good = keep;
-    uint64_t j = first_a + 1;
-    while (j < a) {
-      ALL_KMERS[j].kmer = -1;
-      ++j;
-    }
+    ALL_KMERS.resize(new_n);
+    fprintf(stderr, "[M::%s] Cleaned and shifted %ld kmers in %.3fs\n",
+            __func__, ALL_KMERS.size(), realtime() - rt);
   }
 
+  fprintf(stderr, "[M::%s] === === === === === === ===\n", __func__);
+
   // Build and dump sketch
-  sketch_t *sketch =
-      sk_init((uint64_t)1 << (big_flag ? 32 : 30), klen, 9); // XXX: hardcoded
+  rt = realtime();
+
+  int shift = std::ceil(log2(ALL_KMERS.size()));
+  std::cerr << "Shift: " << shift << std::endl;
+  assert(shift < 33);
+  sketch_t *sketch = sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded
   for (uint64_t i = 0; i < ALL_KMERS.size(); ++i) {
     if (ALL_KMERS[i].good && ALL_KMERS[i].kmer != (uint64_t)-1)
       sk_insert(sketch, ALL_KMERS[i].kmer, ALL_KMERS[i].vertex);
   }
-  std::cerr << "Added " << sketch->n << " sketches" << std::endl;
+  fprintf(stderr, "[M::%s] Added %ld kmers (%.4f) to sketch in %.3fs\n",
+          __func__, sketch->n, (float)sketch->n / ALL_KMERS.size(),
+          realtime() - rt);
+  rt = realtime();
   sk_store(sketch, "-");
+  fprintf(stderr, "[M::%s] Dumped sketch in %.3fs\n", __func__,
+          realtime() - rt);
   sk_destroy(sketch);
 
   return 0;
