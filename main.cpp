@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "usage.hpp"
 #include "misc.hpp"
+#include "usage.hpp"
 
 int main_sketch(int argc, char *argv[]);
 int main_stats(int argc, char *argv[]);
+int main_kan(int argc, char *argv[]);
 
 int main(int argc, char *argv[]) {
   double rt = realtime();
@@ -19,6 +20,8 @@ int main(int argc, char *argv[]) {
     ret = main_sketch(argc - 1, argv + 1);
   else if (strcmp(argv[1], "stats") == 0)
     ret = main_stats(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "kan") == 0)
+    ret = main_kan(argc - 1, argv + 1);
   else {
     fprintf(stderr, "%s", MAIN_USAGE);
     return 1;
