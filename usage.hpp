@@ -17,19 +17,16 @@ static const char *const SKETCH_USAGE_MESSAGE =
     "        -h         display this help and exit\n"
     "\n";
 
-// static const char *const SEARCH_USAGE_MESSAGE =
-//     "Usage: palss search [options] <graph.gfa> <graph.gfa.skt> <paths.fa.fmd> "
-//     "<reads.fx>\n"
-//     "Options:\n"
-//     "        -p <STR>   load only paths containing this (default: CHM13)\n"
-//     "        -s <INT>   number of anchors to check on each side of a specific "
-//     "string (default: 20)\n"
-//     "        -b <INT>   batch size (default: 10000)\n"
-//     "        -@ <INT>   set threads (default: 4)\n"
-//     "        -a         use all solid anchors (default: only anchors on "
-//     "reference paths)\n"
-//     "        -h         display this help and exit\n"
-//     "\n";
+static const char *const SEARCH_USAGE_MESSAGE =
+    "Usage: palss search [options] <graph.gbz> <graph.skt> <paths.fmd> "
+    "<reads.fx>\n"
+    "Options:\n"
+    "        -s <INT>   number of anchors to check on each side of a specific "
+    "string (default: 20)\n"
+    "        -b <INT>   batch size (default: 10000)\n"
+    "        -@ <INT>   set threads (default: 4)\n"
+    "        -h         display this help and exit\n"
+    "\n";
 
 // static const char *const AUGMENT_USAGE_MESSAGE =
 //     "Usage: palss augment [options] <graph.gfa> <specific_strings.txt>\n"
