@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <fstream>
 #include <getopt.h>
 #include <string>
@@ -5,18 +6,13 @@
 #include "gbwt/fast_locate.h"
 #include "gbwt/gbwt.h"
 #include "gbwtgraph/gbz.h"
+#include "kmc_api/kmc_file.h"
 #include "sdsl/simple_sds.hpp"
 
 #include "kmer.hpp"
 #include "misc.hpp"
 #include "sketch.hpp"
 #include "usage.hpp"
-
-typedef struct {
-  uint64_t kmer;
-  uint32_t vertex; // gbwt identifier, without strand information
-  bool good;       // TODO: make this last bit of vertex
-} solid_anchor_t;
 
 // std::string print_kmer(uint64_t kmer_d, int klen) {
 //   char *kmer = (char *)malloc(sizeof(char) * (klen + 1));
@@ -28,18 +24,24 @@ typedef struct {
 
 int main_sketch(int argc, char *argv[]) {
   double rt;
-  uint klen = 31; // kmer size
-  // int nth = 4;       // number of threads
+  uint klen = 31;   // kmer size
+  int nThreads = 4; // number of threads
+  std::string wd = ".";
+
+  std::string kmc_bin = "kmc";
 
   int _c;
-  while ((_c = getopt(argc, argv, "k:@:h")) != -1) {
+  while ((_c = getopt(argc, argv, "k:@:w:h")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
       break;
-    // case '@':
-    //   nth = std::stoi(optarg);
-    //   break;
+    case '@':
+      nThreads = std::stoi(optarg);
+      break;
+    case 'w':
+      wd = optarg;
+      break;
     case 'h':
       fprintf(stderr, "%s", SKETCH_USAGE_MESSAGE);
       return 0;
@@ -58,39 +60,148 @@ int main_sketch(int argc, char *argv[]) {
   // gbwt::printStatistics(gbz.index, gbz_fn, std::cerr);
   fprintf(stderr, "[M::%s] Loaded GBZ in %.3fs\n", __func__, realtime() - rt);
   // R-index
-  rt = realtime();
-  gbwt::FastLocate fl;
-  fl = gbwt::FastLocate(gbz.index);
-  std::ofstream out;
-  out.open(gbz_fn + ".ri", std::ofstream::out);
-  fl.serialize(out);
-  out.close();
-  fprintf(stderr, "[M::%s] Built R-index in %.3fs\n", __func__,
-          realtime() - rt);
+  // rt = realtime();
+  // gbwt::FastLocate fl;
+  // fl = gbwt::FastLocate(gbz.index);
+  // std::ofstream out;
+  // out.open(gbz_fn + ".ri", std::ofstream::out);
+  // fl.serialize(out);
+  // out.close();
+  // fprintf(stderr, "[M::%s] Built R-index in %.3fs\n", __func__,
+  //         realtime() - rt);
 
-  std::vector<solid_anchor_t> ALL_KMERS;
+  std::filesystem::create_directory(wd);
 
   const gbwt::Metadata &metadata = gbz.index.metadata;
+  int i = 0, j = 1;
+  bool first = true;
+  std::vector<std::string> fas_fn = {wd + "/paths-h1.fa", wd + "/paths-h2.fa"};
+  std::vector<std::string> kmc_dbs = {wd + "/kmc-db-1", wd + "/kmc-db-2",
+                                      wd + "/kmc-db-12", wd + "/kmc-db-last",
+                                      wd + "/kmc-db-curr"};
+  std::vector<bool> has_haplotype = {false, false};
+  std::vector<std::ofstream> outfas(2);
+  std::string kmc_final_db;
+  std::string cmd;
+  int ret;
   for (gbwt::Metadata::size_type sample_id = 0; sample_id < metadata.samples();
        ++sample_id) {
-    rt = realtime();
+
+    std::string sample_name = metadata.sample(sample_id);
+    fprintf(stderr, "[M::%s] Extracting %s (%ld)\n", __func__,
+            sample_name.c_str(), sample_id);
+
+    outfas[0].open(fas_fn[0], std::ios::out);
+    outfas[1].open(fas_fn[1], std::ios::out);
+    has_haplotype = {false, false};
+    std::vector<gbwt::size_type> paths = metadata.pathsForSample(sample_id);
+    for (size_t pp = 0; pp < paths.size(); ++pp) {
+      gbwt::size_type path_id = paths[pp];
+      gbwt::size_type seq_id = gbwt::Path::encode(path_id, false);
+      int haplotype = gbz.index.metadata.fullPath(path_id).haplotype;
+
+      haplotype = haplotype <= 0 ? 0 : haplotype - 1;
+      has_haplotype[haplotype] = true;
+
+      std::string sequence = ""; // full path sequence
+      gbwt::edge_type curr = gbz.index.start(seq_id);
+      while (curr.first != gbwt::ENDMARKER) {
+        gbwtgraph::handle_t handle =
+            gbwtgraph::GBWTGraph::node_to_handle(curr.first);
+        // view_type: in-place view of the sequence: (start, length)
+        gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
+        sequence.append(view.first, view.second);
+        curr = gbz.index.LF(curr);
+      }
+      outfas[haplotype] << ">" << pp << std::endl;
+      outfas[haplotype] << sequence << std::endl;
+    }
+    outfas[0].close();
+    outfas[1].close();
+
+    for (int h = 0; h < 2; ++h) {
+      fprintf(stderr, "[M::%s] Counting kmers from %s.h%d\n", __func__,
+              sample_name.c_str(), h + 1);
+      cmd = kmc_bin + " -hp -t" + std::to_string(nThreads) + " -k" +
+            std::to_string(klen) + " -ci1 -cx1 -fm " + fas_fn[h] + " " +
+            kmc_dbs[h] + " " + wd + " &> /dev/null";
+      // std::cerr << cmd << std::endl;
+      ret = std::system(cmd.c_str());
+      if (ret != 0) {
+        std::cerr << "Error in running kmc. Return code: " << ret << std::endl;
+        exit(EXIT_FAILURE);
+      }
+    }
+
+    kmc_final_db = kmc_dbs[2];
+    if (first) {
+      kmc_final_db = kmc_dbs[i + 3];
+    }
+
+    fprintf(stderr, "[M::%s] Intersecting haplotypes from %s\n", __func__,
+            sample_name.c_str());
+    cmd = "kmc_tools -hp simple " + kmc_dbs[0] + " " + kmc_dbs[1] + " union " +
+          kmc_final_db + " -ocmin";
+    // std::cerr << cmd << std::endl;
+    ret = std::system(cmd.c_str());
+    if (ret != 0) {
+      std::cerr << "Error in running kmc_tools. Return code: " << ret
+                << std::endl;
+      exit(EXIT_FAILURE);
+    }
+
+    if (first) {
+      first = false;
+      continue;
+    }
+
+    j = (i + 1) % 2;
+
+    fprintf(stderr, "[M::%s] Intersecting kmc databases\n", __func__);
+    cmd = "kmc_tools -hp simple " + kmc_dbs[i + 3] + " " + kmc_dbs[2] +
+          " union " + kmc_dbs[j + 3] + " -ocmin";
+    // std::cerr << cmd << std::endl;
+    ret = std::system(cmd.c_str());
+    if (ret != 0) {
+      std::cerr << "Error in running kmc_tools. Return code: " << ret
+                << std::endl;
+      exit(EXIT_FAILURE);
+    }
+
+    i = j;
+  }
+
+  CKMCFile kmer_db;
+  if (!kmer_db.OpenForListing(kmc_dbs[j + 3]))
+    return -1;
+  uint64_t totkmers = kmer_db.KmerCount();
+  fprintf(stderr, "[M::%s] Total kmers from %s: %ld\n", __func__,
+          kmc_dbs[j + 3].c_str(), totkmers);
+
+  int shift = std::ceil(log2(totkmers));
+  sketch_t *sketch = sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded
+
+  uint32_t counter;
+  CKmerAPI kmer_obj(klen);
+  char kmer_str[klen + 1];
+  while (kmer_db.ReadNextKmer(kmer_obj, counter)) {
+    // XXX: can we get uint64_t from kmer_obj?
+    kmer_obj.to_string(kmer_str);
+    sk_add(sketch, k2d(kmer_str, klen));
+  }
+  kmer_db.Close();
+
+  for (gbwt::Metadata::size_type sample_id = 0; sample_id < metadata.samples();
+       ++sample_id) {
+    //   rt = realtime();
     std::string sample_name = metadata.sample(sample_id);
 
     fprintf(stderr, "[M::%s] === %s ===\n", __func__, sample_name.c_str());
 
     std::vector<gbwt::size_type> paths = metadata.pathsForSample(sample_id);
-    std::vector<int> contigs(2);
-    std::vector<std::vector<solid_anchor_t>> anchors(2);
     for (size_t pp = 0; pp < paths.size(); ++pp) {
       gbwt::size_type path_id = paths[pp];
       gbwt::size_type seq_id = gbwt::Path::encode(path_id, false);
-      // std::string sample_name =
-      //     gbz.index.metadata.fullPath(seq_id).sample_name;
-      std::string contig_name =
-          gbz.index.metadata.fullPath(path_id).contig_name;
-      int haplotype = gbz.index.metadata.fullPath(path_id).haplotype;
-      // int offset = gbz.index.metadata.fullPath(path_id).offset;
-      // std::cerr << contig_name << " " << haplotype << std::endl;
 
       std::string sequence = ""; // full path sequence
       std::vector<gbwt::short_type> values;
@@ -101,7 +212,6 @@ int main_sketch(int argc, char *argv[]) {
       while (curr.first != gbwt::ENDMARKER) {
         // if vertex is too long, it gets split. So we have different curr.first
         // but still same gfa_idx
-
         gbwtgraph::handle_t handle =
             gbwtgraph::GBWTGraph::node_to_handle(curr.first);
         std::string gfa_idx = gbz.graph.get_segment_name(handle);
@@ -118,11 +228,6 @@ int main_sketch(int argc, char *argv[]) {
       if (sequence.size() < klen)
         continue;
 
-      // reference has haplotype 0, other samples have haplotypes 1 and 2, P
-      // lines have haplotype -1
-      haplotype = haplotype - 1 < 0 ? 0 : haplotype - 1;
-      ++contigs[haplotype];
-
       char *kmer = (char *)malloc(sizeof(char) *
                                   (klen + 1)); // first kmer on sequence (plain)
       uint64_t kmer_d = 0;                     // kmer
@@ -137,7 +242,7 @@ int main_sketch(int argc, char *argv[]) {
       kmer_d = k2d(kmer, klen);
       rckmer_d = rc(kmer_d, klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
-      anchors[haplotype].push_back({ckmer_d, values[0], true});
+      sk_add_v(sketch, ckmer_d, values[0]);
 
       // all other kmers
       for (pos = 1; pos < sequence.size() - klen + 1; ++pos) {
@@ -146,113 +251,13 @@ int main_sketch(int argc, char *argv[]) {
         kmer_d = lsappend(kmer_d, c, klen);
         rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
-        anchors[haplotype].push_back({ckmer_d, values[pos], true});
+        sk_add_v(sketch, ckmer_d, values[pos]);
       }
-
       free(kmer);
     }
-
-    fprintf(
-        stderr,
-        "[M::%s] Extracted %ld/%ld kmers from %s (%d|%d=%d contigs) in %.3fs\n",
-        __func__, anchors[0].size(), anchors[1].size(), sample_name.c_str(),
-        contigs[0], contigs[1], contigs[0] + contigs[1], realtime() - rt);
-
-    rt = realtime();
-    for (int hh = 0; hh < 2; ++hh) {
-      // Flag all repeated anchors by sorting
-      std::sort(anchors[hh].begin(), anchors[hh].end(),
-                [](const solid_anchor_t &a, const solid_anchor_t &b) {
-                  return a.kmer < b.kmer;
-                });
-
-      for (size_t a = 0; a < anchors[hh].size();) {
-        solid_anchor_t &anchor = anchors[hh][a];
-        size_t aa = a;
-        ++a;
-        while (a < anchors[hh].size() && anchors[hh][a].kmer == anchor.kmer) {
-          anchors[hh][aa].good = false;
-          if (a - 1 != aa)
-            anchors[hh][a - 1].kmer = -1;
-          anchors[hh][a].kmer = -1;
-          ++a;
-        }
-        // add anchor even if it's not good (we need it for filtering out the
-        // same anchor on other paths)
-        ALL_KMERS.push_back(anchor);
-      }
-    }
-    fprintf(stderr, "[M::%s] Flagged and pushed kmers in %.3fs\n", __func__,
-            realtime() - rt);
-
-    rt = realtime();
-    std::sort(ALL_KMERS.begin(), ALL_KMERS.end(),
-              [](const solid_anchor_t &a, const solid_anchor_t &b) {
-                return a.kmer < b.kmer;
-              });
-    fprintf(stderr, "[M::%s] Sorted %ld kmers in %.3fs\n", __func__,
-            ALL_KMERS.size(), realtime() - rt);
-
-    rt = realtime();
-    for (uint64_t a = 0; a < ALL_KMERS.size();) {
-      solid_anchor_t &anchor = ALL_KMERS[a];
-      uint64_t first_a = a;
-      ++a;
-      std::string gfa_idx = gbz.graph.get_segment_name(
-          gbwtgraph::GBWTGraph::node_to_handle(anchor.vertex << 1));
-      bool keep = anchor.good;
-      while (a < ALL_KMERS.size() && ALL_KMERS[a].kmer == anchor.kmer) {
-        keep &= gbz.graph
-                        .get_segment_name(gbwtgraph::GBWTGraph::node_to_handle(
-                            ALL_KMERS[a].vertex << 1))
-                        .compare(gfa_idx) == 0 &&
-                ALL_KMERS[a].good;
-        ++a;
-      }
-      ALL_KMERS[first_a].good = keep;
-      uint64_t j = first_a + 1;
-      while (j < a) {
-        ALL_KMERS[j].kmer = -1;
-        ++j;
-      }
-    }
-    // Remove gaps by shifting left
-    int new_n = 0;
-    uint64_t a = 0;
-    while (a < ALL_KMERS.size()) {
-      if (ALL_KMERS[a].kmer != (uint64_t)-1) {
-        ALL_KMERS[new_n].kmer = ALL_KMERS[a].kmer;
-        ALL_KMERS[new_n].vertex = ALL_KMERS[a].vertex;
-        ALL_KMERS[new_n].good = ALL_KMERS[a].good;
-        ++new_n;
-      }
-      ++a;
-    }
-    ALL_KMERS.resize(new_n);
-    fprintf(stderr, "[M::%s] Cleaned and shifted %ld kmers in %.3fs\n",
-            __func__, ALL_KMERS.size(), realtime() - rt);
   }
 
-  fprintf(stderr, "[M::%s] === === === === === === ===\n", __func__);
-
-  // Build and dump sketch
-  rt = realtime();
-
-  int shift = std::ceil(log2(ALL_KMERS.size()));
-  std::cerr << "Shift: " << shift << std::endl;
-  assert(shift < 33);
-  sketch_t *sketch = sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded
-  for (uint64_t i = 0; i < ALL_KMERS.size(); ++i) {
-    if (ALL_KMERS[i].good && ALL_KMERS[i].kmer != (uint64_t)-1)
-      sk_insert(sketch, ALL_KMERS[i].kmer, ALL_KMERS[i].vertex);
-  }
-  fprintf(stderr, "[M::%s] Added %ld kmers (%.4f) to sketch in %.3fs\n",
-          __func__, sketch->n, (float)sketch->n / ALL_KMERS.size(),
-          realtime() - rt);
-  rt = realtime();
   sk_store(sketch, "-");
-  fprintf(stderr, "[M::%s] Dumped sketch in %.3fs\n", __func__,
-          realtime() - rt);
   sk_destroy(sketch);
 
   return 0;

@@ -69,6 +69,25 @@ ExternalProject_Add(gbwtgraph
     COMMAND cp lib/libgbwtgraph.a ${LIB_DIR}
 )
 
+# KMC
+message(STATUS "KMC3 will be built from source")
+ExternalProject_Add(kmc
+    GIT_REPOSITORY https://github.com/refresh-bio/KMC.git
+    GIT_TAG d6c24dc88010508336d824bbffbf1ef3f49fddf8
+    UPDATE_COMMAND ""
+    BUILD_IN_SOURCE 1
+    PATCH_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make
+    INSTALL_COMMAND ""
+)
+ExternalProject_Get_Property(kmc SOURCE_DIR)
+SET(KMC_SOURCE_DIR ${SOURCE_DIR})
+SET(KMC_INCLUDE_DIR ${KMC_SOURCE_DIR})
+add_library(KMC STATIC IMPORTED)
+set_target_properties(KMC PROPERTIES IMPORTED_LOCATION ${KMC_INCLUDE_DIR}/bin/libkmc_core.a)
+add_dependencies(KMC kmc)
+
 # # ksw2
 # message(STATUS "ksw2 will be built from source")
 # ExternalProject_Add(ksw2
@@ -127,11 +146,12 @@ add_dependencies(RB3 rb3)
 
 add_dependencies(gbwt sdsl)
 add_dependencies(gbwtgraph gbwt lhg)
-add_dependencies(palss RB3 gbwtgraph) # abpoa ksw2)
+add_dependencies(palss RB3 gbwtgraph KMC) # abpoa ksw2)
 
 target_include_directories(palss
   PUBLIC ${CMAKE_SOURCE_DIR}/include
   PUBLIC ${RB3_INCLUDE_DIR}
+  PRIVATE ${KMC_INCLUDE_DIR}
   # PUBLIC ${KSW2_INCLUDE_DIR}
   # PUBLIC ${ABPOA_INCLUDE_DIR}
   PUBLIC ${PROJECT_SOURCE_DIR}
@@ -147,6 +167,7 @@ target_link_libraries(palss
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libsdsl.a
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libhandlegraph.a
 
+    PUBLIC KMC
     PUBLIC RB3
     PUBLIC z
     PUBLIC pthread
