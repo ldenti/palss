@@ -60,15 +60,12 @@ int main_sketch(int argc, char *argv[]) {
   // gbwt::printStatistics(gbz.index, gbz_fn, std::cerr);
   fprintf(stderr, "[M::%s] Loaded GBZ in %.3fs\n", __func__, realtime() - rt);
   // R-index
-  // rt = realtime();
-  // gbwt::FastLocate fl;
-  // fl = gbwt::FastLocate(gbz.index);
-  // std::ofstream out;
-  // out.open(gbz_fn + ".ri", std::ofstream::out);
-  // fl.serialize(out);
-  // out.close();
-  // fprintf(stderr, "[M::%s] Built R-index in %.3fs\n", __func__,
-  //         realtime() - rt);
+  gbwt::FastLocate fl;
+  fl = gbwt::FastLocate(gbz.index);
+  std::ofstream out;
+  out.open(gbz_fn + ".ri", std::ofstream::out);
+  fl.serialize(out);
+  out.close();
 
   std::filesystem::create_directory(wd);
 
@@ -123,7 +120,7 @@ int main_sketch(int argc, char *argv[]) {
       fprintf(stderr, "[M::%s] Counting kmers from %s.h%d\n", __func__,
               sample_name.c_str(), h + 1);
       cmd = kmc_bin + " -hp -t" + std::to_string(nThreads) + " -k" +
-            std::to_string(klen) + " -ci1 -cx1 -fm " + fas_fn[h] + " " +
+            std::to_string(klen) + " -ci1 -cs7 -fm " + fas_fn[h] + " " +
             kmc_dbs[h] + " " + wd + " &> /dev/null";
       // std::cerr << cmd << std::endl;
       ret = std::system(cmd.c_str());
@@ -141,7 +138,7 @@ int main_sketch(int argc, char *argv[]) {
     fprintf(stderr, "[M::%s] Intersecting haplotypes from %s\n", __func__,
             sample_name.c_str());
     cmd = "kmc_tools -hp simple " + kmc_dbs[0] + " " + kmc_dbs[1] + " union " +
-          kmc_final_db + " -ocmin";
+          kmc_final_db + " -ocmax";
     // std::cerr << cmd << std::endl;
     ret = std::system(cmd.c_str());
     if (ret != 0) {
@@ -159,7 +156,7 @@ int main_sketch(int argc, char *argv[]) {
 
     fprintf(stderr, "[M::%s] Intersecting kmc databases\n", __func__);
     cmd = "kmc_tools -hp simple " + kmc_dbs[i + 3] + " " + kmc_dbs[2] +
-          " union " + kmc_dbs[j + 3] + " -ocmin";
+          " union " + kmc_dbs[j + 3] + " -ocmax";
     // std::cerr << cmd << std::endl;
     ret = std::system(cmd.c_str());
     if (ret != 0) {
@@ -174,15 +171,27 @@ int main_sketch(int argc, char *argv[]) {
   CKMCFile kmer_db;
   if (!kmer_db.OpenForListing(kmc_dbs[j + 3]))
     return -1;
-  uint64_t totkmers = kmer_db.KmerCount();
+  kmer_db.SetMinCount(1);
+  kmer_db.SetMaxCount(1);
+
+  uint32_t counter;
+  CKmerAPI kmer_obj(klen);
+  uint64_t totkmers = 0;
+  while (kmer_db.ReadNextKmer(kmer_obj, counter))
+    ++totkmers;
+  kmer_db.Close();
+
   fprintf(stderr, "[M::%s] Total kmers from %s: %ld\n", __func__,
           kmc_dbs[j + 3].c_str(), totkmers);
 
   int shift = std::ceil(log2(totkmers));
   sketch_t *sketch = sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded
 
-  uint32_t counter;
-  CKmerAPI kmer_obj(klen);
+
+  kmer_db.OpenForListing(kmc_dbs[j + 3]);
+  kmer_db.SetMinCount(1);
+  kmer_db.SetMaxCount(1);
+
   char kmer_str[klen + 1];
   while (kmer_db.ReadNextKmer(kmer_obj, counter)) {
     // XXX: can we get uint64_t from kmer_obj?
