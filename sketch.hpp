@@ -38,7 +38,7 @@ void sk_destroy(sketch_t *sk);
 /* Get position of kmer */
 int64_t sk_get_p(sketch_t *sk, uint64_t kmer_d);
 /* Get vertex, offset corresponding to kmer */
-uint64_t sk_get(sketch_t *sk, uint64_t kmer_d);
+uint32_t sk_get(sketch_t *sk, uint64_t kmer_d);
 
 /* Add kmer to sketch, no value */
 void sk_insert(sketch_t *sk, uint64_t kmer_d, uint64_t value);

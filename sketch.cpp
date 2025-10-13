@@ -88,10 +88,10 @@ void sk_add_v(sketch_t *sk, uint64_t kmer_d, uint32_t value) {
     sk->vls[p] = -1;
 }
 
-uint64_t sk_get(sketch_t *sk, uint64_t kmer_d) {
+uint32_t sk_get(sketch_t *sk, uint64_t kmer_d) {
   int64_t p = sk_get_p(sk, kmer_d);
   if (p == -1)
-    return -1;
+    return -1U;
   return sk->vls[p];
 }
 
