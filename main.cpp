@@ -10,6 +10,7 @@ int main_dump(int argc, char *argv[]);
 int main_test(int argc, char *argv[]);
 int main_kan(int argc, char *argv[]);
 int main_search(int argc, char *argv[]);
+int main_anchor(int argc, char *argv[]);
 int main_align(int argc, char *argv[]);
 
 int main(int argc, char *argv[]) {
@@ -30,6 +31,8 @@ int main(int argc, char *argv[]) {
     ret = main_kan(argc - 1, argv + 1);
   else if (strcmp(argv[1], "search") == 0)
     ret = main_search(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "anchor") == 0)
+    ret = main_anchor(argc - 1, argv + 1);
   else if (strcmp(argv[1], "align") == 0)
     ret = main_align(argc - 1, argv + 1);
   else if (strcmp(argv[1], "test") == 0)
