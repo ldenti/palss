@@ -5,18 +5,15 @@
 #include <vector>
 #include <zlib.h>
 
-#include "gbwt/fast_locate.h"
-#include "gbwt/gbwt.h"
-#include "gbwtgraph/gbz.h"
-#include "sdsl/simple_sds.hpp"
-
 extern "C" {
 #include "fm-index.h"
 #include "kseq.h"
 }
 
+#include "graph.hpp"
 #include "kmer.hpp"
 #include "misc.hpp"
+#include "sfs.hpp"
 #include "sketch.hpp"
 #include "usage.hpp"
 
@@ -32,20 +29,6 @@ typedef struct {
   int p;        // position on query
   uint64_t seq; // kmer
 } anchor_t;
-
-typedef struct {
-  int s; // start on query
-  int l; // length
-  uint8_t flag;
-  //
-  uint64_t sv;
-  uint64_t ev;
-  uint64_t skmer;
-  uint64_t ekmer;
-  //
-  std::string rname; // plain read name
-  uint8_t *seq;      // 1-4encoded sequence
-} sfs_t;
 
 // Compute SFS strings from P and store them into solutions
 std::vector<sfs_t> ping_pong_search(const rb3_fmi_t *index, uint8_t *P, int l) {
@@ -147,10 +130,9 @@ std::map<uint64_t, int> count_kmers(uint8_t *read, int readl, int klen) {
 }
 
 // Anchor specific strings on graph using graph sketch
-void anchor(const gbwtgraph::GBZ &gbz, const gbwt::FastLocate &fl,
-            sketch_t *sketch, std::vector<sfs_t> &sfs, uint8_t *read, int readl,
-            std::map<uint64_t, int> kcounts, int klen, uint NA,
-            bool overlapping) {
+void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
+            uint8_t *read, int readl, std::map<uint64_t, int> kcounts, int klen,
+            uint NA, bool overlapping) {
 
   int beg, end;
   uint8_t *kmer = (uint8_t *)malloc(klen);
@@ -158,7 +140,7 @@ void anchor(const gbwtgraph::GBZ &gbz, const gbwt::FastLocate &fl,
   uint64_t rckmer_d = 0; // reverse and complemented kmer
   uint64_t ckmer_d = 0;  // canonical kmer
   int c;                 // current char
-  uint32_t hit;          // hit from sketch
+  uint64_t hit;          // hit from sketch
 
   for (uint sidx = 0; sidx < sfs.size(); ++sidx) {
     sfs_t &s = sfs[sidx];
@@ -173,7 +155,7 @@ void anchor(const gbwtgraph::GBZ &gbz, const gbwt::FastLocate &fl,
     std::vector<anchor_t> sanchors;
     while (beg > 0 && sanchors.size() < NA) {
       if (overlapping) {
-        if ((hit = sk_get(sketch, ckmer_d)) != -1U && kcounts[ckmer_d] == 1)
+        if ((hit = sk_get(sketch, ckmer_d)) != -1UL && kcounts[ckmer_d] == 1)
           sanchors.push_back({hit, beg, ckmer_d});
         --beg;
         c = read[beg] < 5 ? read[beg] - 1 : rand() % 4;
@@ -181,7 +163,7 @@ void anchor(const gbwtgraph::GBZ &gbz, const gbwt::FastLocate &fl,
         rckmer_d = lsappend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
       } else {
-        if ((hit = sk_get(sketch, ckmer_d)) != -1U && kcounts[ckmer_d] == 1) {
+        if ((hit = sk_get(sketch, ckmer_d)) != -1UL && kcounts[ckmer_d] == 1) {
           sanchors.push_back({hit, beg, ckmer_d});
           beg -= klen;
           if (beg > 0) {
@@ -210,7 +192,7 @@ void anchor(const gbwtgraph::GBZ &gbz, const gbwt::FastLocate &fl,
     std::vector<anchor_t> eanchors;
     while (end < readl - klen + 1 && eanchors.size() < NA) {
       if (overlapping) {
-        if ((hit = sk_get(sketch, ckmer_d)) != -1U && kcounts[ckmer_d] == 1)
+        if ((hit = sk_get(sketch, ckmer_d)) != -1UL && kcounts[ckmer_d] == 1)
           eanchors.push_back({hit, end, ckmer_d});
         ++end;
         c = read[end + klen - 1] < 5 ? read[end + klen - 1] - 1 : rand() % 4;
@@ -218,7 +200,7 @@ void anchor(const gbwtgraph::GBZ &gbz, const gbwt::FastLocate &fl,
         rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
       } else {
-        if ((hit = sk_get(sketch, ckmer_d)) != -1U && kcounts[ckmer_d] == 1) {
+        if ((hit = sk_get(sketch, ckmer_d)) != -1UL && kcounts[ckmer_d] == 1) {
           eanchors.push_back({hit, end, ckmer_d});
           end += klen;
           if (end < readl - klen + 1) {
@@ -242,105 +224,188 @@ void anchor(const gbwtgraph::GBZ &gbz, const gbwt::FastLocate &fl,
       continue;
     }
 
-    if (false) {
-      // std::cout << read_name << ",";
-      for (size_t x = 0; x < NA; ++x) {
-        if (x >= sanchors.size()) {
-          std::cout << ".,";
-          continue;
-        }
+    // FIXME: this does not work anymore with 2 vertices per anchor
+    // if (false) {
+    //   // std::cout << read_name << ",";
+    //   for (size_t x = 0; x < NA; ++x) {
+    //     if (x >= sanchors.size()) {
+    //       std::cout << ".,";
+    //       continue;
+    //     }
 
-        const auto &sa = sanchors[x];
-        assert(sa.v != -1U);
-        if (sa.v == -1U) {
-          std::cout << ".,";
-          continue;
-        }
+    //     const auto &sa = sanchors[x];
+    //     assert(sa.v != -1U);
+    //     if (sa.v == -1U) {
+    //       std::cout << ".,";
+    //       continue;
+    //     }
 
-        gbwtgraph::handle_t handle =
-            gbwtgraph::GBWTGraph::node_to_handle(sa.v << 1);
-        std::string gfa_idx = gbz.graph.get_segment_name(handle);
+    //     gbwtgraph::handle_t handle =
+    //         gbwtgraph::GBWTGraph::node_to_handle(sa.v << 1);
+    //     std::string gfa_idx = gbz.graph.get_segment_name(handle);
 
-        std::vector<gbwt::size_type> paths = fl.decompressSA(sa.v << 1);
+    //     std::vector<gbwt::size_type> paths = fl.decompressSA(sa.v << 1);
 
-        for (const auto &p : paths) {
-          gbwt::size_type x = fl.seqId(p);
-          // gbwt::size_type xx = fl.seqOffset(p);
-          // std::string sample_name =
-          //         gbz.index.metadata.fullPath(x).sample_name;
-          // std::cerr << p << " " << x << " " << gbwt::Path::id(x) << " " << xx
-          // << " " << sample_name << std::endl;
-          std::cout << gbwt::Path::id(x)
-                    << (gbwt::Path::is_reverse(x) ? "-" : "+") << "/";
-        }
-        std::cout << ",";
-      }
+    //     for (const auto &p : paths) {
+    //       gbwt::size_type x = fl.seqId(p);
+    //       // gbwt::size_type xx = fl.seqOffset(p);
+    //       // std::string sample_name =
+    //       //         gbz.index.metadata.fullPath(x).sample_name;
+    //       // std::cerr << p << " " << x << " " << gbwt::Path::id(x) << " " <<
+    //       xx
+    //       // << " " << sample_name << std::endl;
+    //       std::cout << gbwt::Path::id(x)
+    //                 << (gbwt::Path::is_reverse(x) ? "-" : "+") << "/";
+    //     }
+    //     std::cout << ",";
+    //   }
 
-      for (size_t x = 0; x < NA; ++x) {
-        if (x >= eanchors.size()) {
-          std::cout << ".,";
-          continue;
-        }
+    //   for (size_t x = 0; x < NA; ++x) {
+    //     if (x >= eanchors.size()) {
+    //       std::cout << ".,";
+    //       continue;
+    //     }
 
-        const auto &ea = eanchors[x];
-        assert(ea.v != -1U);
-        if (ea.v == -1U) {
-          std::cout << ".,";
-          continue;
-        }
-        std::vector<gbwt::size_type> paths = fl.decompressSA(ea.v << 1);
-        for (const auto &p : paths) {
-          gbwt::size_type x = fl.seqId(p);
-          std::cout << gbwt::Path::id(x)
-                    << (gbwt::Path::is_reverse(x) ? "-" : "+") << "/";
-        }
-        std::cout << ",";
-      }
-      std::cout << std::endl;
-    }
+    //     const auto &ea = eanchors[x];
+    //     assert(ea.v != -1U);
+    //     if (ea.v == -1U) {
+    //       std::cout << ".,";
+    //       continue;
+    //     }
+    //     std::vector<gbwt::size_type> paths = fl.decompressSA(ea.v << 1);
+    //     for (const auto &p : paths) {
+    //       gbwt::size_type x = fl.seqId(p);
+    //       std::cout << gbwt::Path::id(x)
+    //                 << (gbwt::Path::is_reverse(x) ? "-" : "+") << "/";
+    //     }
+    //     std::cout << ",";
+    //   }
+    //   std::cout << std::endl;
+    // }
 
     // Finding best pair of anchors
     size_t sa, ea;
     for (sa = 0; sa < sanchors.size(); ++sa) {
-      std::vector<gbwt::size_type> soffsets =
-          fl.decompressSA(sanchors[sa].v << 1);
-      std::set<gbwt::size_type> spaths;
-      for (const auto &off : soffsets)
-        spaths.insert(fl.seqId(off));
+      gbwt::size_type sv1 = sanchors[sa].v >> 32;
+      gbwt::size_type sv2 = (uint32_t)sanchors[sa].v;
+      std::vector<path_t> spaths = graph.get_paths(sv1, sv2);
+      assert(!spaths.empty());
+
+      // get only paths containing the anchor kmer
+      uint8_t skmer1[klen];
+      uint8_t skmer1_rc[klen];
+      memcpy(skmer1, read + sanchors[sa].p, klen);
+      for (int i = 0; i < klen; ++i)
+        skmer1[i] = "NACGTN"[skmer1[i]];
+      kmer_d = k2d((char *)skmer1, klen);
+      rckmer_d = rc(kmer_d, klen);
+      d2s(rckmer_d, klen, (char *)skmer1_rc);
+
+      std::vector<std::pair<size_t, bool>> good_spaths;
+      for (size_t i = 0; i < spaths.size(); ++i) {
+        const path_t &path = spaths[i];
+        if (path.sequence.find((char *)skmer1) != std::string::npos)
+          good_spaths.push_back(std::make_pair(i, 0));
+        else if (path.sequence.find((char *)skmer1_rc) != std::string::npos)
+          good_spaths.push_back(std::make_pair(i, 1));
+      }
 
       for (ea = 0; ea < eanchors.size(); ++ea) {
-        std::vector<gbwt::size_type> eoffsets =
-            fl.decompressSA(eanchors[ea].v << 1);
-        std::set<gbwt::size_type> epaths;
-        for (const auto &off : eoffsets)
-          epaths.insert(fl.seqId(off));
+        gbwt::size_type ev1 = eanchors[ea].v >> 32;
+        gbwt::size_type ev2 = (uint32_t)eanchors[ea].v;
+        std::vector<path_t> epaths = graph.get_paths(ev1, ev2);
+        assert(!epaths.empty());
 
-        std::set<gbwt::size_type> res;
-        set_intersection(spaths.begin(), spaths.end(), epaths.begin(),
-                         epaths.end(), std::inserter(res, res.begin()));
-        if (!res.empty())
-          break;
+        // get only paths containing the anchor kmer
+        uint8_t ekmer1[klen];
+        uint8_t ekmer1_rc[klen];
+        memcpy(ekmer1, read + eanchors[ea].p, klen);
+        for (int i = 0; i < klen; ++i)
+          ekmer1[i] = "NACGTN"[ekmer1[i]];
+        kmer_d = k2d((char *)ekmer1, klen);
+        rckmer_d = rc(kmer_d, klen);
+        d2s(rckmer_d, klen, (char *)ekmer1_rc);
+
+        std::vector<std::pair<size_t, bool>> good_epaths;
+        for (size_t i = 0; i < epaths.size(); ++i) {
+          const path_t &path = epaths[i];
+          if (path.sequence.find((char *)ekmer1) != std::string::npos)
+            good_epaths.push_back(std::make_pair(i, 0));
+          else if (path.sequence.find((char *)ekmer1_rc) != std::string::npos)
+            good_epaths.push_back(std::make_pair(i, 1));
+        }
+
+        for (const auto &[si, sstrand] : good_spaths) {
+          for (const auto &[ei, estrand] : good_epaths) {
+            if (spaths[si].id == epaths[ei].id && sstrand == estrand) {
+              std::vector<std::pair<gbwt::size_type, gbwt::size_type>> offsets;
+              offsets.push_back(std::make_pair(sv1, spaths[si].offset1));
+              offsets.push_back(std::make_pair(sv2, spaths[si].offset2));
+              offsets.push_back(std::make_pair(ev1, epaths[ei].offset1));
+              offsets.push_back(std::make_pair(ev2, epaths[ei].offset2));
+
+              // XXX: filter paths here if anchors/strands do not agree. how?
+
+              std::cerr << sstrand << " "
+                        << graph.get_path_contig(spaths[si].id >> 1)
+                        << std::endl;
+              for (const auto &x : offsets)
+                std::cerr << graph.get_gfa_name(x.first) << " " << x.second
+                          << std::endl;
+              std::cerr << std::endl;
+
+              std::sort(
+                  offsets.begin(), offsets.end(),
+                  [](const std::pair<gbwt::size_type, gbwt::size_type> &a,
+                     const std::pair<gbwt::size_type, gbwt::size_type> &b) {
+                    return a.second > b.second;
+                  });
+              // offsets measure the distance to the end of the sequence in
+              // nodes
+              sanchors[sa].v =
+                  ((uint64_t)offsets[0].first << 32) | offsets[1].first;
+              eanchors[ea].v =
+                  ((uint64_t)offsets[2].first << 32) | offsets[3].first;
+
+              goto endloops;
+            }
+          }
+        }
       }
-      if (ea < eanchors.size())
-        break;
     }
-
+  endloops:
     if (sa == sanchors.size()) {
       s.flag |= 2; // flag as invalid
       continue;
     }
-
     assert(sanchors[sa].p < eanchors[ea].p);
 
     // Assigning the anchors
     s.s = sanchors[sa].p;
     s.l = eanchors[ea].p + klen - sanchors[sa].p;
-    s.sv = sanchors[sa].v;
-    s.ev = eanchors[ea].v;
-    s.skmer = sanchors[sa].seq;
-    s.ekmer = eanchors[ea].seq;
+    s.sv1 = sanchors[sa].v >> 32;
+    s.sv2 = (uint32_t)sanchors[sa].v;
+    s.ev1 = eanchors[ea].v >> 32;
+    s.ev2 = (uint32_t)eanchors[ea].v;
+    // XXX: kmers do not follow "strand" induced by selected path
+    s.skmer = std::min(sanchors[sa].seq, eanchors[ea].seq);
+    s.ekmer = std::max(sanchors[sa].seq, eanchors[ea].seq);
   }
   free(kmer);
+}
+
+void remove_duplicates(std::vector<sfs_t> &S) {
+  // XXX: should we do this better?
+  for (size_t i = 0; i < S.size(); ++i) {
+    if (S[i].flag != 0)
+      continue;
+    for (size_t j = i + 1; j < S.size(); ++j) {
+      if (S[j].flag != 0)
+        continue;
+      if (S[i].s == S[j].s && S[i].l == S[j].l)
+        S[j].flag = 3;
+    }
+  }
 }
 
 int load_batch(kseq_t *seq, std::vector<read_t> &entries, int nb) {
@@ -386,23 +451,12 @@ int main_search(int argc, char *argv[]) {
   std::string fmd_fn = argv[optind++];
   std::string fx_fn = argv[optind++];
 
-  rt = realtime();
-  gbwtgraph::GBZ gbz;
+  // Graph
+  Graph graph(gbz_fn);
+  graph.load();
+  graph.load_fl();
 
-  sdsl::simple_sds::load_from(gbz, gbz_fn);
-  fprintf(stderr, "[M::%s] Loaded GBZ in %.3fs\n", __func__, realtime() - rt);
-
-  // R-index
-  rt = realtime();
-  gbwt::FastLocate fl;
-  std::ifstream in;
-  in.open(gbz_fn + ".ri", std::ifstream::in);
-  fl.load(in);
-  fl.setGBWT(gbz.index);
-  in.close();
-  fprintf(stderr, "[M::%s] Restored R-index in %.3f sec\n", __func__,
-          realtime() - rt);
-
+  // Sketch
   rt = realtime();
   sketch_t *sketch = sk_load(skt_fn);
   uint klen = sketch->k;
@@ -440,7 +494,10 @@ int main_search(int argc, char *argv[]) {
       output[qq] = ping_pong_search(&fmd, seq, l);
       assemble(output[qq]);
       std::map<uint64_t, int> kmers = count_kmers(seq, l, klen);
-      anchor(gbz, fl, sketch, output[qq], seq, l, kmers, klen, NA, overlapping);
+      anchor(graph, sketch, output[qq], seq, l, kmers, klen, NA, overlapping);
+      remove_duplicates(output[qq]);
+
+      // XXX: what about SFS that are prefix of another or are overlapping?
 
       for (sfs_t &s : output[qq]) {
         s.rname = entries[qq].idx;
@@ -453,18 +510,15 @@ int main_search(int argc, char *argv[]) {
     }
 
     int total = 0;
-    std::vector<int> info(3, 0);
+    std::vector<int> info(4, 0);
     for (int qq = 0; qq < x; ++qq) {
       for (uint j = 0; j < output[qq].size(); ++j) {
         const sfs_t &s = output[qq][j];
         ++total;
         ++info[s.flag];
-        gbwtgraph::handle_t sh =
-            gbwtgraph::GBWTGraph::node_to_handle(s.sv << 1);
-        gbwtgraph::handle_t eh =
-            gbwtgraph::GBWTGraph::node_to_handle(s.ev << 1);
-        std::string s_gfa_idx = gbz.graph.get_segment_name(sh);
-        std::string e_gfa_idx = gbz.graph.get_segment_name(eh);
+
+        if (s.flag == 3)
+          continue;
 
         char sseq[s.l];
         for (int i = 0; i < s.l; ++i)
@@ -472,14 +526,17 @@ int main_search(int argc, char *argv[]) {
         sseq[s.l] = '\0';
 
         std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"
-                  << s.l << "\t" << s.s + s.l << "\t" << s.sv << "\t" << s.ev
-                  << "\t" << s.skmer << "\t" << s.ekmer << "\t" << s_gfa_idx
-                  << ">" << e_gfa_idx << "\t" << sseq << std::endl;
+                  << s.l << "\t" << s.s + s.l << "\t" << s.sv1 << "\t" << s.sv2
+                  << "\t" << s.ev1 << "\t" << s.ev2 << "\t" << s.skmer << "\t"
+                  << s.ekmer << "\t" << graph.get_gfa_name(s.sv1) << ":"
+                  << graph.get_gfa_name(s.sv2) << ">"
+                  << graph.get_gfa_name(s.ev1) << ":"
+                  << graph.get_gfa_name(s.ev2) << "\t" << sseq << std::endl;
       }
     }
-    fprintf(stderr,
-            "[M::%s] computed %d (%d/%d/%d) specific strings in %.3f sec\n",
-            __func__, total, info[0], info[1], info[2], realtime() - rt);
+    fprintf(
+        stderr, "[M::%s] computed %d (%d/%d/%d) specific strings in %.3f sec\n",
+        __func__, total - info[3], info[0], info[1], info[2], realtime() - rt);
   }
 
   kseq_destroy(seq);

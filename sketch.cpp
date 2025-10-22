@@ -13,7 +13,7 @@ sketch_t *sk_init(int64_t n, int k, int m) {
   for (int i = 0; i < sk->np; ++i)
     sk->pxs[i] = -1;
   sk->sxs = (uint64_t *)malloc(n * sizeof(uint64_t));
-  sk->vls = (uint32_t *)calloc(n, sizeof(uint32_t));
+  sk->vls = (uint64_t *)calloc(n, sizeof(uint64_t));
   return sk;
 }
 
@@ -78,20 +78,20 @@ void sk_add(sketch_t *sk, uint64_t kmer_d) {
   ++sk->n;
 }
 
-void sk_add_v(sketch_t *sk, uint64_t kmer_d, uint32_t value) {
+void sk_add_v(sketch_t *sk, uint64_t kmer_d, uint64_t value) {
   int64_t p = sk_get_p(sk, kmer_d);
   if (p == -1)
     return;
   if (sk->vls[p] == 0)
     sk->vls[p] = value;
   else if (sk->vls[p] != value)
-    sk->vls[p] = -1;
+    sk->vls[p] = -1UL;
 }
 
-uint32_t sk_get(sketch_t *sk, uint64_t kmer_d) {
+uint64_t sk_get(sketch_t *sk, uint64_t kmer_d) {
   int64_t p = sk_get_p(sk, kmer_d);
   if (p == -1)
-    return -1U;
+    return -1UL;
   return sk->vls[p];
 }
 
@@ -179,7 +179,7 @@ sketch_t *sk_load(const std::string &fn) {
     exit(1);
   }
 
-  sk->vls = (uint32_t *)malloc(sk->n * sizeof sk->vls);
+  sk->vls = (uint64_t *)malloc(sk->n * sizeof sk->vls);
   if ((int64_t)fread(sk->vls, sizeof sk->vls, sk->n, fp) != sk->n) {
     fprintf(stderr, "[M::%s] failed to read sketch (vls)\n", __func__);
     exit(1);

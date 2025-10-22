@@ -3,27 +3,15 @@
 #include <getopt.h>
 #include <string>
 
-#include "gbwt/fast_locate.h"
-#include "gbwt/gbwt.h"
-#include "gbwtgraph/gbz.h"
 #include "kmc_api/kmc_file.h"
-#include "sdsl/simple_sds.hpp"
 
+#include "graph.hpp"
 #include "kmer.hpp"
 #include "misc.hpp"
 #include "sketch.hpp"
 #include "usage.hpp"
 
-// std::string print_kmer(uint64_t kmer_d, int klen) {
-//   char *kmer = (char *)malloc(sizeof(char) * (klen + 1));
-//   d23(kmer_d, klen, kmer);
-//   for (int i = 0; i < klen; ++i)
-//     kmer[i] = "0ACGT0"[kmer[i]];
-//   return kmer;
-// }
-
 int main_sketch(int argc, char *argv[]) {
-  double rt;
   uint klen = 31;   // kmer size
   int nThreads = 4; // number of threads
   std::string wd = ".";
@@ -54,22 +42,14 @@ int main_sketch(int argc, char *argv[]) {
   }
   std::string gbz_fn = argv[optind++];
 
-  rt = realtime();
-  gbwtgraph::GBZ gbz;
-  sdsl::simple_sds::load_from(gbz, gbz_fn);
-  // gbwt::printStatistics(gbz.index, gbz_fn, std::cerr);
-  fprintf(stderr, "[M::%s] Loaded GBZ in %.3fs\n", __func__, realtime() - rt);
-  // R-index
-  gbwt::FastLocate fl;
-  fl = gbwt::FastLocate(gbz.index);
-  std::ofstream out;
-  out.open(gbz_fn + ".ri", std::ofstream::out);
-  fl.serialize(out);
-  out.close();
+  Graph graph(gbz_fn);
+  graph.load();
+  graph.build_fl();
 
   std::filesystem::create_directory(wd);
 
-  const gbwt::Metadata &metadata = gbz.index.metadata;
+  const gbwt::Metadata &metadata = graph.get_metadata();
+
   int i = 0, j = 1;
   bool first = true;
   std::vector<std::string> fas_fn = {wd + "/paths-h1.fa", wd + "/paths-h2.fa"};
@@ -94,24 +74,13 @@ int main_sketch(int argc, char *argv[]) {
     std::vector<gbwt::size_type> paths = metadata.pathsForSample(sample_id);
     for (size_t pp = 0; pp < paths.size(); ++pp) {
       gbwt::size_type path_id = paths[pp];
-      gbwt::size_type seq_id = gbwt::Path::encode(path_id, false);
-      int haplotype = gbz.index.metadata.fullPath(path_id).haplotype;
+      int haplotype = metadata.fullPath(path_id).haplotype;
 
       haplotype = haplotype <= 0 ? 0 : haplotype - 1;
       has_haplotype[haplotype] = true;
-
-      std::string sequence = ""; // full path sequence
-      gbwt::edge_type curr = gbz.index.start(seq_id);
-      while (curr.first != gbwt::ENDMARKER) {
-        gbwtgraph::handle_t handle =
-            gbwtgraph::GBWTGraph::node_to_handle(curr.first);
-        // view_type: in-place view of the sequence: (start, length)
-        gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
-        sequence.append(view.first, view.second);
-        curr = gbz.index.LF(curr);
-      }
+      path_t path = graph.get_path(path_id);
       outfas[haplotype] << ">" << pp << std::endl;
-      outfas[haplotype] << sequence << std::endl;
+      outfas[haplotype] << path.sequence << std::endl;
     }
     outfas[0].close();
     outfas[1].close();
@@ -187,7 +156,6 @@ int main_sketch(int argc, char *argv[]) {
   int shift = std::ceil(log2(totkmers));
   sketch_t *sketch = sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded
 
-
   kmer_db.OpenForListing(kmc_dbs[j + 3]);
   kmer_db.SetMinCount(1);
   kmer_db.SetMaxCount(1);
@@ -210,32 +178,26 @@ int main_sketch(int argc, char *argv[]) {
     std::vector<gbwt::size_type> paths = metadata.pathsForSample(sample_id);
     for (size_t pp = 0; pp < paths.size(); ++pp) {
       gbwt::size_type path_id = paths[pp];
-      gbwt::size_type seq_id = gbwt::Path::encode(path_id, false);
+      path_t path = graph.get_path(path_id);
 
-      std::string sequence = ""; // full path sequence
-      std::vector<gbwt::short_type> values;
-      // XXX: we do not need offsets. If we have same (curr.first>>1), then we
-      // are good, each path can have the anchors at different position on same
-      // vertex (due to strand)
-      gbwt::edge_type curr = gbz.index.start(seq_id);
-      while (curr.first != gbwt::ENDMARKER) {
-        // if vertex is too long, it gets split. So we have different curr.first
-        // but still same gfa_idx
-        gbwtgraph::handle_t handle =
-            gbwtgraph::GBWTGraph::node_to_handle(curr.first);
-        std::string gfa_idx = gbz.graph.get_segment_name(handle);
-        // view_type: in-place view of the sequence: (start, length)
-        gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
-        sequence.append(view.first, view.second);
-        // seq is already reverse&complemented if vertex was on - strand
-        // int strand = (curr.first & 1); // 0 means +, 1 means -
-        for (uint64_t pos = 0; pos < view.second; ++pos)
-          values.push_back(curr.first >> 1);
-        curr = gbz.index.LF(curr);
+      if (path.sequence.size() < klen)
+        continue;
+
+      // Get for each character, the vertex identifier
+      std::vector<gbwt::size_type> info;
+      for (size_t i = 0; i < path.vertices.size(); ++i) {
+        size_t l = graph.get_vertex_len(path.vertices[i] >> 1);
+        for (size_t x = 0; x < l; ++x)
+          info.push_back(path.vertices[i] >> 1);
       }
 
-      if (sequence.size() < klen)
-        continue;
+      // we need start/end vertex for each anchor
+      std::vector<uint64_t> values(path.sequence.size());
+      for (size_t i = 0; i < path.sequence.size() - klen + 1; ++i) {
+        uint64_t start = info[i];
+        uint64_t end = info[i + klen - 1];
+        values[i] = (start << 32) | end;
+      }
 
       char *kmer = (char *)malloc(sizeof(char) *
                                   (klen + 1)); // first kmer on sequence (plain)
@@ -247,15 +209,15 @@ int main_sketch(int argc, char *argv[]) {
 
       // first kmer
       pos = 0;
-      strncpy(kmer, sequence.c_str(), klen);
+      strncpy(kmer, path.sequence.c_str(), klen);
       kmer_d = k2d(kmer, klen);
       rckmer_d = rc(kmer_d, klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
       sk_add_v(sketch, ckmer_d, values[0]);
 
       // all other kmers
-      for (pos = 1; pos < sequence.size() - klen + 1; ++pos) {
-        c = to_int[(uint8_t)sequence[pos + klen - 1]] -
+      for (pos = 1; pos < path.sequence.size() - klen + 1; ++pos) {
+        c = to_int[(uint8_t)path.sequence[pos + klen - 1]] -
             1; // A is 1 but it should be 0
         kmer_d = lsappend(kmer_d, c, klen);
         rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
