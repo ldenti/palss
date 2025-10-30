@@ -35,6 +35,10 @@ int Graph::build_fl() {
 }
 const gbwt::Metadata &Graph::get_metadata() const { return gbz.index.metadata; }
 
+const gbwtgraph::GBZ &Graph::get_gbz() const { return gbz; }
+
+const gbwt::FastLocate &Graph::get_fl() const { return fl; }
+
 void Graph::print_stats() const {
   gbwt::printStatistics(gbz.index, "gbwt");
   gbwt::printStatistics(fl, "fl");
@@ -164,6 +168,16 @@ std::map<std::string, size_t> Graph::get_reference_paths() const {
   }
 
   return ret;
+}
+
+std::string
+Graph::get_path_sequence(const std::vector<gbwt::node_type> &vertices) const {
+  std::string sequence;
+  for (const gbwt::node_type &v : vertices) {
+    gbwtgraph::handle_t h = gbwtgraph::GBWTGraph::node_to_handle(v);
+    sequence += gbz.graph.get_sequence(h);
+  }
+  return sequence;
 }
 
 // === paths

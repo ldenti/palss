@@ -88,6 +88,13 @@ void sk_add_v(sketch_t *sk, uint64_t kmer_d, uint64_t value) {
     sk->vls[p] = -1UL;
 }
 
+void sk_set(sketch_t *sk, uint64_t kmer_d, uint64_t value) {
+  int64_t p = sk_get_p(sk, kmer_d);
+  if (p == -1)
+    return;
+  sk->vls[p] = value;
+}
+
 uint64_t sk_get(sketch_t *sk, uint64_t kmer_d) {
   int64_t p = sk_get_p(sk, kmer_d);
   if (p == -1)

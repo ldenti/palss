@@ -15,7 +15,7 @@
 #include <misc.hpp>
 
 typedef struct {
-  gbwt::size_type id; // with strand
+  gbwt::size_type id;                    // with strand
   std::vector<gbwt::size_type> vertices; // with strand
   std::string sequence;
   gbwt::size_type dist_to_end;
@@ -47,6 +47,8 @@ public:
   int load_fl();
   int build_fl();
   const gbwt::Metadata &get_metadata() const;
+  const gbwtgraph::GBZ &get_gbz() const;
+  const gbwt::FastLocate &get_fl() const;
   //   int distance(gbwtgraph::nid_t a, gbwtgraph::nid_t b) const;
   //   std::map<gbwt::size_type, std::vector<gbwt::size_type>>
   //   locate(gbwtgraph::nid_t v) const;
@@ -60,6 +62,8 @@ public:
   std::string get_path_contig(gbwt::size_type pid) const;
   // std::string get_path_sample(gbwt::size_type pid) const;
   std::map<std::string, size_t> get_reference_paths() const;
+  std::string
+  get_path_sequence(const std::vector<gbwt::node_type> &vertices) const;
 };
 
 #endif

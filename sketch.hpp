@@ -46,5 +46,7 @@ void sk_insert(sketch_t *sk, uint64_t kmer_d, uint64_t value);
 void sk_add(sketch_t *sk, uint64_t kmer_d);
 /* Add value to corresponding kmer */
 void sk_add_v(sketch_t *sk, uint64_t kmer_d, uint64_t value);
+/* Set value for corresponding kmer */
+void sk_set(sketch_t *sk, uint64_t kmer_d, uint64_t value);
 
 #endif
