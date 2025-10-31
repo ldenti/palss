@@ -13,13 +13,17 @@ KSEQ_INIT(gzFile, gzread)
 
 int main_kan(int argc, char *argv[]) {
   // int print = 0; // print kmers
-  int out_bed = 1;
+  bool in_reads = true;
+  bool use_all = false;
 
   int _c;
-  while ((_c = getopt(argc, argv, "rh")) != -1) {
+  while ((_c = getopt(argc, argv, "arh")) != -1) {
     switch (_c) {
+    case 'a':
+      use_all = false;
+      break;
     case 'r':
-      out_bed = 0;
+      in_reads = false;
       break;
     case 'h':
       fprintf(stderr, "%s", KAN_USAGE_MESSAGE);
@@ -67,7 +71,7 @@ int main_kan(int argc, char *argv[]) {
     ckmer_d = std::min(kmer_d, rckmer_d);
 
     hit = sk_get(sketch, ckmer_d);
-    if (hit == -1) {
+    if (hit == -1UL || (!use_all && ((hit & 1) == 0))) {
       last_uncovered_p = 0;
       ++tot;
     }
@@ -77,14 +81,13 @@ int main_kan(int argc, char *argv[]) {
       rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
       hit = sk_get(sketch, ckmer_d);
-
-      if (hit == -1) {
+      if (hit == -1UL || (!use_all && ((hit & 1) == 0))) {
         if (last_uncovered_p == -1)
           last_uncovered_p = p - klen + 1;
         ++tot;
       } else {
         if (last_uncovered_p != -1) {
-          if (out_bed) {
+          if (in_reads) {
             // half-open interval, [)
             printf("%s\t%d\t%d\n", seq->name.s, last_uncovered_p, p - klen + 1);
           }
@@ -92,10 +95,10 @@ int main_kan(int argc, char *argv[]) {
         last_uncovered_p = -1;
       }
 
-      if (out_bed && p % 10000000 == 0)
+      if (in_reads && p % 10000000 == 0)
         fprintf(stderr, "Read %d bases from %s\r", p, seq->name.s);
     }
-    if (out_bed)
+    if (in_reads)
       fprintf(stderr, "Read %ld bases from %s\n", seq->seq.l, seq->name.s);
     else {
       printf("%s\t%d\t%d\n", seq->name.s, tot, l - klen + 1);
