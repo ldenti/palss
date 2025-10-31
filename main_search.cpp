@@ -10,7 +10,6 @@ extern "C" {
 #include "misc.hpp"
 #include "reads.hpp"
 #include "sfs.hpp"
-// #include "sketch.hpp"
 #include "usage.hpp"
 
 // Compute SFS strings from P and store them into solutions

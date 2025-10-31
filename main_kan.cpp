@@ -14,13 +14,13 @@ KSEQ_INIT(gzFile, gzread)
 int main_kan(int argc, char *argv[]) {
   // int print = 0; // print kmers
   bool in_reads = true;
-  bool use_all = false;
+  bool reference_only = true;
 
   int _c;
   while ((_c = getopt(argc, argv, "arh")) != -1) {
     switch (_c) {
     case 'a':
-      use_all = false;
+      reference_only = false;
       break;
     case 'r':
       in_reads = false;
@@ -70,8 +70,8 @@ int main_kan(int argc, char *argv[]) {
     rckmer_d = rc(kmer_d, klen);
     ckmer_d = std::min(kmer_d, rckmer_d);
 
-    hit = sk_get(sketch, ckmer_d);
-    if (hit == -1UL || (!use_all && ((hit & 1) == 0))) {
+    hit = sk_get(sketch, ckmer_d, reference_only);
+    if (hit == -1UL) {
       last_uncovered_p = 0;
       ++tot;
     }
@@ -80,8 +80,8 @@ int main_kan(int argc, char *argv[]) {
       kmer_d = lsappend(kmer_d, c, klen);
       rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
-      hit = sk_get(sketch, ckmer_d);
-      if (hit == -1UL || (!use_all && ((hit & 1) == 0))) {
+      hit = sk_get(sketch, ckmer_d, reference_only);
+      if (hit == -1UL) {
         if (last_uncovered_p == -1)
           last_uncovered_p = p - klen + 1;
         ++tot;
@@ -115,7 +115,6 @@ int main_kan(int argc, char *argv[]) {
   kseq_destroy(seq);
   gzclose(fp);
   sk_destroy(sketch);
-  // ---
 
   fprintf(stderr, "[M::%s] completed in %.3f sec\n", __func__,
           realtime() - rt0);

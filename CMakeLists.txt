@@ -9,9 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PALSS VERSION 0.0.1)
 
-add_executable(palss reads.cpp sfs.cpp misc.cpp kmer.cpp graph.cpp sketch.cpp main_extract.cpp main_sketch.cpp main_dump.cpp main_test.cpp main_kan.cpp main_search.cpp main_anchor.cpp main_align.cpp main.cpp)
-#  main_index.cpp main_search.cpp main_kan.cpp main_map.cpp main_call.cpp graph.cpp sfs.c misc.cpp sketch.c kmer.c
-# misc.c kmer.c sfs.c sketch.c segment.c path.c graph.c main_sketch.c main_dump.c main_kan.c main_search.c main_test.c main_call.cpp main.c)
+add_executable(palss reads.cpp sfs.cpp misc.cpp kmer.cpp graph.cpp sketch.cpp main_sketch.cpp main_dump.cpp main_test.cpp main_kan.cpp main_search.cpp main_anchor.cpp main_align.cpp main.cpp)
+# main_extract.cpp
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(palss PRIVATE -Wall) # -Wno-char-subscripts -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
 # add_definitions("-Wp,-w")

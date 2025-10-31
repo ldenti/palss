@@ -21,8 +21,8 @@ int main_dump(int argc, char *argv[]) {
   int solid = 0;
   for (int i = 0; i < sketch->n; ++i) {
     d2s(sketch->sxs[i], klen, kmer);
-    printf("%s\t%d>%d\t%ld\n", kmer, (uint32_t)(sketch->vls[i] >> 32),
-           (uint32_t)sketch->vls[i], sketch->sxs[i]);
+    printf("%s\t%d>%d\t%ld\t%ld\n", kmer, (uint32_t)(sketch->vls[i] >> 33),
+           (uint32_t)sketch->vls[i] >> 1, sketch->vls[i] & 1, sketch->sxs[i]);
     solid += sketch->vls[i] != -1U;
   }
   fprintf(stderr, "Total number of solid anchors: %d\n", solid);

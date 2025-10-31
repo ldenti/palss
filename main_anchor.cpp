@@ -18,7 +18,7 @@ extern "C" {
 #include "usage.hpp"
 
 typedef struct {
-  uint64_t v;   // vertex on graph
+  uint64_t v;   // vertices on graph (sketch value)
   int p;        // position on query
   uint64_t seq; // kmer
 } anchor_t;
@@ -72,23 +72,23 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     std::vector<anchor_t> sanchors;
     while (beg > 0 && sanchors.size() < NA) {
       if (overlapping) {
-        if ((hit = sk_get(sketch, ckmer_d)) != -1UL && kcounts[ckmer_d] == 1)
-          sanchors.push_back({hit, beg, ckmer_d});
+        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL && kcounts[ckmer_d] == 1)
+	  sanchors.push_back({hit, beg, ckmer_d});
         --beg;
         c = to_int[(int)read[beg]] - 1;
         kmer_d = rsprepend(kmer_d, c, klen);
         rckmer_d = lsappend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
       } else {
-        if ((hit = sk_get(sketch, ckmer_d)) != -1UL && kcounts[ckmer_d] == 1) {
-          sanchors.push_back({hit, beg, ckmer_d});
-          beg -= klen;
-          if (beg > 0) {
-            memcpy(kmer, read + beg, klen);
-            kmer_d = k2d((char *)kmer, klen);
-            rckmer_d = rc(kmer_d, klen);
-            ckmer_d = std::min(kmer_d, rckmer_d);
-          }
+        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL && kcounts[ckmer_d] == 1) {
+	  sanchors.push_back({hit, beg, ckmer_d});
+	  beg -= klen;
+	  if (beg > 0) {
+	    memcpy(kmer, read + beg, klen);
+	    kmer_d = k2d((char *)kmer, klen);
+	    rckmer_d = rc(kmer_d, klen);
+	    ckmer_d = std::min(kmer_d, rckmer_d);
+	  }
         } else {
           --beg;
           c = to_int[(int)read[beg]] - 1;
@@ -109,23 +109,23 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     std::vector<anchor_t> eanchors;
     while (end < readl - klen + 1 && eanchors.size() < NA) {
       if (overlapping) {
-        if ((hit = sk_get(sketch, ckmer_d)) != -1UL && kcounts[ckmer_d] == 1)
-          eanchors.push_back({hit, end, ckmer_d});
+        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL && kcounts[ckmer_d] == 1)
+	  eanchors.push_back({hit, end, ckmer_d});
         ++end;
         c = to_int[(int)read[end + klen - 1]] - 1;
         kmer_d = lsappend(kmer_d, c, klen);
         rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
       } else {
-        if ((hit = sk_get(sketch, ckmer_d)) != -1UL && kcounts[ckmer_d] == 1) {
-          eanchors.push_back({hit, end, ckmer_d});
-          end += klen;
-          if (end < readl - klen + 1) {
-            memcpy(kmer, read + end, klen);
-            kmer_d = k2d((char *)kmer, klen);
-            rckmer_d = rc(kmer_d, klen);
-            ckmer_d = std::min(kmer_d, rckmer_d);
-          }
+        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL && kcounts[ckmer_d] == 1) {
+	  eanchors.push_back({hit, end, ckmer_d});
+	  end += klen;
+	  if (end < readl - klen + 1) {
+	    memcpy(kmer, read + end, klen);
+	    kmer_d = k2d((char *)kmer, klen);
+	    rckmer_d = rc(kmer_d, klen);
+	    ckmer_d = std::min(kmer_d, rckmer_d);
+	  }
         } else {
           ++end;
           c = to_int[(int)read[end + klen - 1]] - 1;

@@ -95,9 +95,11 @@ void sk_set(sketch_t *sk, uint64_t kmer_d, uint64_t value) {
   sk->vls[p] = value;
 }
 
-uint64_t sk_get(sketch_t *sk, uint64_t kmer_d) {
+uint64_t sk_get(sketch_t *sk, uint64_t kmer_d, uint8_t ref_only) {
   int64_t p = sk_get_p(sk, kmer_d);
   if (p == -1)
+    return -1UL;
+  if ((sk->vls[p] & 1) == 0)
     return -1UL;
   return sk->vls[p];
 }

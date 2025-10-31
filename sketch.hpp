@@ -9,11 +9,9 @@
 #include <string>
 
 // typedef __int128 int128_t;
-typedef unsigned __int128 uint128_t;
+// typedef unsigned __int128 uint128_t;
 
-/* sketch: 2bit encoded kmer -> (32[offset, 32[vertex in GBWT space)
- * vertex in GBWT space: [31 for ID, [1 for strand
- */
+/* sketch: 2bit encoded kmer -> 2 gbwt vertices, last bit for reference (1) or alternate (0) */
 
 typedef struct {
   int k, m;                  // kmer size, prefix size
@@ -36,8 +34,8 @@ void sk_destroy(sketch_t *sk);
 
 /* Get position of kmer */
 int64_t sk_get_p(sketch_t *sk, uint64_t kmer_d);
-/* Get vertex, offset corresponding to kmer */
-uint64_t sk_get(sketch_t *sk, uint64_t kmer_d);
+/* Get value corresponding to kmer (reference only or all) */
+uint64_t sk_get(sketch_t *sk, uint64_t kmer_d, uint8_t ref_only);
 
 /* Add kmer to sketch, no value */
 void sk_insert(sketch_t *sk, uint64_t kmer_d, uint64_t value);

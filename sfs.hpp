@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include <kmer.hpp>
+
 typedef struct {
   std::string rname; // plain read name
   //
@@ -26,5 +28,6 @@ typedef struct {
 } sfs_t;
 
 std::map<std::string, std::vector<sfs_t>> load_sfs(const std::string &fn);
+std::vector<sfs_t> load_anchored_sfs(const std::string &fn);
 
 #endif

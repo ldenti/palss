@@ -273,7 +273,7 @@ int main_sketch(int argc, char *argv[]) {
       }
 
       for (const auto &[kmer, value] : local_anchors) {
-        uint64_t hit = sk_get(sketch, kmer);
+        uint64_t hit = sk_get(sketch, kmer, 0);
         if (hit == -1UL) {
           // anchor is not in the reference
           anchors.push_back(std::make_pair(kmer, value));
