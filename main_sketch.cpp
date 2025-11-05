@@ -104,7 +104,7 @@ std::vector<rlpath_t> kdfs(const gbwtgraph::GBZ &gbz,
 
 // Flag (set value to -1UL) for all anchors with repeated kmers (assuming
 // anchors are sorted by kmer)
-// XXX: could we set to 0?
+// XXX: could we set to 0 instead of -1UL?
 size_t flag_repetitions(anchors_t &anchors) {
   size_t total = anchors.size();
   for (uint64_t i = 0; i < anchors.size();) {
@@ -118,6 +118,44 @@ size_t flag_repetitions(anchors_t &anchors) {
       ++i;
       --total;
     }
+  }
+  return total;
+}
+
+// flag repetitions checking also value of anchor, by comparing GFA identifiers
+size_t flag_repetitions_wvalue(anchors_t &anchors, const Graph &graph) {
+  size_t total = anchors.size();
+  for (size_t i = 0; i < anchors.size();) {
+    uint64_t kmer_d = anchors[i].first;
+    size_t j = i + 1;
+    while (j < anchors.size() && anchors[j].first == kmer_d)
+      ++j;
+
+    uint64_t value = anchors[i].second;
+    uint32_t s1 = value >> 33, s2 = (uint32_t)value >> 1;
+    // XXX: can we avoid checking GFA but directly using internal identifiers?
+    std::string s1_gfa = graph.get_gfa_name(s1);
+    std::string s2_gfa = graph.get_gfa_name(s2);
+
+    size_t i2 = i + 1;
+    for (; i2 < j; ++i2) {
+      uint32_t n1 = anchors[i2].second >> 33,
+               n2 = (uint32_t)anchors[i2].second >> 1;
+      std::string n1_gfa = graph.get_gfa_name(n1);
+      std::string n2_gfa = graph.get_gfa_name(n2);
+      if (anchors[i2].second != value &&
+          (s1_gfa.compare(n2_gfa) != 0 && s2_gfa.compare(n1_gfa) != 0))
+        break;
+    }
+    if (i2 < j) {
+      anchors[i].second = -1UL;
+      --total;
+    }
+    for (i2 = i + 1; i2 < j; ++i2) {
+      anchors[i2].second = -1UL;
+      --total;
+    }
+    i = j;
   }
   return total;
 }
@@ -324,7 +362,7 @@ int main_sketch(int argc, char *argv[]) {
           realtime() - rt);
 
   rt = realtime();
-  total_anchors = flag_repetitions(anchors);
+  total_anchors = flag_repetitions_wvalue(anchors, graph);
   fprintf(
       stderr,
       "[M::%s] Flagged other anchors in %.3f sec (resulting anchors: %ld)\n",
