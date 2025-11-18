@@ -55,6 +55,54 @@ void get_anchors(anchors_t &anchors, const std::string &sequence,
   }
 }
 
+/**
+std::vector<rlpath_t> dfs_k2k(const gbwtgraph::GBZ &gbz,
+                              const gbwt::FastLocate &fl,
+                              const gbwt::node_type &source, const size_t &klen)
+{ std::vector<rlpath_t> paths; // fully extended path std::queue<rlpath_t>
+queue;  // paths we still need to "extend" std::map<gbwt::node_type, bool>
+visited; // XXX: improve this queue.push({{source}, 0}); while (!queue.empty())
+{ rlpath_t path = queue.front(); queue.pop();
+
+    // get outgoings edges from current sink
+    gbwt::node_type vertex = path.vertices.back();
+    gbwtgraph::handle_t handle = gbz.graph.node_to_handle(vertex);
+    std::vector<gbwt::node_type> outs;
+    gbwt::SearchState state = gbz.graph.get_state(handle);
+    gbz.graph.follow_paths(
+        state, [&outs](const gbwt::SearchState &next_state) -> bool {
+          if (!next_state.empty())
+            outs.push_back(next_state.node);
+          return true;
+        });
+
+    // extend path
+    for (const gbwt::node_type &v : outs) {
+      const gbwtgraph::handle_t &h = gbz.graph.node_to_handle(v);
+      size_t l = gbz.graph.get_length(h);
+      rlpath_t new_path = path;
+      new_path.vertices.push_back(v);
+
+      // check if path is consistent with haplotypes
+      gbwt::size_type first;
+      gbwt::SearchState state =
+          fl.find(new_path.vertices.begin(), new_path.vertices.end(), first);
+      if (state.empty())
+        continue;
+
+      // add path to solutions if last vertex is k-long
+      if (l >= klen) {
+        paths.push_back(new_path);
+      } else {
+        queue.push(new_path);
+
+      }
+    }
+  }
+  return paths;
+}
+**/
+
 // TODO : we could improve this using some sort of caching
 std::vector<rlpath_t> kdfs(const gbwtgraph::GBZ &gbz,
                            const gbwt::FastLocate &fl,

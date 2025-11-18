@@ -9,7 +9,7 @@
 
 int main_dump(int argc, char *argv[]) {
   if (argc != 3) {
-    fprintf(stderr, "./palss dump <.skt>\n");
+    fprintf(stderr, "./palss dump <.skt> <.gbz>\n");
     return 1;
   }
   char *skt_fn = argv[1];
@@ -28,8 +28,10 @@ int main_dump(int argc, char *argv[]) {
     d2s(sketch->sxs[i], klen, kmer);
     uint32_t v1 = (uint32_t)(sketch->vls[i] >> 33);
     uint32_t v2 = (uint32_t)sketch->vls[i] >> 1;
-    printf("%s\t%d>%d\t%s>%s\t%ld\t%ld\n", kmer, v1,
-           v1, graph.get_gfa_name(v1 >> 1).c_str(), graph.get_gfa_name(v2 >> 1).c_str(), sketch->vls[i] & 1, sketch->sxs[i]);
+    printf("%s\t%d>%d\t%s>%s\t%ld\t%ld\n", kmer, v1, v1,
+           graph.get_gfa_name(v1 >> 1).c_str(),
+           graph.get_gfa_name(v2 >> 1).c_str(), sketch->vls[i] & 1,
+           sketch->sxs[i]);
     solid += sketch->vls[i] != -1U;
   }
   fprintf(stderr, "Total number of solid anchors: %d\n", solid);

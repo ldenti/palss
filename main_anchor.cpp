@@ -72,23 +72,25 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     std::vector<anchor_t> sanchors;
     while (beg > 0 && sanchors.size() < NA) {
       if (overlapping) {
-        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL && kcounts[ckmer_d] == 1)
-	  sanchors.push_back({hit, beg, ckmer_d});
+        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL &&
+            kcounts[ckmer_d] == 1)
+          sanchors.push_back({hit, beg, ckmer_d});
         --beg;
         c = to_int[(int)read[beg]] - 1;
         kmer_d = rsprepend(kmer_d, c, klen);
         rckmer_d = lsappend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
       } else {
-        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL && kcounts[ckmer_d] == 1) {
-	  sanchors.push_back({hit, beg, ckmer_d});
-	  beg -= klen;
-	  if (beg > 0) {
-	    memcpy(kmer, read + beg, klen);
-	    kmer_d = k2d((char *)kmer, klen);
-	    rckmer_d = rc(kmer_d, klen);
-	    ckmer_d = std::min(kmer_d, rckmer_d);
-	  }
+        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL &&
+            kcounts[ckmer_d] == 1) {
+          sanchors.push_back({hit, beg, ckmer_d});
+          beg -= klen;
+          if (beg > 0) {
+            memcpy(kmer, read + beg, klen);
+            kmer_d = k2d((char *)kmer, klen);
+            rckmer_d = rc(kmer_d, klen);
+            ckmer_d = std::min(kmer_d, rckmer_d);
+          }
         } else {
           --beg;
           c = to_int[(int)read[beg]] - 1;
@@ -109,23 +111,25 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     std::vector<anchor_t> eanchors;
     while (end < readl - klen + 1 && eanchors.size() < NA) {
       if (overlapping) {
-        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL && kcounts[ckmer_d] == 1)
-	  eanchors.push_back({hit, end, ckmer_d});
+        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL &&
+            kcounts[ckmer_d] == 1)
+          eanchors.push_back({hit, end, ckmer_d});
         ++end;
         c = to_int[(int)read[end + klen - 1]] - 1;
         kmer_d = lsappend(kmer_d, c, klen);
         rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
         ckmer_d = std::min(kmer_d, rckmer_d);
       } else {
-        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL && kcounts[ckmer_d] == 1) {
-	  eanchors.push_back({hit, end, ckmer_d});
-	  end += klen;
-	  if (end < readl - klen + 1) {
-	    memcpy(kmer, read + end, klen);
-	    kmer_d = k2d((char *)kmer, klen);
-	    rckmer_d = rc(kmer_d, klen);
-	    ckmer_d = std::min(kmer_d, rckmer_d);
-	  }
+        if ((hit = sk_get(sketch, ckmer_d, reference_only)) != -1UL &&
+            kcounts[ckmer_d] == 1) {
+          eanchors.push_back({hit, end, ckmer_d});
+          end += klen;
+          if (end < readl - klen + 1) {
+            memcpy(kmer, read + end, klen);
+            kmer_d = k2d((char *)kmer, klen);
+            rckmer_d = rc(kmer_d, klen);
+            ckmer_d = std::min(kmer_d, rckmer_d);
+          }
         } else {
           ++end;
           c = to_int[(int)read[end + klen - 1]] - 1;
@@ -145,8 +149,9 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     size_t sa_i, ea_i;
     for (sa_i = 0; sa_i < sanchors.size(); ++sa_i) {
       anchor_t &sa = sanchors[sa_i];
-      gbwt::size_type sv1 = sa.v >> 32;
-      gbwt::size_type sv2 = (uint32_t)sa.v;
+      uint32_t sv1 = (uint32_t)(sa.v >> 33);
+      uint32_t sv2 = (uint32_t)sa.v >> 1;
+
       std::vector<path_t> spaths = graph.get_paths(sv1, sv2, reference_only);
 
       // get only paths containing the anchor kmer
@@ -168,8 +173,10 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
 
       for (ea_i = 0; ea_i < eanchors.size(); ++ea_i) {
         anchor_t &ea = eanchors[ea_i];
-        gbwt::size_type ev1 = ea.v >> 32;
-        gbwt::size_type ev2 = (uint32_t)ea.v;
+
+        uint32_t ev1 = (uint32_t)(ea.v >> 33);
+        uint32_t ev2 = (uint32_t)ea.v >> 1;
+
         std::vector<path_t> epaths = graph.get_paths(ev1, ev2, reference_only);
         // get only paths containing the anchor kmer
         char ekmer1[klen];
@@ -235,9 +242,10 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     // Assigning the anchors
     s.s = sanchors[sa_i].p;
     s.l = eanchors[ea_i].p + klen - sanchors[sa_i].p;
-    s.sv1 = sanchors[sa_i].v >> 32;
+    // CHECKME: here we removed the reference bit. Better to keep it somehow?
+    s.sv1 = (uint32_t)(sanchors[sa_i].v >> 32);
     s.sv2 = (uint32_t)sanchors[sa_i].v;
-    s.ev1 = eanchors[ea_i].v >> 32;
+    s.ev1 = (uint32_t)(eanchors[ea_i].v >> 32);
     s.ev2 = (uint32_t)eanchors[ea_i].v;
     // XXX: kmers do not follow "strand" induced by selected path
     s.skmer = std::min(sanchors[sa_i].seq, eanchors[ea_i].seq);

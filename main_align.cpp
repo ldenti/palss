@@ -182,12 +182,10 @@ int main_align(int argc, char *argv[]) {
   uint8_t **cluster_seqs = (uint8_t **)malloc(sizeof(uint8_t *) * 64);
   int *cluster_seqs_lens = (int *)malloc(sizeof(int) * 64);
 
-// Initialize ksw2
-//
-https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
+  // Initialize ksw2
+  // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
   // asm5
-  // int sc_mch = 1, sc_mis = -19, gapo = 39, gape = 3, gapo2 = 81, gape2 =
-  1;
+  // int sc_mch = 1, sc_mis = -19, gapo = 39, gape = 3, gapo2 = 81, gape2 = 1;
   // asm10
   int sc_mch = 1, sc_mis = -9, gapo = 16, gape = 2, gapo2 = 41, gape2 = 1;
   int8_t a = (int8_t)sc_mch,
@@ -197,12 +195,12 @@ https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/
   ksw_extz_t ez;
   memset(&ez, 0, sizeof(ksw_extz_t));
 
-  std::map<std::string, size_t> ref_paths;
+  std::map<std::string, refpath_t> ref_paths;
   if (out_sam) {
     std::cout << "@HD\tVN:1.6\tSO:coordinate" << std::endl;
     ref_paths = graph.get_reference_paths();
-    for (const auto &[name, l] : ref_paths)
-      std::cout << "@SQ\tSN:" << name << "\tLN:" << l << std::endl;
+    for (const auto &[name, path] : ref_paths)
+      std::cout << "@SQ\tSN:" << name << "\tLN:" << path.seql << std::endl;
   }
 
   // TODO: parallelize
@@ -216,8 +214,10 @@ https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/
   for (size_t cidx = 0; cidx < clusters.size(); ++cidx) {
     std::vector<sfs_t> &cluster = clusters[cidx];
 
-    if (cidx != 903 && cidx != 324 && cidx != 352)
-      continue;
+    // if (cidx != 903 && cidx != 324 && cidx != 352)
+    //   continue;
+    // if (cidx != 49074)
+    //   continue;
 
     if ((cidx + 1) % 1000 == 0) {
       fprintf(stderr, "[M::%s] analyzed %ld/%ld clusters in %.3f sec\n",
@@ -239,13 +239,15 @@ https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/
     int v2 = cluster.front().ev2;
     int v2a = cluster.front().ev1;
 
-    fprintf(stderr, "Cluster %ld: %s/%s > %s/%s\n", cidx,
-            graph.get_gfa_name(v1).c_str(), graph.get_gfa_name(v1b).c_str(),
-            graph.get_gfa_name(v2a).c_str(), graph.get_gfa_name(v2).c_str());
-      for (const sfs_t &s : cluster) {
-        std::cerr << s.rname << std::endl;
-      }
+    // fprintf(stderr, "Cluster %ld: %s/%s > %s/%s\n", cidx,
+    //         graph.get_gfa_name(v1 >> 1).c_str(),
+    //         graph.get_gfa_name(v1b >> 1).c_str(),
+    //         graph.get_gfa_name(v2a >> 1).c_str(),
+    //         graph.get_gfa_name(v2 >> 1).c_str());
 
+    // for (const sfs_t &s : cluster) {
+    //   std::cerr << s.rname << std::endl;
+    // }
 
     // TODO: store path names
     std::vector<path_t> paths = graph.get_paths(v1, v2, out_sam);
@@ -292,8 +294,8 @@ https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/
       last_kmer_2 = reverseAndComplement(first_kmer_1);
     }
 
-    std::cerr << first_kmer_1 << " " << last_kmer_1 << std::endl;
-    std::cerr << first_kmer_2 << " " << last_kmer_2 << std::endl;
+    // std::cerr << first_kmer_1 << " " << last_kmer_1 << std::endl;
+    // std::cerr << first_kmer_2 << " " << last_kmer_2 << std::endl;
 
     bool hit = false;
     std::string first_kmer, last_kmer;
@@ -336,8 +338,9 @@ https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/
       continue;
     }
 
-    std::cerr << " -> " << first_kmer << " " << last_kmer << std::endl;
+    // std::cerr << " -> " << first_kmer << " " << last_kmer << std::endl;
 
+    // fprintf(stderr, "#paths: %ld\n", paths.size());
     // cut path sequences and compute kmer counts
     std::vector<std::vector<uint32_t>> path_kcounts(paths.size());
     for (size_t p = 0; p < paths.size(); ++p) {
@@ -363,7 +366,8 @@ https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/
           s.seq[s.l - 1 - i] = 3 - s.seq[i];
           s.seq[i] = 3 - tmp;
         }
-        s.seq[i] = 3 - s.seq[i];
+        if (s.l & 1)
+          s.seq[i] = 3 - s.seq[i];
 
         std::string seq;
         for (i = 0; i < s.l; ++i)
@@ -377,6 +381,8 @@ https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/
     // Consensus via abpoa
     int goods = 0;
     for (sfs_t &s : cluster) {
+      // fprintf(stderr, "%s:%d-%d : %s\n", s.rname.c_str(), s.s, s.s + s.l,
+      //         s.plain_seq.c_str());
       cluster_seqs_lens[goods] = s.l;
       cluster_seqs[goods] = s.seq;
       ++goods;
@@ -422,10 +428,10 @@ https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/
 
       if (std::abs((int)path.sequence.size() - cons_l) >= 50000) {
         ++strange_clusters;
-        fprintf(
-            stderr,
-            "Skipping cluster %ld.%d since path/consensus lengths disagree (%ld/%d)\n",
-            cidx, ci, path.sequence.size(), cons_l);
+        fprintf(stderr,
+                "Skipping cluster %ld.%d since path/consensus lengths disagree "
+                "(%ld/%d)\n",
+                cidx, ci, path.sequence.size(), cons_l);
         continue;
       }
       // fprintf(stderr, "Aligning %dbp against %ldbp\n", cons_l,
@@ -505,13 +511,16 @@ https: // github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/
 
       for (int i = 0; i < cons_l; ++i)
         cons_seq[i] = "ACGT"[(uint8_t)cons_seq[i]];
+      cons_seq[cons_l] = '\0';
 
       if (out_sam) {
-        std::string contig_name = graph.get_path_contig(path.id);
+        std::string contig_name = graph.get_path_contig(path.id >> 1);
+
         std::cout << cidx << "." << ci << "\t";
         std::cout << 0 << "\t";
         std::cout << contig_name << "\t";
-        std::cout << ref_paths[contig_name] - path.offset1 + path.cutpfx + 1
+        std::cout << ref_paths[contig_name].offsets[path.vertices[0]] +
+                         path.cutpfx + 1
                   << "\t";
         std::cout << 60 << "\t";
         std::cout << cigar << "\t";
