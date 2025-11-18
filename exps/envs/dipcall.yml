@@ -1,0 +1,8 @@
+name: dipcall
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - dipcall=0.3
+  - bcftools
+  - pysam

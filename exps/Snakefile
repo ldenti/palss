@@ -1,0 +1,561 @@
+# from snakemake.utils import min_version
+# min_version("6.4.1")
+from os.path import join as pjoin
+import random
+
+##### config file #####
+# configfile: "config/config.yml"
+
+seed = 42  # 23
+random.seed(seed)
+coverage = 7.5  # coverage per haplotype
+Ns = [32]
+Ws = [2]
+
+FA = config["fa"]
+GBZ = config["gbz"]
+GFA = config["gfa"]
+VCF = config["vcf"]
+SAMPLES = config[
+    "samples"
+]  # vg gbwt --gbz-input --samples --list-names $gbz | grep -Pv "CHM13|GRCh38" > $wd/all_samples.list
+REALFQ = config["fq"]
+TRF = config["trf"]
+
+WD = config["wd"]
+
+
+REF = "CHM13"
+OTHER_REF = "GRCh38"
+
+all_samples = []
+for line in open(SAMPLES):
+    all_samples.append(line.strip("\n"))
+
+random.shuffle(all_samples)
+
+sample = all_samples[0]
+kept_samples = {}
+for n in Ns:
+    kept_samples[str(n)] = [REF] + all_samples[1 : n + 1]
+
+print(sample, kept_samples)
+
+
+rule run:
+    input:
+        # pangenome with n individuals
+        expand(pjoin(WD, "{n}", "pangenome.gbz"), n=Ns),
+        # all variations (n+1)
+        expand(pjoin(WD, "{n}", "all.vcf.gz"), n=Ns),
+        # variations specific to selected individual
+        expand(pjoin(WD, "{n}", "novel-short.vcf.gz"), n=Ns),
+        expand(pjoin(WD, "{n}", "novel-long.vcf.gz"), n=Ns),
+        # reads from selected individual (simulated from contig paths)
+        pjoin(WD, sample + "-reads.fq"),
+        # ###
+        # ###
+        # pjoin(WD, "callsets", "deepvariant-short.vcf.gz"),
+        # pjoin(WD, "callsets", "bcftools-short.vcf.gz"),
+        # pjoin(WD, "callsets", "dipcall-short.vcf.gz"),
+        #pjoin(WD, "callsets", "dipcall-long.vcf.gz"),
+        #pjoin(WD, "callsets", "sniffles-long.vcf.gz"),
+        #
+        expand(pjoin(WD, "callsets", "palss.w{w}.n{n}-short.vcf.gz"), w=Ws, n=Ns),
+        expand(pjoin(WD, "callsets", "palss.w{w}.n{n}-long.vcf.gz"), w=Ws, n=Ns),
+        #
+        expand(pjoin(WD, "{n}", "happy"), n=Ns),
+        # expand(pjoin(WD, "{n}", "truvari"), n=Ns),
+
+
+########################
+### DATA PREPARATION ###
+########################
+
+
+rule dump_samples:
+    output:
+        wref=pjoin(WD, "{n}", "samples_wref.txt"),
+        known=pjoin(WD, "{n}", "known_samples.txt"),
+        new=pjoin(WD, "{n}", "new_sample.txt"),
+        full=pjoin(WD, "{n}", "all_samples.txt"),
+    params:
+        ss=lambda wildcards: kept_samples[wildcards.n],
+    shell:
+        """
+        echo {params.ss} | tr " " "\n" > {output.wref}
+        tail -n+2 {output.wref} > {output.known}
+        echo {sample} > {output.new}
+        cat {output.new} {output.known} > {output.full}
+        """
+
+
+rule get_vcfs:
+    input:
+        vcf=VCF,
+        all_samples=pjoin(WD, "{n}", "all_samples.txt"),
+    output:
+        all_vcf=pjoin(WD, "{n}", "all.vcf.gz"),
+        all_vcf_short=pjoin(WD, "{n}", "all-short.vcf.gz"),
+        all_vcf_long=pjoin(WD, "{n}", "all-long.vcf.gz"),
+        #
+        known_vcf_short=pjoin(WD, "{n}", "known-short.vcf.gz"),
+        known_vcf_long=pjoin(WD, "{n}", "known-long.vcf.gz"),
+        #
+        novel_vcf_short=pjoin(WD, "{n}", "novel-short.vcf.gz"),
+        novel_vcf_long=pjoin(WD, "{n}", "novel-long.vcf.gz"),
+    conda:
+        "./envs/bcftools.yml"
+    shell:
+        """
+        ###
+        # get VCF for n+1 samples + clean
+        bcftools view -S {input.all_samples} {input.vcf} | bcftools norm --multiallelics - | bcftools view -c 1 -AA -Oz -i 'GT[*]="alt"' > {output.all_vcf}
+        tabix -p vcf {output.all_vcf}
+        # get short/long
+        bcftools view -i '(ILEN > -50 && ILEN < 50)' {output.all_vcf} | bcftools norm --atomize -d exact | bcftools sort -Oz > {output.all_vcf_short}
+        tabix -p vcf {output.all_vcf_short}
+        bcftools view -v indels -i '(ILEN <= -50 || ILEN >= 50)' -Oz {output.all_vcf} > {output.all_vcf_long}
+        tabix -p vcf {output.all_vcf_long}
+        #
+        ###
+        # get known VCF
+        bcftools view -s ^{sample} {output.all_vcf_short} | bcftools view -c 1 -AA  -Oz -i 'GT[*]="alt"' > {output.known_vcf_short}
+        tabix -p vcf {output.known_vcf_short}
+        bcftools view -s ^{sample} {output.all_vcf_long} | bcftools view -c 1 -AA -Oz -i 'GT[*]="alt"' > {output.known_vcf_long}
+        tabix -p vcf {output.known_vcf_long}
+        #
+        ### get private VCF
+        #
+        bcftools view -Oz -x -s {sample} {output.all_vcf_short} > {output.novel_vcf_short}
+        tabix -p vcf {output.novel_vcf_short}
+        bcftools view -Oz -x -s {sample} {output.all_vcf_long} > {output.novel_vcf_long}
+        tabix -p vcf {output.novel_vcf_long}
+        """
+
+
+# python3 ~/code/palss/exps/scripts/get_specific_variants.py variations.vcf.gz > private-py.vcf
+
+
+rule extract_subgraph:
+    input:
+        gfa=GFA,
+        samples=pjoin(WD, "{n}", "samples_wref.txt"),
+    output:
+        vg=pjoin(WD, "{n}", "pangenome.vg"),
+        gbz=pjoin(WD, "{n}", "pangenome.gbz"),
+    conda:
+        "./envs/vg.yml"
+    shell:
+        """
+        
+        python3 ./scripts/remove_samples.py {input.gfa} {input.samples} | vg mod --remove-non-path - | vg mod --unchop - > {output.vg}
+        vg gbwt --gbz-format --graph-name {output.gbz} --xg-name {output.vg} --index-paths
+        """
+
+
+rule extract_haplotype:
+    input:
+        gbz=GBZ,
+    output:
+        fa=pjoin(WD, sample + "-hap{h}.fa"),
+    shell:
+        """
+        vg paths --paths-by "{sample}#{wildcards.h}" --extract-fasta --xg {input.gbz} > {output.fa}
+        """
+
+
+rule pbsim3:
+    input:
+        fa=rules.extract_haplotype.output.fa,
+        fq=REALFQ,
+    output:
+        fq=pjoin(WD, "pbsim3", "hap{h}_0001.fq.gz"),
+    params:
+        oprefix=pjoin(WD, "pbsim3", "hap{h}"),
+        cov=coverage,
+    threads: workflow.cores / 2
+    conda:
+        "./envs/pbsim3.yml"
+    shell:
+        """
+        pbsim --id-prefix "S{wildcards.h}_" --prefix {params.oprefix} --strategy wgs --method sample --sample {input.fq} --depth {params.cov} --genome {input.fa}
+        """
+
+
+rule combine:
+    input:
+        pjoin(WD, "pbsim3", "hap1_0001.fq.gz"),
+        pjoin(WD, "pbsim3", "hap2_0001.fq.gz"),
+    output:
+        fq=pjoin(WD, sample + "-reads.fq"),
+    params:
+        oprefix=pjoin(WD, "pbsim3"),
+    shell:
+        """
+        zcat {params.oprefix}/*.fq.gz | python3 ./scripts/remove_n.py > {output.fq}
+        """
+
+
+#############
+### PALSS ###
+#############
+
+
+rule palss_ec:
+    input:
+        fq=rules.combine.output.fq,
+    output:
+        fa=pjoin(WD, sample + ".ec.fa"),
+    params:
+        prefix=pjoin(WD, sample),
+    threads: workflow.cores
+    conda:
+        "./envs/hifiasm.yml"
+    shell:
+        """
+        hifiasm -t{threads} --write-ec --bin-only {input.fq} -o {params.prefix}
+        """
+
+
+rule palss_sketch:
+    input:
+        gbz=pjoin(WD, "{n}", "pangenome.gbz"),
+    output:
+        skt=pjoin(WD, "{n}", "pangenome.gbz.skt"),
+    shell:
+        """
+        ../palss sketch {input.gbz} > {output.skt}
+        """
+
+
+rule palss_fmd:
+    input:
+        gbz=pjoin(WD, "{n}", "pangenome.gbz"),
+    output:
+        fmd=pjoin(WD, "{n}", "pangenome.gbz.fmd"),
+    threads: workflow.cores
+    shell:
+        """
+        LD_LIBRARY_PATH="$PWD/../lib" ../build/gbwtgraph-prefix/src/gbwtgraph/bin/gbz_extract {input.gbz} | ../build/rb3-prefix/src/rb3/ropebwt3 build -t {threads} -m 2G -Ld - > {output.fmd}
+        """
+
+
+rule palss_search:
+    input:
+        fmd=rules.palss_fmd.output.fmd,
+        fa=rules.palss_ec.output.fa,
+    output:
+        sfs=pjoin(WD, "{n}", "palss", "specific_strings.txt"),
+    threads: workflow.cores
+    shell:
+        """
+        ../palss search -@{threads} {input.fmd} {input.fa} > {output.sfs}
+        """
+
+
+rule palss_anchor:
+    input:
+        gbz=pjoin(WD, "{n}", "pangenome.gbz"),
+        skt=rules.palss_sketch.output.skt,
+        fa=rules.palss_ec.output.fa,
+        sfs=rules.palss_search.output.sfs,
+    output:
+        sfs=pjoin(WD, "{n}", "palss", "specific_strings.anchored.txt"),
+    threads: workflow.cores
+    shell:
+        """
+        ../palss anchor -@{threads} {input.gbz} {input.skt} {input.fa} {input.sfs} > {output.sfs}
+        """
+
+
+rule palss_align:
+    input:
+        gbz=pjoin(WD, "{n}", "pangenome.gbz"),
+        sfs=rules.palss_anchor.output.sfs,
+    output:
+        sam=pjoin(WD, "{n}", "palss", "consensus-w{w}.sam"),
+    shell:
+        """
+        ../palss align -w{wildcards.w} -k31 {input.gbz} {input.sfs} > {output.sam}
+        """
+
+
+rule palss_sam2bam:
+    input:
+        sam=rules.palss_align.output.sam,
+    output:
+        bam=pjoin(WD, "{n}", "palss", "consensus-w{w}.bam"),
+    conda:
+        "./envs/samtools.yml"
+    shell:
+        """
+        samtools view -bS {input.sam} | samtools sort > {output.bam}
+        samtools index {output.bam}
+        """
+
+
+rule palss_call:
+    input:
+        fa=FA,
+        bam=rules.palss_sam2bam.output.bam,
+        known_vcf_short=rules.get_vcfs.output.known_vcf_short,
+    output:
+        vcf=pjoin(WD, "{n}", "palss", "variations-w{w}.vcf.gz"),
+        vcf1=pjoin(WD, "callsets", "palss.w{w}.n{n}-short.vcf.gz"),
+        vcf2=pjoin(WD, "callsets", "palss.w{w}.n{n}-long.vcf.gz"),
+    conda:
+        "./envs/dipcall.yml"
+    shell:
+        """
+        htsbox pileup -c -f {input.fa} {input.bam} | bgzip -c > {output.vcf}
+        tabix -p vcf {output.vcf}
+        #
+        bcftools view -i '(ILEN > -50 && ILEN < 50)' {output.vcf} | bcftools norm -Oz --multiallelics - > {output.vcf1}.tmp.vcf.gz
+        tabix -p vcf {output.vcf1}.tmp.vcf.gz
+        python3 ../scripts/vcf_diff.py {input.known_vcf_short} {output.vcf1}.tmp.vcf.gz | bgzip -c > {output.vcf1}
+        tabix -p vcf {output.vcf1}
+        rm {output.vcf1}.tmp.vcf.gz {output.vcf1}.tmp.vcf.gz.tbi
+        #
+        bcftools view -v indels -i '(ILEN <= -50 || ILEN >= 50)' -Oz {output.vcf} | bcftools norm -Oz --multiallelics - > {output.vcf2}
+        tabix -p vcf {output.vcf2}
+        """
+
+
+###############
+### CALLING ###
+###############
+
+
+rule faidx:
+    input:
+        FA,
+    output:
+        FA + ".fai",
+    conda:
+        "./envs/samtools.yml"
+    shell:
+        """
+        samtools faidx {input}
+        """
+
+
+rule dipcall:
+    input:
+        fa=FA,
+        # bed=PARBED,
+        hap1=pjoin(WD, sample + "-hap1.fa"),  # paternal?
+        hap2=pjoin(WD, sample + "-hap2.fa"),  # maternal?
+    output:
+        vcf=pjoin(WD, "callsets", "dipcall", "prefix.dip.vcf.gz"),
+        bed=pjoin(WD, "callsets", "dipcall", "prefix.dip.bed"),  # DIPBED
+        bam1=pjoin(WD, "callsets", "dipcall", "prefix.hap1.bam"),
+        bam2=pjoin(WD, "callsets", "dipcall", "prefix.hap2.bam"),
+    params:
+        wdir=pjoin(WD, "callsets", "dipcall"),
+        prefix=pjoin(WD, "callsets", "dipcall", "prefix"),
+        mak=pjoin(WD, "callsets", "dipcall.mak"),
+    threads: workflow.cores
+    conda:
+        "./envs/dipcall.yml"
+    shell:
+        """
+        run-dipcall -t {threads} {params.prefix} {input.fa} {input.hap1} {input.hap2} > {params.mak}
+        mkdir -p {params.wdir}
+        make -j 2 -f {params.mak}
+        tabix -p vcf {output.vcf}
+        samtools index {output.bam1}
+        samtools index {output.bam2}
+        """
+
+
+rule clean_dipcall:
+    input:
+        fai=FA + ".fai",
+        bed=pjoin(WD, "callsets", "dipcall", "prefix.dip.bed"),
+        vcf=pjoin(WD, "callsets", "dipcall", "prefix.dip.vcf.gz"),
+    output:
+        vcf=pjoin(WD, "callsets", "dipcall.vcf.gz"),
+        vcf1=pjoin(WD, "callsets", "dipcall-short.vcf.gz"),
+        vcf2=pjoin(WD, "callsets", "dipcall-long.vcf.gz"),
+        bed=pjoin(WD, "callsets", "dipcall.bed"),
+    conda:
+        "./envs/bcftools.yml"
+    shell:
+        """
+        cp {input.bed} {output.bed}
+        #
+        bcftools reheader --fai {input.fai} {input.vcf} | bcftools norm -Oz --multiallelics - > {output.vcf}
+        tabix -p vcf {output.vcf}
+        #
+        bcftools view -i '(ILEN > -50 && ILEN < 50)' -Oz {output.vcf} > {output.vcf1}
+        tabix -p vcf {output.vcf1}
+        #
+        bcftools view -v indels -i '(ILEN <= -50 || ILEN >= 50)' -Oz {output.vcf} > {output.vcf2}
+        tabix -p vcf {output.vcf2}
+        """
+
+
+rule minimap2:
+    input:
+        fa=FA,
+        fq=rules.combine.output.fq,
+    output:
+        bam=pjoin(WD, sample + "-reads.bam"),
+    threads: workflow.cores
+    conda:
+        "./envs/minimap2.yml"
+    shell:
+        """
+        minimap2 -ax map-hifi --MD --eqx -Y -R '@RG\\tID:{sample}\\tSM:{sample}' -t{threads} {input.fa} {input.fq} | samtools view -bS | samtools sort -@ $(({threads}-1)) -T {output.bam} > {output.bam}
+        samtools index {output.bam}
+        """
+
+
+rule sniffles:
+    input:
+        fa=FA,
+        bam=rules.minimap2.output.bam,
+        bed=TRF,
+    output:
+        vcf=pjoin(WD, "callsets", "sniffles-output.vcf"),
+    conda:
+        "./envs/sniffles.yml"
+    threads: workflow.cores
+    shell:
+        """
+        sniffles --threads {threads} --mapq 20 --minsupport auto --phase --minsvlen 50 --reference {input.fa} --input {input.bam} --vcf {output.vcf} --tandem-repeats {input.bed}
+        """
+
+
+rule sniffles_post:
+    input:
+        vcf=pjoin(WD, "callsets", "sniffles-output.vcf"),
+    output:
+        vcf=pjoin(WD, "callsets", "sniffles-long.vcf.gz"),
+    conda:
+        "./envs/bcftools.yml"
+    shell:
+        """
+        # bgzip -c {input.vcf} > {output.vcf}
+        bcftools view -Oz --include "INFO/SVTYPE='DEL' | INFO/SVTYPE='INS' | INFO/SVTYPE='DUP'" {input.vcf} > {output.vcf}
+        # bcftools view --exclude "INFO/SVTYPE='BND'" {input.vcf} | python3 ./scripts/remove_strange_symbolic.py | bgzip -c > {output.vcf}
+        tabix -p vcf {output.vcf}
+        """
+
+
+rule deepvariant:
+    input:
+        fa=FA,
+        bam=rules.minimap2.output.bam,
+    output:
+        vcf=pjoin(WD, "callsets", "deepvariant-short.vcf.gz"),
+    threads: workflow.cores
+    conda:
+        "./envs/deepvariant.yml"
+    shell:
+        """
+        docker run --user $(id -u):$(id -g) -v /:/wd google/deepvariant:1.9.0 /opt/deepvariant/bin/run_deepvariant --model_type PACBIO --ref /wd/{input.fa} --reads /wd/{input.bam} --output_vcf /wd/{output.vcf} --num_shards {threads} --sample_name {sample}
+        #
+        # singularity run --bind /:/wd docker://google/deepvariant:1.9.0 /opt/deepvariant/bin/run_deepvariant --model_type PACBIO --ref /wd/{input.fa} --reads /wd/{input.bam} --output_vcf /wd/{output.vcf} --num_shards {threads} --sample_name {sample}
+        #
+        """
+
+
+# this does not work with PACBIO model_type (November 13, 2025)
+# rule deepvariant_pg:
+#     input:
+#         fa=FA,
+#         bam=rules.minimap2.output.bam,
+#         gbz=pjoin(WD, "{n}", "pangenome.gbz"),
+#     output:
+#         vcf=pjoin(WD, "callsets", "deepvariantpg.n{n}-short.vcf.gz"),
+#     threads: workflow.cores
+#     conda:
+#         "./envs/deepvariant.yml"
+#     shell:
+#         """
+#         docker run --user $(id -u):$(id -g) -v /:/wd google/deepvariant:pangenome_aware_deepvariant-1.9.0 /opt/deepvariant/bin/run_pangenome_aware_deepvariant --model_type PACBIO --ref /wd/{input.fa} --pangenome /wd/{input.gbz} --reads /wd/{input.bam} --output_vcf /wd/{output.vcf} --num_shards {threads} --sample_name {sample}
+#         """
+
+
+rule bcftools:
+    input:
+        fa=FA,
+        bam=rules.minimap2.output.bam,
+    output:
+        vcf=pjoin(WD, "callsets", "bcftools-short.vcf.gz"),
+    threads: workflow.cores
+    conda:
+        "./envs/bcftools.yml"
+    shell:
+        """
+        bcftools mpileup -Ou -f {input.fa} {input.bam} | bcftools call -mv -Oz -o {output.vcf}
+        """
+
+
+### HAP.PY
+
+
+rule run_happy:
+    input:
+        fa=FA,
+        bed=rules.clean_dipcall.output.bed,
+        vcf1=rules.get_vcfs.output.novel_vcf_short,
+        vcf2=pjoin(WD, "callsets", "dipcall-short.vcf.gz"),
+        vcfs=expand(
+            pjoin(WD, "callsets", "{caller}-short.vcf.gz"),
+            caller=["bcftools", "deepvariant"],
+        ),
+        # dvpg=pjoin(WD, "callsets", "deepvariantpg.n{n}-short.vcf.gz"),
+        palss=expand(pjoin(WD, "callsets", "palss.w{w}.n{{n}}-short.vcf.gz"), w=Ws),
+    output:
+        directory(pjoin(WD, "{n}", "happy")),
+    threads: workflow.cores
+    conda:
+        "./envs/happy.yml"
+    shell:
+        """
+        bash ./scripts/run_happy.sh {input.fa} {input.bed} {output} {input.vcf1} {input.vcf2} {input.vcfs} {input.palss}
+        """
+
+
+# rule format_happy:
+#     input:
+#         pjoin(WD, "{n}", "happy"),
+#     output:
+#         pjoin(WD, "{n}", "happy.csv"),
+#     shell:
+#         """
+#         for bed in bed nobed
+#         do
+#           for csv in {input}/*/
+#           do
+
+#           done
+#         done
+#         """
+
+### truvari
+
+
+rule run_truvari:
+    input:
+        fa=FA,
+        bed=rules.clean_dipcall.output.bed,
+        vcf1=rules.get_vcfs.output.novel_vcf_long,
+        vcf2=pjoin(WD, "callsets", "dipcall-long.vcf.gz"),
+        vcfs=expand(
+            pjoin(WD, "callsets", "{caller}-long.vcf.gz"),
+            caller=["sniffles"],
+        ),
+        palss=expand(pjoin(WD, "callsets", "palss.w{w}.n{{n}}-long.vcf.gz"), w=Ws),
+    output:
+        directory(pjoin(WD, "{n}", "truvari")),
+    threads: workflow.cores
+    conda:
+        "./envs/truvari.yml"
+    shell:
+        """
+        bash ./scripts/run_truvari.sh {input.fa} {input.bed} {output} {threads} {input.vcf1} {input.vcf2} {input.vcfs} {input.palss}
+        """
