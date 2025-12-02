@@ -11,8 +11,11 @@
 // typedef __int128 int128_t;
 // typedef unsigned __int128 uint128_t;
 
-/* sketch: 2bit encoded kmer -> 2 gbwt vertices with strand, last bit for
- * reference (1) or alternate (0) */
+/* sketch: 2bit encoded kmer -> 31 bits for starting vertex (w/ strand bit)
+ *                              31 bits for ending vertex (w/ strand bit)
+ *                              1 if kmer was reverse&complemented
+ *                              1 if kmer is from reference path
+ **/
 
 typedef struct {
   int k, m;                  // kmer size, prefix size

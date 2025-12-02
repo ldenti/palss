@@ -87,6 +87,23 @@ ExternalProject_Add(gbwtgraph
 # set_target_properties(KMC PROPERTIES IMPORTED_LOCATION ${KMC_INCLUDE_DIR}/bin/libkmc_core.a)
 # add_dependencies(KMC kmc)
 
+# xxhash
+message(STATUS "xxhash will be built from source")
+ExternalProject_Add(xxhash
+    GIT_REPOSITORY https://github.com/Cyan4973/xxHash.git
+    GIT_TAG e626a72bc2321cd320e953a0ccf1584cad60f363 # v0.8.3
+    BUILD_IN_SOURCE 1
+    UPDATE_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make
+    INSTALL_COMMAND ""
+)
+ExternalProject_Get_Property(xxhash SOURCE_DIR)
+SET(XXH_SOURCE_DIR ${SOURCE_DIR})
+add_library(XXH STATIC IMPORTED)
+set_target_properties(XXH PROPERTIES IMPORTED_LOCATION ${XXH_SOURCE_DIR}/libxxhash.a)
+add_dependencies(XXH xxhash)
+
 # ksw2
 message(STATUS "ksw2 will be built from source")
 ExternalProject_Add(ksw2
@@ -145,11 +162,12 @@ SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
 
 add_dependencies(gbwt sdsl)
 add_dependencies(gbwtgraph gbwt lhg)
-add_dependencies(palss RB3 gbwtgraph abpoa ksw2) # KMC
+add_dependencies(palss RB3 gbwtgraph abpoa ksw2 XXH) # KMC
 
 target_include_directories(palss
   PUBLIC ${CMAKE_SOURCE_DIR}/include
   PUBLIC ${RB3_INCLUDE_DIR}
+  PUBLIC ${XXH_SOURCE_DIR}
   # PUBLIC ${KMC_INCLUDE_DIR}
   PUBLIC ${KSW2_INCLUDE_DIR}
   PUBLIC ${ABPOA_INCLUDE_DIR}
@@ -159,6 +177,7 @@ target_include_directories(palss
 target_link_libraries(palss
     PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
     PUBLIC ${ABPOA_SOURCE_DIR}/lib/libabpoa.a
+    PUBLIC ${XXH_SOURCE_DIR}/libxxhash.a
 
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libgbwtgraph.a
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libgbwt.a
