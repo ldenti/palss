@@ -12,10 +12,24 @@
 
 #include "xxhash.h"
 
-// Each anchor is a pair <kmer, vertices>
-// Vertices are encoded as 32bits for starting vertex, 32bits for ending vertex,
-// using gbwt identifier w/ strand
-typedef std::vector<std::pair<uint64_t, uint64_t>> anchors_t;
+typedef struct {
+  // 0123-encoded kmer
+  uint64_t kmer;
+  // gbwt identifier w/ strand
+  uint32_t v1;
+  uint32_t v2;
+  // position along vertices (on "their" strand)
+  uint32_t pos1;
+  uint32_t pos2;
+  //
+  bool is_reference; // anchor is on reference path (can be also on other paths)
+  bool has_both;     // we saw this anchor on both "strand" (++/--, +-/-+)
+  bool is_valid;     // anchor is valid, so not repeated
+} anchor_t;
+
+bool operator<(const anchor_t &x, const anchor_t &y) { return x.kmer < y.kmer; }
+
+typedef std::vector<anchor_t> anchors_t;
 
 // Root/leaf path in the tree rooted at a given vertex
 typedef struct {
@@ -24,19 +38,20 @@ typedef struct {
 } rlpath_t;
 
 // Store anchors starting in positions [start, end) of sequence. Tag using vinfo
+// (gbwt vertices w/ strand information)
 void get_anchors(anchors_t &anchors, const std::string &sequence,
                  const std::vector<gbwt::node_type> &vinfo, const size_t &klen,
-                 const size_t &start, const size_t &end,
+                 const size_t &start, const size_t &end, bool is_ref,
                  const uint64_t &density) {
-  // std::cerr << sequence << std::endl;
   assert(sequence.size() == vinfo.size());
-  char kmer[klen + 1];   // first kmer on sequence (plain)
-  uint64_t kmer_d = 0;   // kmer
-  uint64_t rckmer_d = 0; // reverse and complemented kmer
-  uint64_t ckmer_d = 0;  // canonical kmer
-  uint8_t c;             // new character to append
-  size_t pos;            // current position
-  uint64_t value;        // value (start/end vertices)
+  char kmer[klen + 1];    // first kmer on sequence (plain)
+  uint64_t kmer_d = 0;    // kmer
+  uint64_t rckmer_d = 0;  // reverse and complemented kmer
+  uint64_t ckmer_d = 0;   // canonical kmer
+  uint8_t c;              // new character to append
+  uint32_t pos;           // current position
+  uint32_t pos2;          // position on "following" vertex
+  gbwt::node_type v1, v2; // vertices
   XXH64_hash_t hash;
 
   // first kmer
@@ -45,16 +60,23 @@ void get_anchors(anchors_t &anchors, const std::string &sequence,
   kmer_d = k2d(kmer, klen);
   rckmer_d = rc(kmer_d, klen);
   ckmer_d = std::min(kmer_d, rckmer_d);
+
+  // get positions
+  v1 = vinfo[pos];
+  v2 = vinfo[pos + klen - 1];
+  if (v1 == v2) {
+    pos2 = pos + klen - 1;
+  } else {
+    pos2 = 0;
+    while (vinfo[pos + klen - 1 - pos2 - 1] == v2) {
+      ++pos2;
+    }
+  }
+
   hash = XXH64(&ckmer_d, 8, 0); // xxseed = 0
   if (hash <= density) {
-    value = (vinfo[pos] << 32) | vinfo[pos + klen - 1];
-    value = (value << 1) | (ckmer_d == rckmer_d);
-    anchors.push_back(std::make_pair(ckmer_d, value));
-
-    char kmer[klen + 1];
-    d2s(kmer_d, klen, kmer);
-    kmer[klen] = '\0';
-    // std::cerr << kmer << " " << value << std::endl;
+    anchors.push_back(anchor_t{ckmer_d, (uint32_t)v1, (uint32_t)v2, pos, pos2,
+                               is_ref, ckmer_d == rckmer_d, true});
   }
 
   // all other kmers
@@ -64,71 +86,24 @@ void get_anchors(anchors_t &anchors, const std::string &sequence,
     kmer_d = lsappend(kmer_d, c, klen);
     rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
     ckmer_d = std::min(kmer_d, rckmer_d);
+
+    v1 = vinfo[pos];
+    v2 = vinfo[pos + klen - 1];
+    if (v1 == v2 || vinfo[pos + klen - 1 - 1] == v2) {
+      // same vertex or same vertex as before
+      ++pos2;
+    } else {
+      pos2 = 0;
+    }
+
     hash = XXH64(&ckmer_d, 8, 0); // xxseed = 0
     if (hash <= density) {
-      value = (vinfo[pos] << 32) | vinfo[pos + klen - 1];
-      value = (value << 1) | (ckmer_d == rckmer_d);
-      anchors.push_back(std::make_pair(ckmer_d, value));
-
-      // char kmer[klen + 1];
-      // d2s(kmer_d, klen, kmer);
-      // kmer[klen] = '\0';
-      // std::cerr << kmer << " ";
-      // d2s(ckmer_d, klen, kmer);
-      // kmer[klen] = '\0';
-      // std::cerr << kmer << " " << value << std::endl;
+      anchors.push_back(anchor_t{ckmer_d, (uint32_t)vinfo[pos],
+                                 (uint32_t)vinfo[pos + klen - 1], pos, pos2,
+                                 is_ref, ckmer_d == rckmer_d, true});
     }
   }
-  // std::cerr << " === " << std::endl;
 }
-
-/**
-std::vector<rlpath_t> dfs_k2k(const gbwtgraph::GBZ &gbz,
-                              const gbwt::FastLocate &fl,
-                              const gbwt::node_type &source, const size_t &klen)
-{ std::vector<rlpath_t> paths; // fully extended path std::queue<rlpath_t>
-queue;  // paths we still need to "extend" std::map<gbwt::node_type, bool>
-visited; // XXX: improve this queue.push({{source}, 0}); while (!queue.empty())
-{ rlpath_t path = queue.front(); queue.pop();
-
-    // get outgoings edges from current sink
-    gbwt::node_type vertex = path.vertices.back();
-    gbwtgraph::handle_t handle = gbz.graph.node_to_handle(vertex);
-    std::vector<gbwt::node_type> outs;
-    gbwt::SearchState state = gbz.graph.get_state(handle);
-    gbz.graph.follow_paths(
-        state, [&outs](const gbwt::SearchState &next_state) -> bool {
-          if (!next_state.empty())
-            outs.push_back(next_state.node);
-          return true;
-        });
-
-    // extend path
-    for (const gbwt::node_type &v : outs) {
-      const gbwtgraph::handle_t &h = gbz.graph.node_to_handle(v);
-      size_t l = gbz.graph.get_length(h);
-      rlpath_t new_path = path;
-      new_path.vertices.push_back(v);
-
-      // check if path is consistent with haplotypes
-      gbwt::size_type first;
-      gbwt::SearchState state =
-          fl.find(new_path.vertices.begin(), new_path.vertices.end(), first);
-      if (state.empty())
-        continue;
-
-      // add path to solutions if last vertex is k-long
-      if (l >= klen) {
-        paths.push_back(new_path);
-      } else {
-        queue.push(new_path);
-
-      }
-    }
-  }
-  return paths;
-}
-**/
 
 // TODO : we could improve this using some sort of caching
 std::vector<rlpath_t> kdfs(const gbwtgraph::GBZ &gbz,
@@ -185,58 +160,74 @@ std::vector<rlpath_t> kdfs(const gbwtgraph::GBZ &gbz,
   return paths;
 }
 
-// Flag (set value to -1UL) for all anchors with repeated kmers (assuming
-// anchors are sorted by kmer)
-// XXX: could we set to 0 instead of -1UL?
-size_t flag_repetitions(anchors_t &anchors) {
-  size_t total = anchors.size();
-  for (uint64_t i = 0; i < anchors.size();) {
-    uint64_t kmer_d = anchors[i].first;
-    ++i;
-    if (anchors[i].first == kmer_d)
-      --total;
-    while (i < anchors.size() && anchors[i].first == kmer_d) {
-      anchors[i - 1].second = -1UL;
-      anchors[i].second = -1UL;
-      ++i;
-      --total;
-    }
-  }
-  return total;
-}
-
-// flag repetitions checking also value of anchor, by comparing GFA identifiers
-size_t flag_repetitions_wvalue(anchors_t &anchors, const Graph &graph) {
+// flag repetitions checking vertices/positions of anchor
+size_t flag_repetitions(anchors_t &anchors, const Graph &graph) {
   size_t total = anchors.size();
   for (size_t i = 0; i < anchors.size();) {
-    uint64_t kmer_d = anchors[i].first;
+    uint64_t kmer_d = anchors[i].kmer;
     size_t j = i + 1;
-    while (j < anchors.size() && anchors[j].first == kmer_d)
+    while (j < anchors.size() && anchors[j].kmer == kmer_d)
       ++j;
 
-    uint64_t value = anchors[i].second;
-    uint32_t s1 = value >> 33, s2 = (uint32_t)value >> 1;
-    // XXX: can we avoid checking GFA but directly using internal identifiers?
-    std::string s1_gfa = graph.get_gfa_name(s1);
-    std::string s2_gfa = graph.get_gfa_name(s2);
+    // We have same kmer in [i,j)
+
+    bool is_ref = anchors[i].is_reference;
+
+    uint32_t a_v1 = anchors[i].v1, a_v2 = anchors[i].v2;
+    bool a_ir1 = a_v1 & 1, a_ir2 = a_v2 & 1;
+    // remove strand bit
+    a_v1 = a_v1 >> 1;
+    a_v2 = a_v2 >> 1;
+    size_t a_l1 = graph.get_vertex_len(a_v1), a_l2 = graph.get_vertex_len(a_v2);
+    uint32_t a_p1 = anchors[i].pos1, a_p2 = anchors[i].pos2;
+    // get offsets on + strand
+    a_p1 = a_ir1 ? (a_l1 - a_p1 - 1) : a_p1;
+    a_p2 = a_ir2 ? (a_l2 - a_p2 - 1) : a_p2;
+
+    bool has_both =
+        false; // set to true if we also see v2>v1 with inverted strand
 
     size_t i2 = i + 1;
     for (; i2 < j; ++i2) {
-      uint32_t n1 = anchors[i2].second >> 33,
-               n2 = (uint32_t)anchors[i2].second >> 1;
-      // n1 and n2 has strand bit
-      std::string n1_gfa = graph.get_gfa_name(n1 >> 1);
-      std::string n2_gfa = graph.get_gfa_name(n2 >> 1);
-      if (anchors[i2].second != value &&
-          (s1_gfa.compare(n2_gfa) != 0 && s2_gfa.compare(n1_gfa) != 0))
+      // just flag as reference if one is reference
+      is_ref |= anchors[i2].is_reference;
+
+      uint32_t b_v1 = anchors[i2].v1, b_v2 = anchors[i2].v2;
+      bool b_ir1 = b_v1 & 1, b_ir2 = b_v2 & 1;
+      b_v1 = b_v1 >> 1;
+      b_v2 = b_v2 >> 1;
+      size_t b_l1 = graph.get_vertex_len(b_v1),
+             b_l2 = graph.get_vertex_len(b_v2);
+      uint32_t b_p1 = anchors[i2].pos1, b_p2 = anchors[i2].pos2;
+      b_p1 = b_ir1 ? (b_l1 - b_p1 - 1) : b_p1;
+      b_p2 = b_ir2 ? (b_l2 - b_p2 - 1) : b_p2;
+
+      if ((a_v1 == b_v1 && a_v2 == b_v2) && (a_p1 == b_p1 && a_p2 == b_p2) &&
+          (a_ir1 == b_ir1 && a_ir2 == b_ir2)) {
+        // "same strand"
+      } else if ((a_v1 == b_v2 && a_v2 == b_v1) &&
+                 (a_p1 == b_p2 && a_p1 == b_p2) &&
+                 (a_ir1 != b_ir2 && a_ir1 != b_ir2)) {
+        // "inverted strand"
+        has_both = true;
+      } else {
+        // repetition
         break;
+      }
     }
+
+    // update reference and has_inverted bits just in case
+    anchors[i].is_reference |= is_ref;
+    anchors[i].has_both |= has_both;
+
     if (i2 < j) {
-      anchors[i].second = -1UL;
+      // tag first kmer as invalid, since we stopped earlier
+      anchors[i].is_valid = false;
       --total;
     }
     for (i2 = i + 1; i2 < j; ++i2) {
-      anchors[i2].second = -1UL;
+      // tag all other kmers as invalid
+      anchors[i2].is_valid = false;
       --total;
     }
     i = j;
@@ -244,22 +235,17 @@ size_t flag_repetitions_wvalue(anchors_t &anchors, const Graph &graph) {
   return total;
 }
 
-void print_anchor(const uint64_t kd, const uint64_t value, int klen) {
-  char kmer[klen + 1];
-  d2s(kd, klen, kmer);
-  kmer[klen] = '\0';
-  std::cerr << kmer << std::endl;
-}
-
 int main_sketch(int argc, char *argv[]) {
   double rt = realtime();
   size_t klen = 31;               // kmer size
   uint64_t density = -1;          // max hash (based on density [0,1])
   std::string ref_path = "CHM13"; // reference paths
+  bool use_edges = true;
   // int nThreads = 4;               // number of threads
+  // TODO: multithreading
 
   int _c;
-  while ((_c = getopt(argc, argv, "k:d:r:h")) != -1) {
+  while ((_c = getopt(argc, argv, "k:d:r:eh")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
@@ -273,6 +259,9 @@ int main_sketch(int argc, char *argv[]) {
     //   break;
     case 'r':
       ref_path = optarg;
+      break;
+    case 'e':
+      use_edges = false;
       break;
     case 'h':
       fprintf(stderr, "%s", SKETCH_USAGE_MESSAGE);
@@ -295,72 +284,11 @@ int main_sketch(int argc, char *argv[]) {
   const gbwt::FastLocate &fl = graph.get_fl();
   const gbwt::Metadata &metadata = graph.get_metadata();
 
-  // STEP 1: get anchors from reference paths
+  // Get all anchors by visiting each vertex (kDFS)
   anchors_t anchors;
-  gbwt::size_type sample_id = metadata.sample(ref_path);
-  std::vector<gbwt::size_type> paths_identifiers =
-      metadata.pathsForSample(sample_id);
-  for (size_t pp = 0; pp < paths_identifiers.size(); ++pp) {
-    gbwt::size_type path_id = paths_identifiers[pp];
-    gbwt::size_type seq_id = gbwt::Path::encode(path_id, false);
-    std::string sequence = ""; // full path sequence
-    std::vector<gbwt::size_type>
-        vinfo; // vertex identifier (w/ strand) for each position
-    gbwt::edge_type curr = gbz.index.start(seq_id);
-    while (curr.first != gbwt::ENDMARKER) {
-      gbwtgraph::handle_t handle =
-          gbwtgraph::GBWTGraph::node_to_handle(curr.first);
-      // view_type: in-place view of the sequence: (start, length)
-      gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
-      sequence.append(view.first, view.second);
-      for (size_t x = 0; x < view.second; ++x)
-        vinfo.push_back(curr.first);
-      curr = gbz.index.LF(curr);
-    }
-    get_anchors(anchors, sequence, vinfo, klen, 0, sequence.size() - klen + 1,
-                density);
-  }
-
-  // {
-  //   for (const auto &a : anchors) {
-  //     print_anchor(a.first, a.second, klen);
-  //   }
-  //   std::cerr << "=======" << std::endl;
-  // }
-
-  fprintf(stderr,
-          "[M::%s] Extracted %ld anchors from reference paths in %.3f secs\n",
-          __func__, anchors.size(), realtime() - rt);
-
-  rt = realtime();
-  std::sort(anchors.begin(), anchors.end());
-  fprintf(stderr, "[M::%s] Sorted anchors in %.3f secs\n", __func__,
-          realtime() - rt);
-
-  rt = realtime();
-  size_t total_anchors = flag_repetitions(anchors);
-  fprintf(stderr,
-          "[M::%s] Flagged anchors in %.3f sec (resulting anchors: %ld)\n",
-          __func__, realtime() - rt, total_anchors);
-
-  rt = realtime();
-  int shift = std::ceil(log2(total_anchors));
-  sketch_t *sketch = sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded
-  for (const auto &[kmer, value] : anchors) {
-    if (value != -1UL) {
-      // print_anchor(kmer, value, klen);
-      sk_insert(sketch, kmer, value);
-    }
-  }
-  // std::cerr << "=======" << std::endl;
-  fprintf(stderr,
-          "[M::%s] Built reference sketch from %ld anchors in %.3f sec\n",
-          __func__, sketch->n, realtime() - rt);
-
-  // STEP 2: get all anchors by visiting each vertex (kDFS)
   int n_visited = 0;
-  anchors.clear();
   rt = realtime();
+  size_t total_vertices = gbz.graph.max_node_id() - gbz.graph.min_node_id();
   for (gbwtgraph::nid_t source_id = gbz.graph.min_node_id();
        source_id <= gbz.graph.max_node_id(); ++source_id) {
 
@@ -368,6 +296,7 @@ int main_sketch(int argc, char *argv[]) {
      * note 2: not all IDs in [min_node_id, max_node_id] are actually vertices
      * note 3: we need to check both strand for a node since outgoing edges
      *         depends on node strand
+     * note 4: we will limit to haplotype paths on the + strand
      **/
 
     for (int strand = 0; strand < 2; ++strand) {
@@ -375,18 +304,13 @@ int main_sketch(int argc, char *argv[]) {
           gbz.graph.get_handle(source_id, strand);
       gbwt::node_type source = gbz.graph.handle_to_node(source_handle);
 
-      // std::cerr << gbz.graph.get_segment_name(source_handle)
-      //           << (strand ? "-" : "+") << std::endl;
-
       gbwtgraph::view_type source_view =
           gbz.graph.get_sequence_view(source_handle);
       size_t source_length = source_view.second;
       std::string source_sequence(source_view.first, source_view.second);
       std::vector<gbwt::node_type> source_info(source_sequence.size(), source);
       anchors_t local_anchors;
-      if (source_length >= klen)
-        get_anchors(local_anchors, source_sequence, source_info, klen, 0,
-                    source_length - klen + 1, density);
+      bool source_isref = false;
 
       // iterate over all paths starting from this vertex (that are
       // consistent with indexed haplotypes)
@@ -398,20 +322,28 @@ int main_sketch(int argc, char *argv[]) {
             fl.find(path.vertices.begin(), path.vertices.end(), first);
         assert(!state.empty());
 
-        std::vector<gbwt::size_type> p_offsets = fl.locate(state);
+        std::vector<gbwt::size_type> p_offsets = fl.locate(state, first);
         bool on_plus = false;
+        bool is_ref = false;
+        // for (const auto &v : path.vertices)
+        //   std::cerr << graph.get_gfa_name(v >> 1) << ((v & 1) ? "-" : "+")
+        //             << " ";
+        // std::cerr << std::endl;
         for (const gbwt::size_type &p : p_offsets) {
-          if (!gbwt::Path::is_reverse(p)) {
-            on_plus = true;
-            break;
-          }
-          // std::cerr << "> " << gbwt::Path::id(p)
-          //           << (gbwt::Path::is_reverse(p) ? "-" : "+") << std::endl;
+          if (gbwt::Path::is_reverse(p))
+            continue;
+          on_plus = true;
+          if (metadata.fullPath(gbwt::Path::id(p))
+                  .sample_name.compare(ref_path) == 0)
+            is_ref = true;
         }
+
+        // we have at least one path on + strand
         if (!on_plus)
           continue;
 
-        // std::cerr << ">" << std::endl;
+        if (is_ref)
+          source_isref = true;
 
         std::string path_sequence;
         std::vector<gbwt::node_type> vinfo;
@@ -419,14 +351,11 @@ int main_sketch(int argc, char *argv[]) {
         // build path sequence and path info (vertex for each position)
         for (const gbwt::node_type &v : path.vertices) {
           gbwtgraph::handle_t h = gbwtgraph::GBWTGraph::node_to_handle(v);
-          // std::cerr << gbz.graph.get_segment_name(h) << ((v & 1) ? "-" : "+")
-          //           << " > ";
           gbwtgraph::view_type view = gbz.graph.get_sequence_view(h);
           path_sequence.append(view.first, view.second);
           for (size_t i = 0; i < view.second; ++i)
             vinfo.push_back(v);
         }
-        // std::cerr << std::endl;
 
         if (path_sequence.size() < klen)
           continue;
@@ -436,125 +365,59 @@ int main_sketch(int argc, char *argv[]) {
                     path_sequence.size() - source_length >= klen - 1
                         ? source_length
                         : path_sequence.size() - klen + 1,
-                    density);
+                    is_ref, density);
       }
 
-      for (const auto &[kmer, value] : local_anchors) {
-        // print_anchor(kmer, value, klen);
-        uint64_t hit = sk_get(sketch, kmer, 0);
-        if (hit == -1UL) {
-          // anchor is not in the reference
-          anchors.push_back(std::make_pair(kmer, value));
-        } else if (hit == 0) {
-          // anchor was in the reference but we already found it repeated
-          // somewhere else
-        } else {
-          if (hit == value) {
-            // we just keep the reference anchor
-          } else {
-            uint32_t h1 = hit >> 33, h2 = (uint32_t)hit >> 1;
-            uint32_t v1 = value >> 33, v2 = (uint32_t)value >> 1;
+      // add anchors from source vertex (tagging as reference if vertex is on
+      // reference path)
+      if (source_length >= klen)
+        get_anchors(local_anchors, source_sequence, source_info, klen, 0,
+                    source_length - klen + 1, source_isref, density);
 
-            // compare GFA identifier
-
-            /* If a vertex is split (since longer than 1024), we may get two
-             * different internal identifiers ("inverted") if we have same kmer
-             * on different paths with different strand */
-
-            // XXX: can we avoid checking GFA but directly using internal
-            // identifiers?
-            std::string h1_gfa = graph.get_gfa_name(h1 >> 1);
-            std::string h2_gfa = graph.get_gfa_name(h2 >> 1);
-            std::string v1_gfa = graph.get_gfa_name(v1 >> 1);
-            std::string v2_gfa = graph.get_gfa_name(v2 >> 1);
-            if (h1_gfa.compare(v2_gfa) != 0 && h2_gfa.compare(v1_gfa) != 0) {
-              // anchor is repeated somewhere else
-              // XXX: this may fail in some cases (?)
-              sk_set(sketch, kmer, 0); // flag reference anchor as invalid
-            }
-          }
-        }
+      for (const anchor_t &a : local_anchors) {
+        anchors.push_back(a);
       }
-      // std::cerr << "=======" << std::endl;
     }
 
     ++n_visited;
     if (n_visited % 500000 == 0) {
-      fprintf(stderr, "Visited %d vertices in %.3f sec\n", n_visited,
-              realtime() - rt);
+      fprintf(stderr, "Visited %d/%ld vertices in %.3f sec\n", n_visited,
+              total_vertices, realtime() - rt);
     }
   }
-  fprintf(stderr, "Visited %d vertices in %.3f sec\n", n_visited,
-          realtime() - rt);
   fprintf(stderr,
-          "[M::%s] Extracted %ld anchors from other paths in %.3f secs\n",
-          __func__, anchors.size(), realtime() - rt);
+          "[M::%s] Extracted %ld anchors from %ld vertices in %.3f secs\n",
+          __func__, anchors.size(), total_vertices, realtime() - rt);
 
   rt = realtime();
   std::sort(anchors.begin(), anchors.end());
-  fprintf(stderr, "[M::%s] Sorted other anchors in %.3f secs\n", __func__,
+  fprintf(stderr, "[M::%s] Sorted anchors in %.3f secs\n", __func__,
           realtime() - rt);
 
   rt = realtime();
-  total_anchors = flag_repetitions_wvalue(anchors, graph);
+  size_t total_anchors = flag_repetitions(anchors, graph);
   fprintf(
       stderr,
       "[M::%s] Flagged other anchors in %.3f sec (resulting anchors: %ld)\n",
       __func__, realtime() - rt, total_anchors);
 
-  // Get final sketch by merging good reference and other paths anchors
-
+  // Build sketch
   rt = realtime();
-  for (auto &a : anchors) {
-    if (a.second != -1UL)
-      a.second = a.second << 1; // tag as 0 (last bit)
-  }
-  fprintf(stderr, "[M::%s] Tagged other anchors in %.3f secs\n", __func__,
-          realtime() - rt);
+  int shift = std::ceil(log2(total_anchors));
+  sketch_t *sketch = sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded
 
-  rt = realtime();
-  for (int64_t i = 0; i < sketch->n; ++i) {
-    if (sketch->vls[i] != 0)
-      anchors.push_back(std::make_pair(
-          sketch->sxs[i], (sketch->vls[i] << 1) | 1)); // tag as 1 (last bit)
-  }
-  fprintf(stderr, "[M::%s] Inserted reference anchors in %.3f secs\n", __func__,
-          realtime() - rt);
-
-  rt = realtime();
-  std::sort(anchors.begin(), anchors.end());
-  fprintf(stderr, "[M::%s] Sorted all anchors in %.3f secs\n", __func__,
-          realtime() - rt);
-
-  rt = realtime();
-  size_t final_anchors = anchors.size();
-  std::cerr << final_anchors << std::endl;
-  shift = std::ceil(log2(final_anchors));
-  sketch_t *final_sketch =
-      sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded
-
-  uint64_t last_kmer = -1UL;
-  uint64_t last_value = -1UL;
-  for (const auto &[kmer, value] : anchors) {
-    if (value != -1UL) {
-      if (last_kmer != -1UL && kmer == last_kmer) {
-        assert((value >> 1) == (last_value >> 1));
-        sk_set(final_sketch, kmer, last_value | 1);
-        last_kmer = kmer;
-        last_value = value | 1;
-      } else {
-        sk_insert(final_sketch, kmer, value);
-        last_kmer = kmer;
-        last_value = value;
-      }
+  for (const anchor_t &a : anchors) {
+    if (a.is_valid) {
+      if (use_edges || a.v1 == a.v2)
+        sk_insert(sketch, a.kmer, a.v1, a.v2, a.pos1, a.pos2, a.has_both,
+                  a.is_reference);
     }
   }
   fprintf(stderr, "[M::%s] Built final sketch from %ld anchors in %.3f sec\n",
-          __func__, final_sketch->n, realtime() - rt);
+          __func__, sketch->n, realtime() - rt);
 
-  sk_store(final_sketch, "-");
+  sk_store(sketch, "-");
   sk_destroy(sketch);
-  sk_destroy(final_sketch);
 
   return 0;
 }
