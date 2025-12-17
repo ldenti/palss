@@ -222,33 +222,50 @@ std::pair<anchors_t, bool> chain(const anchors_t &anchors, const Graph &graph,
 
       int curr_strand;
 
-      int qd = yy.qp - chain.back().qp - klen + 1;
-      assert(qd > -klen);
+      int qd = yy.qp - chain.back().qp;
+      assert(qd > 0);
 
       int rd;
+      /*
+        chain.back() > yy
+        v1---v2        v1---v2
+
+        or
+
+        yy           > chain.back()
+        v2---v1        v2---v1
+       */
       if (chain.back().v2 == yy.v1) {
-        if (chain.back().pos1 < yy.pos1) {
-          rd = yy.pos1 - chain.back().pos2;
-          curr_strand = true;
-        } else {
-          rd = chain.back().pos1 - yy.pos2;
-          curr_strand = false;
-        }
-        qd = std::abs(qd);
-        rd = std::abs(rd);
+        // "internal" ends are on the same vertex
+        curr_strand = chain.back().pos1 < yy.pos1;
+        if (curr_strand)
+          rd = yy.pos1 - chain.back().pos2 + klen - 1;
+        else
+          rd = chain.back().pos2 - yy.pos1 + klen - 1;
+        // qd = std::abs(qd);
       } else {
-        if (chain.back().paths.at(pid).offset2 > yy.paths.at(pid).offset1) {
-          curr_strand = true;
-          int vl = graph.get_vertex_len(chain.back().v2 >> 1);
-          rd = compute_distance_bp(graph, chain.back().v2, yy.v1, pid) +
-               (vl - chain.back().pos2 - 1) + yy.pos1;
+        curr_strand = chain.back().paths.at(pid).offset1 >
+                      chain.back().paths.at(pid).offset2;
+        if (chain.back().v1 == yy.v1 && chain.back().v2 == yy.v2) {
+          // overlapping anchors over same edge (same pair of vertices)
+          if (curr_strand)
+            rd = yy.pos1 - chain.back().pos1;
+          else
+            rd = chain.back().pos1 - yy.pos1;
         } else {
-          curr_strand = false;
-          int vl = graph.get_vertex_len(yy.v2 >> 1);
-          rd = compute_distance_bp(graph, yy.v2, chain.back().v1, pid) +
-               (vl - yy.pos2 - 1) + chain.back().pos1;
+          // anchors on two different vertices
+          if (curr_strand) {
+            int vl = graph.get_vertex_len(chain.back().v2 >> 1);
+            rd = compute_distance_bp(graph, chain.back().v2, yy.v1, pid) +
+                 (vl - chain.back().pos1) + yy.pos1;
+          } else {
+            int vl = graph.get_vertex_len(yy.v2 >> 1);
+            rd = compute_distance_bp(graph, yy.v2, chain.back().v1, pid) +
+                 (vl - yy.pos1) + chain.back().pos1;
+          }
         }
       }
+      assert(rd > 0);
 
       if (std::max(rd, qd) == 0 || std::min(rd, qd) / (float)std::max(rd, qd) >
                                        0.9) { // FIXME: hardcoded
@@ -658,13 +675,26 @@ int main_sfs(int argc, char *argv[]) {
             std::cout << "\t" << s.plain_seq << std::endl;
           } else {
             std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"
-                      << s.l << "\t" << s.s + s.l << "\t" << "." << "\t"
-                      << "." << "\t" << "." << "\t" << "." << "\t"
-                      << "." << "\t"
-                      << "." << "\t" << "."
-                      << "\t" << "." << "\t";
+                      << s.l << "\t" << s.s + s.l << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t";
             std::cout << ".";
-            std::cout << "\t" << "." << std::endl;
+            std::cout << "\t"
+                      << "." << std::endl;
           }
         } else {
           std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"
