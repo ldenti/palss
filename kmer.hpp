@@ -23,6 +23,7 @@ uint8_t reverse_char(uint8_t c);
 void d23(const uint64_t kmer, int k, char *kk);
 
 void d2s(const uint64_t kmer, int k, char *kk);
+void d3s(const uint64_t kmer, int k, char *kk);
 
 uint64_t k2d(const char *kmer, uint8_t k);
 

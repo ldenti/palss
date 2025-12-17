@@ -4,6 +4,7 @@
 #include <getopt.h>
 #include <string>
 
+#include "anchor.hpp"
 #include "graph.hpp"
 #include "kmer.hpp"
 #include "misc.hpp"
@@ -11,25 +12,6 @@
 #include "usage.hpp"
 
 #include "xxhash.h"
-
-typedef struct {
-  // 0123-encoded kmer
-  uint64_t kmer;
-  // gbwt identifier w/ strand
-  uint32_t v1;
-  uint32_t v2;
-  // position along vertices (on "their" strand)
-  uint32_t pos1;
-  uint32_t pos2;
-  //
-  bool is_reference; // anchor is on reference path (can be also on other paths)
-  bool has_both;     // we saw this anchor on both "strand" (++/--, +-/-+)
-  bool is_valid;     // anchor is valid, so not repeated
-} anchor_t;
-
-bool operator<(const anchor_t &x, const anchor_t &y) { return x.kmer < y.kmer; }
-
-typedef std::vector<anchor_t> anchors_t;
 
 // Root/leaf path in the tree rooted at a given vertex
 typedef struct {
@@ -75,8 +57,8 @@ void get_anchors(anchors_t &anchors, const std::string &sequence,
 
   hash = XXH64(&ckmer_d, 8, 0); // xxseed = 0
   if (hash <= density) {
-    anchors.push_back(anchor_t{ckmer_d, (uint32_t)v1, (uint32_t)v2, pos, pos2,
-                               is_ref, ckmer_d == rckmer_d, true});
+    anchors.push_back(
+        anchor_t{ckmer_d, (uint32_t)v1, (uint32_t)v2, pos, pos2, is_ref, true});
   }
 
   // all other kmers
@@ -100,7 +82,7 @@ void get_anchors(anchors_t &anchors, const std::string &sequence,
     if (hash <= density) {
       anchors.push_back(anchor_t{ckmer_d, (uint32_t)vinfo[pos],
                                  (uint32_t)vinfo[pos + klen - 1], pos, pos2,
-                                 is_ref, ckmer_d == rckmer_d, true});
+                                 is_ref, true});
     }
   }
 }
@@ -172,6 +154,8 @@ size_t flag_repetitions(anchors_t &anchors, const Graph &graph) {
     // We have same kmer in [i,j)
 
     bool is_ref = anchors[i].is_reference;
+    bool has_both =
+        false; // set to true if we also see v2>v1 with inverted strand
 
     uint32_t a_v1 = anchors[i].v1, a_v2 = anchors[i].v2;
     bool a_ir1 = a_v1 & 1, a_ir2 = a_v2 & 1;
@@ -183,9 +167,6 @@ size_t flag_repetitions(anchors_t &anchors, const Graph &graph) {
     // get offsets on + strand
     a_p1 = a_ir1 ? (a_l1 - a_p1 - 1) : a_p1;
     a_p2 = a_ir2 ? (a_l2 - a_p2 - 1) : a_p2;
-
-    bool has_both =
-        false; // set to true if we also see v2>v1 with inverted strand
 
     size_t i2 = i + 1;
     for (; i2 < j; ++i2) {
@@ -218,7 +199,7 @@ size_t flag_repetitions(anchors_t &anchors, const Graph &graph) {
 
     // update reference and has_inverted bits just in case
     anchors[i].is_reference |= is_ref;
-    anchors[i].has_both |= has_both;
+    anchors[i].has_both = has_both;
 
     if (i2 < j) {
       // tag first kmer as invalid, since we stopped earlier
@@ -370,9 +351,10 @@ int main_sketch(int argc, char *argv[]) {
 
       // add anchors from source vertex (tagging as reference if vertex is on
       // reference path)
-      if (source_length >= klen)
+      if (source_length >= klen && strand == 0) {
         get_anchors(local_anchors, source_sequence, source_info, klen, 0,
                     source_length - klen + 1, source_isref, density);
+      }
 
       for (const anchor_t &a : local_anchors) {
         anchors.push_back(a);
@@ -409,6 +391,7 @@ int main_sketch(int argc, char *argv[]) {
   for (const anchor_t &a : anchors) {
     if (a.is_valid) {
       if (use_edges || a.v1 == a.v2)
+        // if (a.v1 != a.v2)
         sk_insert(sketch, a.kmer, a.v1, a.v2, a.pos1, a.pos2, a.has_both,
                   a.is_reference);
     }

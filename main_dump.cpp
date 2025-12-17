@@ -23,18 +23,25 @@ int main_dump(int argc, char *argv[]) {
   fprintf(stderr, "Total number of sketches: %ld\n", sketch->n);
 
   char kmer[klen + 1];
-  int solid = 0;
+  printf("kmer\ti1>i2\tv1>v2\trc\tref\n");
+  size_t ref = 0;
   for (int i = 0; i < sketch->n; ++i) {
     d2s(sketch->sxs[i], klen, kmer);
-    uint32_t v1 = (uint32_t)(sketch->vls[i] >> 33);
-    uint32_t v2 = (uint32_t)sketch->vls[i] >> 1;
-    printf("%s\t%d>%d\t%s>%s\t%ld\t%ld\n", kmer, v1, v1,
+
+    uint32_t v1 = (uint32_t)(sketch->vls[i] >> 32);
+    uint32_t v2 = (uint32_t)sketch->vls[i];
+
+    uint32_t pos1 = (sketch->info[i] >> 17) & 0x7FFF;
+    uint32_t pos2 = (sketch->info[i] >> 2) & 0x7FFF;
+    bool has_both = (sketch->info[i] >> 1) & 1;
+    bool is_reference = sketch->info[i] & 1;
+    printf("%s\t%d:%d>%d:%d\t%s>%s\t%d\t%d\n", kmer, v1, pos1, v2, pos2,
            graph.get_gfa_name(v1 >> 1).c_str(),
-           graph.get_gfa_name(v2 >> 1).c_str(), sketch->vls[i] & 1,
-           sketch->sxs[i]);
-    solid += sketch->vls[i] != -1U;
+           graph.get_gfa_name(v2 >> 1).c_str(), has_both, is_reference);
+    ref += is_reference;
   }
-  fprintf(stderr, "Total number of solid anchors: %d\n", solid);
+  fprintf(stderr, "%ld/%ld (%.3f) anchors on reference path\n", ref, sketch->n,
+          (float)ref / sketch->n);
 
   return 0;
 }

@@ -14,6 +14,12 @@ void d2s(const uint64_t kmer, int k, char *kk) {
   kk[k] = '\0';
 }
 
+void d3s(const uint64_t kmer, int k, char *kk) {
+  for (int i = 1; i <= k; ++i)
+    kk[i - 1] = "0ACGT"[(kmer >> (k - i) * 2) & 3];
+  kk[k] = '\0';
+}
+
 uint64_t k2d(const char *kmer, uint8_t k) {
   uint64_t kmer_d = 0;
   uint8_t x;

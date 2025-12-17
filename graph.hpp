@@ -25,6 +25,7 @@ typedef struct {
 typedef struct {
   gbwt::size_type id;                    // with strand
   std::vector<gbwt::size_type> vertices; // with strand
+  bool is_reference;
   std::string sequence;
   gbwt::size_type dist_to_end;
   gbwt::size_type offset1;
@@ -64,7 +65,7 @@ public:
   void print_stats() const;
   path_t get_path(gbwt::size_type path_id) const;
   // Get all paths from v1 to v2 (with strand info)
-  std::vector<path_t> get_paths(uint32_t v1, uint32_t v2,
+  std::vector<path_t> get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
                                 bool ref_only = false) const;
   // Get all paths from v1 to v2 (without strand info)
   std::vector<path_t> get_paths_both(uint32_t v1, uint32_t v2,
@@ -72,7 +73,7 @@ public:
   std::string get_gfa_name(uint32_t v) const;
   size_t get_vertex_len(gbwt::size_type v) const;
   std::string get_path_contig(gbwt::size_type pid) const;
-  // std::string get_path_sample(gbwt::size_type pid) const;
+  std::string get_path_sample(gbwt::size_type pid) const;
   std::map<std::string, refpath_t> get_reference_paths() const;
   std::string
   get_path_sequence(const std::vector<gbwt::node_type> &vertices) const;

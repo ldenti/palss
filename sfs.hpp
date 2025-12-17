@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -18,16 +19,17 @@ typedef struct {
   //
   uint8_t flag;
   //
-  uint64_t sv1, sv2;
-  uint64_t ev1, ev2;
+  // bool strand;
+  uint32_t sv, ev;
+  uint32_t soff, eoff;
   uint64_t skmer, ekmer;
-  //
-  uint8_t *seq; // 1-4encoded sequence
+  std::vector<uint64_t> paths;
   //
   std::string plain_seq;
+  uint8_t *seq; // 1-4encoded sequence
 } sfs_t;
 
-std::map<std::string, std::vector<sfs_t>> load_sfs(const std::string &fn);
-std::vector<sfs_t> load_anchored_sfs(const std::string &fn);
+// std::map<std::string, std::vector<sfs_t>> load_sfs(const std::string &fn);
+std::vector<sfs_t> load_sfs(const std::string &fn);
 
 #endif

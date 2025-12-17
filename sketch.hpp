@@ -8,6 +8,8 @@
 #include <string.h>
 #include <string>
 
+// TODO: add flags for: same vertex/different vertices. In this second case, add also which version we saw ++, +-, -+, --
+
 inline std::pair<uint32_t, uint32_t> decode_vertices(uint64_t v) {
   return std::make_pair(v >> 32, (uint32_t)v);
 }

@@ -9,8 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 project(PALSS VERSION 0.0.1)
 
-add_executable(palss reads.cpp sfs.cpp misc.cpp kmer.cpp graph.cpp sketch.cpp main_sketch.cpp main_dump.cpp main_test.cpp main_kan.cpp main_search.cpp main_anchor.cpp main_align.cpp main.cpp)
-# main_extract.cpp
+add_executable(palss reads.cpp sfs.cpp misc.cpp kmer.cpp graph.cpp sketch.cpp main_sketch.cpp main_dump.cpp main_sfs.cpp main_align.cpp main_test.cpp main.cpp)
+# main_test.cpp main_kan.cpp main_search.cpp main_anchor.cpp  main_extract.cpp main.cpp 
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(palss PRIVATE -Wall) # -Wno-char-subscripts -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
 # add_definitions("-Wp,-w")
@@ -67,25 +67,6 @@ ExternalProject_Add(gbwtgraph
     INSTALL_COMMAND cp -r include/gbwtgraph ${INCLUDE_DIR}
     COMMAND cp lib/libgbwtgraph.a ${LIB_DIR}
 )
-
-# # KMC
-# message(STATUS "KMC3 will be built from source")
-# ExternalProject_Add(kmc
-#     GIT_REPOSITORY https://github.com/refresh-bio/KMC.git
-#     GIT_TAG d6c24dc88010508336d824bbffbf1ef3f49fddf8
-#     UPDATE_COMMAND ""
-#     BUILD_IN_SOURCE 1
-#     PATCH_COMMAND ""
-#     CONFIGURE_COMMAND ""
-#     BUILD_COMMAND make
-#     INSTALL_COMMAND ""
-# )
-# ExternalProject_Get_Property(kmc SOURCE_DIR)
-# SET(KMC_SOURCE_DIR ${SOURCE_DIR})
-# SET(KMC_INCLUDE_DIR ${KMC_SOURCE_DIR})
-# add_library(KMC STATIC IMPORTED)
-# set_target_properties(KMC PROPERTIES IMPORTED_LOCATION ${KMC_INCLUDE_DIR}/bin/libkmc_core.a)
-# add_dependencies(KMC kmc)
 
 # xxhash
 message(STATUS "xxhash will be built from source")
@@ -168,7 +149,6 @@ target_include_directories(palss
   PUBLIC ${CMAKE_SOURCE_DIR}/include
   PUBLIC ${RB3_INCLUDE_DIR}
   PUBLIC ${XXH_SOURCE_DIR}
-  # PUBLIC ${KMC_INCLUDE_DIR}
   PUBLIC ${KSW2_INCLUDE_DIR}
   PUBLIC ${ABPOA_INCLUDE_DIR}
   PUBLIC ${PROJECT_SOURCE_DIR}
@@ -184,7 +164,6 @@ target_link_libraries(palss
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libsdsl.a
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libhandlegraph.a
 
-    # PUBLIC KMC
     PUBLIC RB3
     PUBLIC z
     PUBLIC pthread
