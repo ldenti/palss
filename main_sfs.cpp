@@ -237,31 +237,76 @@ std::pair<anchors_t, bool> chain(const anchors_t &anchors, const Graph &graph,
        */
       if (chain.back().v2 == yy.v1) {
         // "internal" ends are on the same vertex
-        curr_strand = chain.back().pos1 < yy.pos1;
-        if (curr_strand)
-          rd = yy.pos1 - chain.back().pos2 + klen - 1;
-        else
-          rd = chain.back().pos2 - yy.pos1 + klen - 1;
-        // qd = std::abs(qd);
+        rd = yy.pos1 - (chain.back().pos2 - klen + 1);
+        curr_strand = true;
+        if (rd < 0) {
+          rd = -rd;
+          curr_strand = false;
+        }
       } else {
-        curr_strand = chain.back().paths.at(pid).offset1 >
-                      chain.back().paths.at(pid).offset2;
         if (chain.back().v1 == yy.v1 && chain.back().v2 == yy.v2) {
           // overlapping anchors over same edge (same pair of vertices)
-          if (curr_strand)
+          rd = yy.pos1 - chain.back().pos1;
+          curr_strand = true;
+          if (rd < 0) {
+            rd = -rd;
+            curr_strand = false;
+          }
+          // curr_strand = chain.back().paths.at(pid).offset1 >
+          //               chain.back().paths.at(pid).offset2;
+          // if (curr_strand)
+          //   rd = yy.pos1 - chain.back().pos1;
+          // else
+          //   rd = chain.back().pos1 - yy.pos1;
+        } else if (chain.back().v1 == yy.v1 || chain.back().v2 == yy.v2) {
+          std::cerr << chain.back().v1 << ":"
+                    << chain.back().paths.at(pid).offset1 << ":"
+                    << chain.back().pos1 << " > " << chain.back().v2 << ":"
+                    << chain.back().paths.at(pid).offset2 << ":"
+                    << chain.back().pos2 << std::endl;
+          std::cerr << yy.v1 << ":" << yy.paths.at(pid).offset1 << ":"
+                    << yy.pos1 << " > " << yy.v2 << ":"
+                    << yy.paths.at(pid).offset2 << ":" << yy.pos2 << std::endl;
+
+          // overlapping anchors but not same "edge", e.g., prefix A>B>C and A>B
+          if (chain.back().v1 == yy.v1) {
             rd = yy.pos1 - chain.back().pos1;
-          else
-            rd = chain.back().pos1 - yy.pos1;
+            curr_strand = true;
+            if (rd < 0) {
+              rd = -rd;
+              curr_strand = false;
+            }
+          } else {
+            rd = yy.pos2 - chain.back().pos2;
+            curr_strand = true;
+            if (rd < 0) {
+              rd = -rd;
+              curr_strand = false;
+            }
+          }
         } else {
           // anchors on two different vertices
+          curr_strand =
+              chain.back().paths.at(pid).offset2 > yy.paths.at(pid).offset1;
           if (curr_strand) {
             int vl = graph.get_vertex_len(chain.back().v2 >> 1);
+            std::cerr << curr_strand << " "
+                      << graph.get_gfa_name(chain.back().v1 >> 1) << ":"
+                      << graph.get_gfa_name(chain.back().v2 >> 1) << " > "
+                      << graph.get_gfa_name(yy.v1 >> 1) << ":"
+                      << graph.get_gfa_name(yy.v2 >> 1) << " on "
+                      << graph.get_path_contig(pid >> 1) << std::endl;
             rd = compute_distance_bp(graph, chain.back().v2, yy.v1, pid) +
-                 (vl - chain.back().pos1) + yy.pos1;
+                 (vl - (chain.back().pos2 - klen + 1)) + yy.pos1;
           } else {
             int vl = graph.get_vertex_len(yy.v2 >> 1);
+            std::cerr << curr_strand << " " << graph.get_gfa_name(yy.v1 >> 1)
+                      << ":" << graph.get_gfa_name(yy.v2 >> 1) << " > "
+                      << graph.get_gfa_name(chain.back().v1 >> 1) << ":"
+                      << graph.get_gfa_name(chain.back().v2 >> 1) << " on "
+                      << graph.get_path_contig(pid >> 1) << std::endl;
             rd = compute_distance_bp(graph, yy.v2, chain.back().v1, pid) +
-                 (vl - yy.pos1) + chain.back().pos1;
+                 (vl - (yy.pos2 - klen + 1)) + chain.back().pos1;
           }
         }
       }
