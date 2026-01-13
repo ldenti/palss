@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <getopt.h>
+#include <set>
 #include <string>
 
 #include "anchor.hpp"
@@ -22,9 +23,10 @@ typedef struct {
 // Store anchors starting in positions [start, end) of sequence. Tag using vinfo
 // (gbwt vertices w/ strand information)
 void get_anchors(anchors_t &anchors, const std::string &sequence,
-                 const std::vector<gbwt::node_type> &vinfo, const size_t &klen,
-                 const size_t &start, const size_t &end, bool is_ref,
-                 const uint64_t &density) {
+                 const std::vector<gbwt::node_type> &vinfo,
+                 const std::map<gbwt::node_type, size_t> vlengths,
+                 const size_t &klen, const size_t &start, const size_t &end,
+                 bool is_ref, const uint64_t &density) {
   assert(sequence.size() == vinfo.size());
   char kmer[klen + 1];    // first kmer on sequence (plain)
   uint64_t kmer_d = 0;    // kmer
@@ -57,8 +59,17 @@ void get_anchors(anchors_t &anchors, const std::string &sequence,
 
   hash = XXH64(&ckmer_d, 8, 0); // xxseed = 0
   if (hash <= density) {
-    anchors.push_back(
-        anchor_t{ckmer_d, (uint32_t)v1, (uint32_t)v2, pos, pos2, is_ref, true});
+    if (kmer_d != ckmer_d) {
+      // we do not have canonical on path sequence, so we have to reverse the
+      // positions
+      anchors.push_back(
+          anchor_t{ckmer_d, (uint32_t)(v2 ^ 1), (uint32_t)(v1 ^ 1),
+                   (uint32_t)vlengths.at(v2) - pos2 - 1,
+                   (uint32_t)vlengths.at(v1) - pos - 1, is_ref, true});
+    } else {
+      anchors.push_back(anchor_t{ckmer_d, (uint32_t)v1, (uint32_t)v2, pos, pos2,
+                                 is_ref, true});
+    }
   }
 
   // all other kmers
@@ -78,11 +89,32 @@ void get_anchors(anchors_t &anchors, const std::string &sequence,
       pos2 = 0;
     }
 
+    if (ckmer_d == 3475151856249781260)
+      std::cerr << "xxx" << std::endl;
     hash = XXH64(&ckmer_d, 8, 0); // xxseed = 0
     if (hash <= density) {
-      anchors.push_back(anchor_t{ckmer_d, (uint32_t)vinfo[pos],
-                                 (uint32_t)vinfo[pos + klen - 1], pos, pos2,
-                                 is_ref, true});
+      uint32_t av1, av2, apos, apos2;
+      if (kmer_d != ckmer_d) {
+        // we do not have canonical on path sequence, so we have to reverse the
+        // positions
+        av1 = vinfo[pos + klen - 1];
+        av2 = vinfo[pos];
+        apos = vlengths.at(vinfo[pos + klen - 1]) - pos2 - 1;
+        apos2 = vlengths.at(vinfo[pos]) - pos - 1;
+        anchors.push_back(anchor_t{
+            ckmer_d, (uint32_t)(vinfo[pos + klen - 1] ^ 1),
+            (uint32_t)(vinfo[pos] ^ 1),
+            (uint32_t)vlengths.at(vinfo[pos + klen - 1]) - pos2 - 1,
+            (uint32_t)vlengths.at(vinfo[pos]) - pos - 1, is_ref, true});
+      } else {
+        av1 = vinfo[pos];
+        av2 = vinfo[pos + klen - 1];
+        apos = pos;
+        apos2 = pos2;
+        anchors.push_back(anchor_t{ckmer_d, (uint32_t)vinfo[pos],
+                                   (uint32_t)vinfo[pos + klen - 1], pos, pos2,
+                                   is_ref, true});
+      }
     }
   }
 }
@@ -158,6 +190,7 @@ size_t flag_repetitions(anchors_t &anchors, const Graph &graph) {
         false; // set to true if we also see v2>v1 with inverted strand
 
     uint32_t a_v1 = anchors[i].v1, a_v2 = anchors[i].v2;
+
     bool a_ir1 = a_v1 & 1, a_ir2 = a_v2 & 1;
     // remove strand bit
     a_v1 = a_v1 >> 1;
@@ -187,9 +220,10 @@ size_t flag_repetitions(anchors_t &anchors, const Graph &graph) {
           (a_ir1 == b_ir1 && a_ir2 == b_ir2)) {
         // "same strand"
       } else if ((a_v1 == b_v2 && a_v2 == b_v1) &&
-                 (a_p1 == b_p2 && a_p1 == b_p2) &&
+                 (a_p1 == b_p2 && a_p2 == b_p1) &&
                  (a_ir1 != b_ir2 && a_ir1 != b_ir2)) {
-        // "inverted strand"
+        // XXX: not sure if we should keep these or not, still they should be a very tiny fraction
+        // On chr20 (8 samples), it is just 6/63696792 (9.4*10^-8)
         has_both = true;
       } else {
         // repetition
@@ -269,6 +303,8 @@ int main_sketch(int argc, char *argv[]) {
   anchors_t anchors;
   int n_visited = 0;
   rt = realtime();
+  std::cerr << "Vertex range: [" << gbz.graph.min_node_id() << ","
+            << gbz.graph.max_node_id() << "]" << std::endl;
   size_t total_vertices = gbz.graph.max_node_id() - gbz.graph.min_node_id();
   for (gbwtgraph::nid_t source_id = gbz.graph.min_node_id();
        source_id <= gbz.graph.max_node_id(); ++source_id) {
@@ -296,8 +332,8 @@ int main_sketch(int argc, char *argv[]) {
       // iterate over all paths starting from this vertex (that are
       // consistent with indexed haplotypes)
       std::vector<rlpath_t> paths = kdfs(gbz, fl, source, klen);
+
       for (const rlpath_t &path : paths) {
-        // keep only paths on + strand
         gbwt::size_type first;
         gbwt::SearchState state =
             fl.find(path.vertices.begin(), path.vertices.end(), first);
@@ -306,11 +342,9 @@ int main_sketch(int argc, char *argv[]) {
         std::vector<gbwt::size_type> p_offsets = fl.locate(state, first);
         bool on_plus = false;
         bool is_ref = false;
-        // for (const auto &v : path.vertices)
-        //   std::cerr << graph.get_gfa_name(v >> 1) << ((v & 1) ? "-" : "+")
-        //             << " ";
-        // std::cerr << std::endl;
+
         for (const gbwt::size_type &p : p_offsets) {
+          // keep only paths on + strand
           if (gbwt::Path::is_reverse(p))
             continue;
           on_plus = true;
@@ -319,19 +353,21 @@ int main_sketch(int argc, char *argv[]) {
             is_ref = true;
         }
 
-        // we have at least one path on + strand
         if (!on_plus)
           continue;
+        // we have at least one path on + strand
 
         if (is_ref)
           source_isref = true;
 
         std::string path_sequence;
         std::vector<gbwt::node_type> vinfo;
+        std::map<gbwt::node_type, size_t> vlengths;
 
         // build path sequence and path info (vertex for each position)
         for (const gbwt::node_type &v : path.vertices) {
           gbwtgraph::handle_t h = gbwtgraph::GBWTGraph::node_to_handle(v);
+          vlengths[v] = gbz.graph.get_length(h);
           gbwtgraph::view_type view = gbz.graph.get_sequence_view(h);
           path_sequence.append(view.first, view.second);
           for (size_t i = 0; i < view.second; ++i)
@@ -341,7 +377,7 @@ int main_sketch(int argc, char *argv[]) {
         if (path_sequence.size() < klen)
           continue;
 
-        get_anchors(local_anchors, path_sequence, vinfo, klen,
+        get_anchors(local_anchors, path_sequence, vinfo, vlengths, klen,
                     source_length < klen ? 0 : source_length - klen + 1,
                     path_sequence.size() - source_length >= klen - 1
                         ? source_length
@@ -352,8 +388,10 @@ int main_sketch(int argc, char *argv[]) {
       // add anchors from source vertex (tagging as reference if vertex is on
       // reference path)
       if (source_length >= klen && strand == 0) {
-        get_anchors(local_anchors, source_sequence, source_info, klen, 0,
-                    source_length - klen + 1, source_isref, density);
+        std::map<gbwt::node_type, size_t> vlengths;
+        vlengths[source] = source_length;
+        get_anchors(local_anchors, source_sequence, source_info, vlengths, klen,
+                    0, source_length - klen + 1, source_isref, density);
       }
 
       for (const anchor_t &a : local_anchors) {
@@ -372,7 +410,9 @@ int main_sketch(int argc, char *argv[]) {
           __func__, anchors.size(), total_vertices, realtime() - rt);
 
   rt = realtime();
-  std::sort(anchors.begin(), anchors.end());
+  std::sort(
+      anchors.begin(), anchors.end(),
+      [](const anchor_t &x, const anchor_t &y) { return x.kmer < y.kmer; });
   fprintf(stderr, "[M::%s] Sorted anchors in %.3f secs\n", __func__,
           realtime() - rt);
 

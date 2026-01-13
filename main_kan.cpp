@@ -55,7 +55,7 @@ int main_kan(int argc, char *argv[]) {
   int l;
   char kmer[klen + 1];
   kmer[klen] = '\0';
-  uint64_t hit;
+  hit_t hit;
   uint64_t kmer_d = 0, rckmer_d = 0, ckmer_d = 0;
   uint8_t c; // new character to append
   uint p;    // current position on sequence
@@ -71,7 +71,7 @@ int main_kan(int argc, char *argv[]) {
     ckmer_d = std::min(kmer_d, rckmer_d);
 
     hit = sk_get(sketch, ckmer_d, reference_only);
-    if (hit == -1UL) {
+    if (hit.value == -1UL) {
       last_uncovered_p = 0;
       ++tot;
     }
@@ -81,7 +81,7 @@ int main_kan(int argc, char *argv[]) {
       rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
       ckmer_d = std::min(kmer_d, rckmer_d);
       hit = sk_get(sketch, ckmer_d, reference_only);
-      if (hit == -1UL) {
+      if (hit.value == -1UL) {
         if (last_uncovered_p == -1)
           last_uncovered_p = p - klen + 1;
         ++tot;

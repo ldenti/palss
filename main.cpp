@@ -9,7 +9,7 @@ int main_dump(int argc, char *argv[]);
 int main_sfs(int argc, char *argv[]);
 int main_test(int argc, char *argv[]);
 // int main_kan(int argc, char *argv[]);
-// int main_search(int argc, char *argv[]);
+int main_sam(int argc, char *argv[]);
 // int main_anchor(int argc, char *argv[]);
 int main_align(int argc, char *argv[]);
 // int main_extract(int argc, char *argv[]);
@@ -28,6 +28,8 @@ int main(int argc, char *argv[]) {
     ret = main_dump(argc - 1, argv + 1);
   else if (strcmp(argv[1], "sfs") == 0)
     ret = main_sfs(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "sam") == 0)
+    ret = main_sam(argc - 1, argv + 1);
   // else if (strcmp(argv[1], "kan") == 0)
   //   ret = main_kan(argc - 1, argv + 1);
   // else if (strcmp(argv[1], "search") == 0)

@@ -27,10 +27,12 @@ typedef struct {
   std::vector<gbwt::size_type> vertices; // with strand
   bool is_reference;
   std::string sequence;
+  size_t l;
   gbwt::size_type dist_to_end;
   gbwt::size_type offset1;
   gbwt::size_type offset2;
   size_t cutpfx, cutsfx;
+  bool reversed;
 } path_t;
 bool operator==(const path_t &path1, const path_t &path2);
 bool operator<(const path_t &path1, const path_t &path2);

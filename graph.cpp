@@ -104,20 +104,22 @@ std::vector<path_t> Graph::get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
 
       gbwt::size_type seqoff2 = fl.seqOffset(int2);
 
-      // sample_name = gbz.index.metadata.fullPath(seqid2).sample_name;
-      // if (ref_only && sample_name.compare(reference) != 0)
-      //   continue;
-      // use seqoff to understand where to start/end
+      if (seqoff2 > seqoff1) {
+        // we do not have v1 --> v2
+        continue;
+        // std::swap(position, position2);
+      }
+
       gbwt::edge_type position = std::make_pair(ev1, i);
       gbwt::edge_type position2 = std::make_pair(ev2, j);
-      if (seqoff2 > seqoff1)
-        std::swap(position, position2);
+
       assert(fl.index->contains(position));
       assert(fl.index->contains(position2));
       path_t path;
       path.id = seqid1;
       path.is_reference =
           this->get_path_sample(path.id).compare(this->reference) == 0;
+      path.reversed = false;
       path.offset1 = seqoff1;
       path.offset2 = seqoff2;
       while (position.first != position2.first) {
