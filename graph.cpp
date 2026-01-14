@@ -92,7 +92,8 @@ std::vector<path_t> Graph::get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
 
     std::string sample_name =
         gbz.index.metadata.fullPath(seqid1 >> 1).sample_name;
-    if (ref_only && sample_name.compare(reference) != 0)
+    bool is_reference = sample_name.compare(reference) == 0;
+    if (ref_only && !is_reference)
       continue;
 
     gbwt::size_type seqoff1 = fl.seqOffset(int1);
@@ -117,8 +118,7 @@ std::vector<path_t> Graph::get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
       assert(fl.index->contains(position2));
       path_t path;
       path.id = seqid1;
-      path.is_reference =
-          this->get_path_sample(path.id).compare(this->reference) == 0;
+      path.is_reference = is_reference;
       path.reversed = false;
       path.offset1 = seqoff1;
       path.offset2 = seqoff2;

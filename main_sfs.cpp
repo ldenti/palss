@@ -125,65 +125,11 @@ std::map<uint64_t, int> count_kmers(uint8_t *read, int readl, int klen) {
 // flip vertex strand bit
 uint32_t flip(uint32_t v) { return v ^ 1; }
 
-// // Get paths containing an anchor (since we store only start/end vertices, we
-// // need to subset paths over bubbles)
-// void set_paths(const Graph &graph, anchor_t &anchor, int klen) {
-//   uint32_t v1 = anchor.v1;
-//   uint32_t v2 = anchor.v2;
-
-//   // Get paths on + strand only (1) - 3 is both, 2 is - only
-//   std::vector<path_t> paths = graph.get_paths(v1, v2, 1, false);
-//   std::vector<path_t> paths2 = graph.get_paths(flip(v2), flip(v1), 1, false);
-//   for (path_t &p : paths) {
-//     p.reversed = false;
-//   }
-//   for (path_t &p : paths2) {
-//     p.reversed = true;
-//     paths.push_back(p);
-//   }
-
-//   // get only paths containing the anchor kmer
-//   char skmer[klen];
-//   char skmer_rc[klen];
-//   if (anchor.is_canonical) {
-//     // the kmer stored in anchor is the same as in the read
-//     d2s(anchor.kmer, klen, skmer);
-//     d2s(rc(anchor.kmer, klen), klen, skmer_rc);
-//   } else {
-//     d2s(rc(anchor.kmer, klen), klen, skmer);
-//     d2s(anchor.kmer, klen, skmer_rc);
-//   }
-
-//   // iterate over paths and find kmer and assign path to anchor if good
-//   for (size_t i = 0; i < paths.size(); ++i) {
-//     const path_t &path = paths[i];
-//     size_t p1 = path.sequence.find(skmer);
-//     size_t p0 = path.sequence.find(skmer_rc);
-//     if (p1 != std::string::npos || p0 != std::string::npos) {
-//       assert(p1 != p0);
-
-//       // XXX: this assert may fail if we have cycles (but it depends if
-//       // sketching filter out kmers occurring on same vertex/vertices two or
-//       // more times along the same path)
-//       assert(anchor.paths.find(path.id << 1) == anchor.paths.end() &&
-//              anchor.paths.find((path.id << 1) | 1) == anchor.paths.end());
-
-//       anchor.paths[(path.id << 1) | (p1 != std::string::npos)] = {
-//           (uint32_t)path.offset1, (uint32_t)path.offset2,
-//           p1 != std::string::npos, path.reversed, path.is_reference};
-//       // key is path identifier w/ strand bit + consistency bit: "is the kmer
-//       // along the path consistent with the kmer extracted from the read?"
-//       (to
-//       // model strand). They are consistent (bit to 1) if both canonical or
-//       both
-//       // non canonical
-//     }
-//   }
-// }
-
 // Get paths containing an anchor (since we store only start/end vertices, we
 // need to subset paths over bubbles)
 void set_paths(const Graph &graph, anchor_t &anchor, int klen) {
+  // XXX: what about cycles?
+
   uint32_t v1 = anchor.v1;
   uint32_t v2 = anchor.v2;
 
@@ -201,9 +147,9 @@ void set_paths(const Graph &graph, anchor_t &anchor, int klen) {
     if (p.sequence.find(akmer_can) != std::string::npos) {
       // if the anchor from read was already canonical, then strand is + (we
       // have consistency)
-      anchor.paths[(p.id << 1) | anchor.is_canonical] = {
-          (uint32_t)p.offset1, (uint32_t)p.offset2, anchor.is_canonical, false,
-          p.is_reference};
+      anchor.paths[(p.id << 3) | ((p.is_reference & 1) << 2) |
+                   anchor.is_canonical << 1 | 0] =
+          ((uint64_t)p.offset1 << 32) | (uint32_t)p.offset2;
     }
   }
 
@@ -213,18 +159,11 @@ void set_paths(const Graph &graph, anchor_t &anchor, int klen) {
       // if the anchor from read was canonical, then strand is - (we do not have
       // consistency since here we don't have the canonical kmer in the path for
       // sure, due to how sketching works)
-      anchor.paths[(p.id << 1) | !anchor.is_canonical] = {
-          (uint32_t)p.offset1, (uint32_t)p.offset2, !anchor.is_canonical, true,
-          p.is_reference};
+      anchor.paths[(p.id << 3) | ((p.is_reference & 1) << 2) |
+                   !anchor.is_canonical << 1 | 1] =
+          ((uint64_t)p.offset1 << 32) | (uint32_t)p.offset2;
     }
   }
-
-  // XXX: what about cycles?
-
-  // in anchor.paths, the key is path identifier w/ strand bit + consistency
-  // bit: "is the kmer along the path consistent with the kmer extracted from
-  // the read?" (to model strand). They are consistent (bit to 1) if both
-  // canonical or both non canonical
 }
 
 // Compute distance in bp between v1 and v2 on path with identifier pid
@@ -287,9 +226,7 @@ anchors_t chain(const anchors_t &anchors, const Graph &graph,
       } else {
         // different vertex, so check offset along path
         int vl = graph.get_vertex_len(chain.back().v1 >> 1);
-        size_t d =
-            compute_distance_bp(graph, chain.back().v1, yy.v1,
-                                pid >> 1); // we need to remove consistency bit
+        size_t d = compute_distance_bp(graph, chain.back().v1, yy.v1, pid);
         if (d == -1UL)
           rd = 0;
         else
@@ -341,11 +278,13 @@ chaining(const Graph &graph, const anchors_t &anchors, int klen) {
   for (size_t a = 0; a < anchors.size(); ++a) {
     const anchor_t &aa = anchors[a];
     for (const auto &[pid, p] : aa.paths)
-      pcounts[pid].push_back(a);
+      pcounts[pid >> 1].push_back(
+          (a << 1) | (pid & 1)); // We need to remove the inverted bit before
+                                 // hashing. We store it in the value
   }
 
-  // XXX: we can't merge paths with same anchors since they might have different
-  // vertices in between
+  // NOTE: we can't merge paths with same anchors since they might have
+  // different vertices in between
 
   // Sort paths by decreasing number of anchors
   std::vector<std::pair<uint32_t, uint32_t>> sorted_pcounts;
@@ -356,11 +295,16 @@ chaining(const Graph &graph, const anchors_t &anchors, int klen) {
 
   // Iterate over paths and chain
   for (const auto &[na, p] : sorted_pcounts) {
-    // p is path id (w/ strand bit) plus "consistency" bit
+    // p is path id (w/ strand bit) plus two additional bits (we moved the
+    // inverted bit to values)
     anchors_t path_anchors;
     for (const size_t aa : pcounts[p]) {
-      path_anchors.push_back(anchors[aa]);
-      if (path_anchors.back().paths[p].reversed) {
+      path_anchors.push_back(anchors[aa >> 1]); // remove inverted bit
+      path_anchors.back().inverted = false;
+      if (aa & 1) {
+        // invert if inverted bit is set
+        path_anchors.back().inverted = true;
+
         std::swap(path_anchors.back().v1, path_anchors.back().v2);
         path_anchors.back().v1 = flip(path_anchors.back().v1);
         path_anchors.back().v2 = flip(path_anchors.back().v2);
@@ -377,8 +321,7 @@ chaining(const Graph &graph, const anchors_t &anchors, int klen) {
       // read on reverse strand of path
       std::reverse(path_anchors.begin(), path_anchors.end());
 
-    // std::pair<anchors_t, bool> bc =
-    anchors_t bc = chain(path_anchors, graph, p, klen, !(p & 1));
+    anchors_t bc = chain(path_anchors, graph, p >> 2, klen, !(p & 1));
     if (!(p & 1))
       // read on reverse strand, so chain is "inverted"
       result[p] = {bc.back(), bc[bc.size() / 2], bc.front(), (int)bc.size(),
@@ -519,26 +462,36 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
         sfs_t &s = anchoring[key];
         s.s = qp;
         s.l = l;
-        // s.strand = sanchoring.strand;
-        if (p & 1) {
-          s.sv = a1.v1;
-          s.ev = a2.v2;
-          s.soff = a1.pos1;
-          s.eoff = a2.pos2;
-        } else {
-          s.sv = a2.v1;
-          s.soff = a2.pos1;
-          s.ev = a1.v2;
-          s.eoff = a1.pos2;
-          // s.sv = ((s.sv >> 1) << 1) | (~(s.sv & 1) & 1);
-          // s.ev = ((s.ev >> 1) << 1) | (~(s.ev & 1) & 1);
-          // s.skmer = a2.kmer;
-          // s.ekmer = a1.kmer;
+
+        s.sv = a1.v1;
+        s.soff = a1.pos1;
+        if (a1.inverted) {
+          s.sv = flip(s.sv);
+          s.soff = graph.get_vertex_len(s.sv >> 1) - s.soff - 1;
+        }
+        s.ev = a2.v2;
+        s.eoff = a2.pos2;
+        if (a2.inverted) {
+          s.ev = flip(s.ev);
+          s.eoff = graph.get_vertex_len(s.ev >> 1) - s.eoff - 1;
         }
         s.skmer = a1.kmer;
         s.ekmer = a2.kmer;
       }
-      anchoring[key].paths.push_back(p);
+
+      // the new path id will be: path identifier with strand bit + reference
+      // bit + consistency/strand bit (1 is +, 0 is -) + inverted anchor1 +
+      // inverted anchor2
+      int pp = p << 2;
+      if (a1.inverted)
+        pp = pp | (1 << 1);
+      if (a2.inverted)
+        pp = pp | 1;
+
+      anchoring[key].paths.push_back(pp);
+      anchoring[key].qualities.push_back(std::make_pair(
+          ((uint64_t)sanchoring.chain_size << 32) | sanchoring.total_anchors,
+          ((uint64_t)x->second.chain_size << 32) | x->second.total_anchors));
     }
 
     if (anchoring.empty()) {
@@ -560,17 +513,19 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     // Assigning the anchors
     s.s = anchoring[best_key].s;
     s.l = anchoring[best_key].l;
-    // s.strand = anchoring[best_key].strand;
     s.sv = anchoring[best_key].sv;
     s.ev = anchoring[best_key].ev;
     s.soff = anchoring[best_key].soff;
     s.eoff = anchoring[best_key].eoff;
     s.paths = anchoring[best_key].paths;
+    s.qualities = anchoring[best_key].qualities;
     s.skmer = anchoring[best_key].skmer;
     s.ekmer = anchoring[best_key].ekmer;
   }
 }
 
+// Flag specific strings that are contained in other specific strings on the
+// same read
 void remove_duplicates(std::vector<sfs_t> &S) {
   // sfs are sorted by position on read
   size_t last_i = 0;
@@ -675,7 +630,7 @@ int main_sfs(int argc, char *argv[]) {
   rt = realtime();
   while ((x = rbx_load(rb)) > 0) {
     nreads += x;
-    // #pragma omp parallel for num_threads(nth) schedule(static, 1)
+#pragma omp parallel for num_threads(nth) schedule(static, 1)
     for (int qq = 0; qq < x; ++qq) {
       std::cerr << "=== " << rb->reads[qq]->name << " ===" << std::endl;
       // convert to 1234
@@ -696,6 +651,7 @@ int main_sfs(int argc, char *argv[]) {
                reference_only);
         remove_duplicates(output[qq]);
       }
+
       // fill sequence
       for (sfs_t &s : output[qq])
         fill_sequence(s, seq);
@@ -715,15 +671,35 @@ int main_sfs(int argc, char *argv[]) {
                       << graph.get_gfa_name(s.sv >> 1) << "\t"
                       << graph.get_gfa_name(s.ev >> 1) << "\t" << s.skmer
                       << "\t" << s.ekmer << "\t";
-            std::cout << s.paths[0] << "|"
-                      << graph.get_path_sample(s.paths[0] >> 2) << "|"
-                      << graph.get_path_contig(s.paths[0] >> 2) << "|"
-                      << (s.paths[0] & 1);
+            std::cout << s.paths[0];
+            // << "|" << graph.get_path_sample(s.paths[0] >> 5) << "|"
+            // << graph.get_path_contig(s.paths[0] >> 5) << "|"
+            // << ((s.paths[0] >> 2) & 1) << ((s.paths[0] >> 1)
+            // & 1)
+            // << (s.paths[0] & 1) << "|" <<
+            // (s.qualities[0].first >> 32)
+            // << "/" << (uint32_t)s.qualities[0].first << "/"
+            // << (float)((s.qualities[0].first >> 32) /
+            //            (uint32_t)s.qualities[0].first)
+            // << "|" << (s.qualities[0].second >> 32) << "/"
+            // << (uint32_t)s.qualities[0].second << "/"
+            // << ((float)(s.qualities[0].second >> 32) /
+            //     (uint32_t)s.qualities[0].second);
             for (size_t p = 1; p < s.paths.size(); ++p)
-              std::cout << "," << s.paths[p] << "|"
-                        << graph.get_path_sample(s.paths[p] >> 2) << "|"
-                        << graph.get_path_contig(s.paths[p] >> 2) << "|"
-                        << (s.paths[p] & 1);
+              std::cout << "," << s.paths[p];
+            // << "|" << graph.get_path_sample(s.paths[p] >> 5) << "|"
+            // << graph.get_path_contig(s.paths[p] >> 5) << "|"
+            // << ((s.paths[p] >> 2) & 1) << ((s.paths[p] >> 1) & 1)
+            // << (s.paths[p] & 1) << "|"
+            // << (s.qualities[p].first >> 32) << "/"
+            // << (uint32_t)s.qualities[p].first << "/"
+            // << (float)((s.qualities[p].first >> 32) /
+            //            (uint32_t)s.qualities[p].first)
+            // << "|" << (s.qualities[p].second >> 32) << "/"
+            // << (uint32_t)s.qualities[p].second << "/"
+            // << ((float)(s.qualities[p].second >> 32) /
+            //     (uint32_t)s.qualities[p].second);
+
             std::cout << "\t" << s.plain_seq << std::endl;
           } else {
             std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"

@@ -26,6 +26,7 @@ typedef struct {
   uint32_t soff, eoff;
   uint64_t skmer, ekmer;
   std::vector<uint64_t> paths;
+  std::vector<std::pair<uint64_t, uint64_t>> qualities;
   //
   bool swapped;
   //
