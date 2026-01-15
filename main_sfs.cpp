@@ -475,6 +475,36 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
           s.ev = flip(s.ev);
           s.eoff = graph.get_vertex_len(s.ev >> 1) - s.eoff - 1;
         }
+
+        // XXX: check this
+        if (p & 1) {
+          s.sv = a1.v1;
+          s.soff = a1.pos1;
+          if (a1.inverted) {
+            s.sv = flip(s.sv);
+            s.soff = graph.get_vertex_len(s.sv >> 1) - s.soff - 1;
+          }
+          s.ev = a2.v2;
+          s.eoff = a2.pos2;
+          if (a2.inverted) {
+            s.ev = flip(s.ev);
+            s.eoff = graph.get_vertex_len(s.ev >> 1) - s.eoff - 1;
+          }
+        } else {
+          s.sv = a1.v2;
+          s.soff = a1.pos2;
+          if (a1.inverted) {
+            s.sv = flip(s.sv);
+            s.soff = graph.get_vertex_len(s.sv >> 1) - s.soff - 1;
+          }
+          s.ev = a2.v1;
+          s.eoff = a2.pos1;
+          if (a2.inverted) {
+            s.ev = flip(s.ev);
+            s.eoff = graph.get_vertex_len(s.ev >> 1) - s.eoff - 1;
+          }
+        }
+
         s.skmer = a1.kmer;
         s.ekmer = a2.kmer;
       }

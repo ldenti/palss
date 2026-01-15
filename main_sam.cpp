@@ -91,12 +91,9 @@ int main_sam(int argc, char *argv[]) {
 
     size_t path_id;
     bool on_ref = false;
-    bool strand = false;
     for (const uint64_t &p : s.paths) {
-      if (gbz.index.metadata.fullPath(p >> 2).sample_name.compare(ref_path) ==
-          0) {
-        path_id = p >> 2;
-        strand = p & 1;
+      if ((p >> 3) & 1) {
+        path_id = p;
         on_ref = true;
         break;
       }
@@ -107,20 +104,44 @@ int main_sam(int argc, char *argv[]) {
 
     std::string qidx =
         s.rname + "_" + std::to_string(s.s) + "_" + std::to_string(s.s + s.l);
-    std::cerr << qidx << std::endl;
-    size_t pos1 = offsets[path_id][s.sv];
-    size_t pos2 = offsets[path_id][s.ev];
-    size_t reference_start = pos1 + s.soff;
-    size_t reference_end = pos2 + s.eoff + 1;
-    if (pos1 > pos2) {
-      reference_start = pos2 + s.eoff;
-      reference_end = pos1 + s.soff + 1;
+
+    uint32_t sv = s.sv;
+    uint32_t soff = s.soff;
+    if ((path_id >> 1) & 1) {
+      sv = sv ^ 1;
+      soff = graph.get_vertex_len(sv >> 1) - soff - 1;
     }
-    int nn = reference_end - reference_start - 2 * klen;
-    // NOTE: we can have negative nn if anchors are overlapping on graph but not
-    // on read (due to insertion)
+    uint32_t ev = s.ev;
+    uint32_t eoff = s.eoff;
+    if (path_id & 1) {
+      ev = ev ^ 1;
+      eoff = graph.get_vertex_len(ev >> 1) - eoff - 1;
+    }
+
+    bool strand = (path_id >> 2) & 1;
+    size_t reference_start = offsets[path_id >> 5][sv] + soff;
+    size_t reference_end = offsets[path_id >> 5][ev] + eoff + 1;
+    if (!strand) {
+      reference_start = offsets[path_id >> 5][ev] + eoff;
+      reference_end = offsets[path_id >> 5][sv] + soff + 1;
+    }
+
+    if (reference_start > reference_end) {
+      std::cout << qidx << "\t" << 4 << "\t" << "*" << "\t" << 0 << "\t" << 255
+                << "\t"
+                << "*" << "\t" << "*" << "\t" << 0 << "\t" << 0 << "\t" << "*"
+                << "\t"
+                << "*" << std::endl;
+      continue;
+    }
+
+    int flag = strand ? 0 : 16;
     std::string seq;
     std::string cigar;
+
+    int nn = reference_end - reference_start - 2 * klen;
+    // NOTE: we can have negative nn if anchors are overlapping on graph but
+    // not on read (due to insertion)
     if (nn > 0) {
       cigar = std::to_string(klen) + "M" + std::to_string(nn) + "N" +
               std::to_string(klen) + "M";
@@ -128,15 +149,15 @@ int main_sam(int argc, char *argv[]) {
     } else {
       nn = -nn;
       cigar = std::to_string(2 * klen - nn) + "M";
-      seq = s.plain_seq.substr(0, klen - nn) + s.plain_seq.substr(s.l - klen, klen);
+      seq = s.plain_seq.substr(0, klen - nn) +
+            s.plain_seq.substr(s.l - klen, klen);
     }
-
     if (!strand) {
       seq = rc(seq);
     }
 
-    std::cout << qidx << "\t" << (strand ? "0" : "16") << "\t"
-              << gbz.index.metadata.fullPath(path_id).contig_name << "\t"
+    std::cout << qidx << "\t" << flag << "\t"
+              << gbz.index.metadata.fullPath(path_id >> 5).contig_name << "\t"
               << reference_start + 1 << "\t" << 60 << "\t" << cigar << "\t"
               << "*" << "\t" << 0 << "\t" << 0 << "\t" << seq << "\t"
               << "*" << std::endl;
