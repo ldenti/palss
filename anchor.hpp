@@ -25,7 +25,8 @@ typedef struct {
       paths; // paths, key is path identifier w/ strand bit + referece bit,
              // consistency bit, and inverted bit. (consistency: "is the kmer
              // along the path consistent with the kmer extracted from the
-             // read?" (to model strand). Values are encoded path offsets
+             // read?", to model strand. "inverted": anchor on this path comes
+             // from B-A- and not A+B+). Values are encoded path offsets
   //
   bool inverted; // this anchor is inverted along the path (XXX: I think this is
                  // bad since this is used only when anchor is assigned to a

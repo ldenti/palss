@@ -134,9 +134,9 @@ void set_paths(const Graph &graph, anchor_t &anchor, int klen) {
   uint32_t v2 = anchor.v2;
 
   char akmer_can[klen];
-  char akmer_rc[klen];
+  char akmer[klen];
   d2s(anchor.kmer, klen, akmer_can);
-  d2s(rc(anchor.kmer, klen), klen, akmer_rc);
+  d2s(rc(anchor.kmer, klen), klen, akmer);
 
   // Get paths on + strand only (1) - 3 is both, 2 is - only
 
@@ -155,7 +155,7 @@ void set_paths(const Graph &graph, anchor_t &anchor, int klen) {
 
   std::vector<path_t> paths2 = graph.get_paths(flip(v2), flip(v1), 1, false);
   for (path_t &p : paths2) {
-    if (p.sequence.find(akmer_rc) != std::string::npos) {
+    if (p.sequence.find(akmer) != std::string::npos) {
       // if the anchor from read was canonical, then strand is - (we do not have
       // consistency since here we don't have the canonical kmer in the path for
       // sure, due to how sketching works)
@@ -176,6 +176,8 @@ size_t compute_distance_bp(const Graph &graph, const gbwt::node_type &v1,
   // std::cerr << "Computing distance: " << graph.get_gfa_name(v1 >> 1)
   //           << ((v1 & 1) ? "-" : "+") << " > " << graph.get_gfa_name(v2 >> 1)
   //           << ((v2 & 1) ? "-" : "+") << std::endl;
+  if (v1 == v2)
+    return 0;
   const gbwt::FastLocate &fl = graph.get_fl();
 
   std::vector<gbwt::size_type> intervals1 = fl.decompressSA(v1);
@@ -190,7 +192,7 @@ size_t compute_distance_bp(const Graph &graph, const gbwt::node_type &v1,
     // skip v1
     position = graph.get_gbz().index.LF(position);
     while (position.first != v2) {
-      if (position.first != gbwt::ENDMARKER)
+      if (position.first == gbwt::ENDMARKER)
         return -1UL;
       gbwtgraph::handle_t handle =
           gbwtgraph::GBWTGraph::node_to_handle(position.first);
@@ -206,10 +208,12 @@ size_t compute_distance_bp(const Graph &graph, const gbwt::node_type &v1,
 
 // Chaining heuristic (both strands)
 anchors_t chain(const anchors_t &anchors, const Graph &graph,
-                const gbwt::size_type &pid, int klen, bool use_reverse) {
+                const gbwt::size_type &pid, int klen, bool use_reverse,
+                std::map<gbwt::size_type, std::map<uint64_t, size_t>> &dmemo) {
   anchors_t best_chain;
   anchors_t chain;
 
+  uint64_t xy;
   for (size_t x = 0; x < anchors.size(); ++x) {
     chain.push_back(anchors.at(x));
     for (size_t y = x + 1; y < anchors.size(); ++y) {
@@ -226,11 +230,21 @@ anchors_t chain(const anchors_t &anchors, const Graph &graph,
       } else {
         // different vertex, so check offset along path
         int vl = graph.get_vertex_len(chain.back().v1 >> 1);
-        size_t d = compute_distance_bp(graph, chain.back().v1, yy.v1, pid);
-        if (d == -1UL)
+        if (dmemo.find(pid) == dmemo.end()) {
+          dmemo[pid] = std::map<uint64_t, size_t>();
+        }
+        xy = ((uint64_t)chain.back().v1 << 32) | (uint32_t)yy.v1;
+        size_t dist;
+        if (dmemo[pid].find(xy) != dmemo[pid].end()) {
+          dist = dmemo[pid][xy];
+        } else {
+          dist = compute_distance_bp(graph, chain.back().v1, yy.v1, pid);
+          // dmemo[pid][xy] = dist;
+        }
+        if (dist == -1UL)
           rd = 0;
         else
-          rd = d + vl - chain.back().pos1 + yy.pos1;
+          rd = dist + vl - chain.back().pos1 + yy.pos1;
         assert(rd >= 0);
       }
 
@@ -273,6 +287,7 @@ std::map<gbwt::size_type, anchoring_t>
 chaining(const Graph &graph, const anchors_t &anchors, int klen) {
   std::map<gbwt::size_type, anchoring_t> result;
 
+  std::map<gbwt::size_type, std::map<uint64_t, size_t>> dmemo;
   // Get how many anchors we have on "each" path
   std::map<uint32_t, std::vector<uint32_t>> pcounts;
   for (size_t a = 0; a < anchors.size(); ++a) {
@@ -317,13 +332,20 @@ chaining(const Graph &graph, const anchors_t &anchors, int klen) {
       }
     }
 
-    if (!(p & 1))
+    bool reverse_strand = (p & 1) == 0;
+    if (reverse_strand)
       // read on reverse strand of path
       std::reverse(path_anchors.begin(), path_anchors.end());
 
-    anchors_t bc = chain(path_anchors, graph, p >> 2, klen, !(p & 1));
-    if (!(p & 1))
-      // read on reverse strand, so chain is "inverted"
+    // regardless of strand, anchors are now sorted wrt path. If strand is
+    // reverse, we will use the reverse read positions
+    anchors_t bc =
+        chain(path_anchors, graph, p >> 2, klen, reverse_strand, dmemo);
+
+    // we want to report first and last anchors along the chain, sorted by
+    // original read position
+    if (reverse_strand)
+      // read on reverse strand, so we need to reverse the chain
       result[p] = {bc.back(), bc[bc.size() / 2], bc.front(), (int)bc.size(),
                    (int)path_anchors.size()};
     else
@@ -437,11 +459,16 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       continue;
     }
 
+    // reverse start anchors so that they follow read order
+    // XXX: this might create problems with our greedy strategy since we start
+    // from farthest anchor
     std::reverse(sanchors.begin(), sanchors.end());
     std::map<gbwt::size_type, anchoring_t> schains =
         chaining(graph, sanchors, klen);
     std::map<gbwt::size_type, anchoring_t> echains =
         chaining(graph, eanchors, klen);
+
+    // chains are reported following original read positions
 
     std::map<std::pair<uint32_t, uint32_t>, sfs_t> anchoring;
     for (const auto &[p, sanchoring] : schains) {
@@ -450,12 +477,22 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       if (x == echains.end())
         continue;
 
-      // XXX: if we want anchor in between the chain, use .anchor
+      // We could use anchor in between the chain (.anchor)
       anchor_t a1 = sanchoring.anchor2;
       anchor_t a2 = x->second.anchor1;
 
+      // std::cerr << a1.v1 << ":" << a1.pos1 << ">" << a1.v2 << ":" << a1.pos2
+      //           << " " << a2.v1 << ":" << a2.pos1 << ">" << a2.v2 << ":"
+      //           << a2.pos2 << std::endl;
+      // std::cerr << graph.get_gfa_name(a1.v1 >> 1) << ">"
+      //           << graph.get_gfa_name(a1.v2 >> 1) << " "
+      //           << graph.get_gfa_name(a2.v1 >> 1) << ">"
+      //           << graph.get_gfa_name(a2.v2 >> 1) << std::endl;
+
+      // qp are still on read direction
       uint32_t qp = a1.qp;
       uint32_t l = a2.qp + klen - a1.qp;
+
       std::pair<uint32_t, uint32_t> key = std::make_pair(qp, l);
       if (anchoring.find(key) == anchoring.end()) {
         anchoring[key] = {};
@@ -463,60 +500,40 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
         s.s = qp;
         s.l = l;
 
-        s.sv = a1.v1;
-        s.soff = a1.pos1;
+        // XXX: vvvvvvv check this vvvvvvv
+        if (p & 1) {
+          // forward strand
+          s.sv = a1.v1;
+          s.soff = a1.pos1;
+          s.ev = a2.v2;
+          s.eoff = a2.pos2;
+          s.skmer = a1.kmer;
+          s.ekmer = a2.kmer;
+          s.reverse = false;
+        } else {
+          s.sv = a1.v2;
+          s.soff = a1.pos2;
+          s.ev = a2.v1;
+          s.eoff = a2.pos1;
+          s.skmer = a2.kmer;
+          s.ekmer = a1.kmer;
+          s.reverse = true;
+        }
         if (a1.inverted) {
           s.sv = flip(s.sv);
           s.soff = graph.get_vertex_len(s.sv >> 1) - s.soff - 1;
         }
-        s.ev = a2.v2;
-        s.eoff = a2.pos2;
         if (a2.inverted) {
           s.ev = flip(s.ev);
           s.eoff = graph.get_vertex_len(s.ev >> 1) - s.eoff - 1;
         }
-
-        // XXX: check this
-        if (p & 1) {
-          s.sv = a1.v1;
-          s.soff = a1.pos1;
-          if (a1.inverted) {
-            s.sv = flip(s.sv);
-            s.soff = graph.get_vertex_len(s.sv >> 1) - s.soff - 1;
-          }
-          s.ev = a2.v2;
-          s.eoff = a2.pos2;
-          if (a2.inverted) {
-            s.ev = flip(s.ev);
-            s.eoff = graph.get_vertex_len(s.ev >> 1) - s.eoff - 1;
-          }
-        } else {
-          s.sv = a1.v2;
-          s.soff = a1.pos2;
-          if (a1.inverted) {
-            s.sv = flip(s.sv);
-            s.soff = graph.get_vertex_len(s.sv >> 1) - s.soff - 1;
-          }
-          s.ev = a2.v1;
-          s.eoff = a2.pos1;
-          if (a2.inverted) {
-            s.ev = flip(s.ev);
-            s.eoff = graph.get_vertex_len(s.ev >> 1) - s.eoff - 1;
-          }
-        }
-
-        s.skmer = a1.kmer;
-        s.ekmer = a2.kmer;
+        // XXX: ^^^^^^^ check this ^^^^^^^
       }
 
       // the new path id will be: path identifier with strand bit + reference
       // bit + consistency/strand bit (1 is +, 0 is -) + inverted anchor1 +
       // inverted anchor2
-      int pp = p << 2;
-      if (a1.inverted)
-        pp = pp | (1 << 1);
-      if (a2.inverted)
-        pp = pp | 1;
+      int pp = (p << 2) | (a1.inverted << 1) | a2.inverted;
 
       anchoring[key].paths.push_back(pp);
       anchoring[key].qualities.push_back(std::make_pair(
@@ -538,8 +555,6 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       }
     }
 
-    // assert(best_anchors.first.qp < best_anchors.second.qp);
-
     // Assigning the anchors
     s.s = anchoring[best_key].s;
     s.l = anchoring[best_key].l;
@@ -549,8 +564,50 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     s.eoff = anchoring[best_key].eoff;
     s.paths = anchoring[best_key].paths;
     s.qualities = anchoring[best_key].qualities;
+    s.reverse = anchoring[best_key].reverse;
     s.skmer = anchoring[best_key].skmer;
     s.ekmer = anchoring[best_key].ekmer;
+
+    // we have to check the paths since we might have linked bad chains
+    std::vector<uint64_t> path_ids_to_keep;
+    for (const uint64_t &pt : s.paths) {
+      uint32_t sv = s.sv;
+      uint32_t ev = s.ev;
+      uint32_t soff = s.soff;
+      uint32_t eoff = s.eoff;
+      if ((pt >> 1) & 1) {
+        sv = s.sv ^ 1;
+        soff = graph.get_vertex_len(sv >> 1) - s.soff - 1;
+      }
+      if (pt & 1) {
+        ev = s.ev ^ 1;
+        eoff = graph.get_vertex_len(ev >> 1) - s.eoff - 1;
+      }
+      if (((pt >> 2) & 1) == 0) {
+        std::swap(sv, ev);
+        std::swap(soff, eoff);
+      }
+
+      // if two vertices are too distant or are "inverted" due to bad chain
+      // linking over the specific string (we have -1UL in this case)
+      size_t dist;
+      if (sv == ev) {
+        assert(soff < eoff);
+        if (soff <= eoff)
+          dist = eoff - soff;
+        else
+          dist = -1UL;
+      } else {
+        dist = compute_distance_bp(graph, sv, ev, pt >> 4);
+      }
+      if (dist <= 20000)
+        path_ids_to_keep.push_back(pt);
+    }
+    if (path_ids_to_keep.empty()) {
+      s.flag |= 3; // flag as invalid
+      continue;
+    }
+    s.paths = path_ids_to_keep;
   }
 }
 
@@ -566,13 +623,13 @@ void remove_duplicates(std::vector<sfs_t> &S) {
       continue;
     if (S[i].s == S[last_i].s) {
       if (S[i].l < S[last_i].l) {
-        S[i].flag = 3;
+        S[i].flag = 4;
       } else {
-        S[last_i].flag = 3;
+        S[last_i].flag = 4;
         last_i = i;
       }
     } else if (S[i].s + S[i].l == S[last_i].s + S[last_i].l) {
-      S[i].flag = 3;
+      S[i].flag = 4;
     } else {
       last_i = i;
     }
@@ -581,8 +638,13 @@ void remove_duplicates(std::vector<sfs_t> &S) {
 
 void fill_sequence(sfs_t &s, uint8_t *read) {
   s.plain_seq = std::string((char *)read + s.s, s.l);
+  std::string map = "0ACGT0";
+  if (s.reverse) {
+    std::reverse(s.plain_seq.begin(), s.plain_seq.end());
+    std::reverse(map.begin(), map.end());
+  }
   for (char &c : s.plain_seq)
-    c = "0ACGT0"[(uint8_t)c];
+    c = map[(uint8_t)c];
 }
 
 int main_sfs(int argc, char *argv[]) {

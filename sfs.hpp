@@ -29,6 +29,7 @@ typedef struct {
   std::vector<std::pair<uint64_t, uint64_t>> qualities;
   //
   bool swapped;
+  bool reverse;
   //
   std::string plain_seq;
   uint8_t *seq; // 1-4encoded sequence

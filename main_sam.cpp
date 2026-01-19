@@ -105,20 +105,22 @@ int main_sam(int argc, char *argv[]) {
     std::string qidx =
         s.rname + "_" + std::to_string(s.s) + "_" + std::to_string(s.s + s.l);
 
+    bool strand = (path_id >> 2) & 1;
     uint32_t sv = s.sv;
     uint32_t soff = s.soff;
+    uint32_t ev = s.ev;
+    uint32_t eoff = s.eoff;
+
     if ((path_id >> 1) & 1) {
       sv = sv ^ 1;
       soff = graph.get_vertex_len(sv >> 1) - soff - 1;
     }
-    uint32_t ev = s.ev;
-    uint32_t eoff = s.eoff;
+
     if (path_id & 1) {
       ev = ev ^ 1;
       eoff = graph.get_vertex_len(ev >> 1) - eoff - 1;
     }
 
-    bool strand = (path_id >> 2) & 1;
     size_t reference_start = offsets[path_id >> 5][sv] + soff;
     size_t reference_end = offsets[path_id >> 5][ev] + eoff + 1;
     if (!strand) {
@@ -127,10 +129,23 @@ int main_sam(int argc, char *argv[]) {
     }
 
     if (reference_start > reference_end) {
-      std::cout << qidx << "\t" << 4 << "\t" << "*" << "\t" << 0 << "\t" << 255
-                << "\t"
-                << "*" << "\t" << "*" << "\t" << 0 << "\t" << 0 << "\t" << "*"
-                << "\t"
+      // if (!strand) {
+      //   s.plain_seq = rc(s.plain_seq);
+      // }
+      std::cout << qidx + ".a1" << "\t" << 0 << "\t"
+                << gbz.index.metadata.fullPath(path_id >> 5).contig_name << "\t"
+                << reference_start - klen + 1 + 1 << "\t" << 60 << "\t"
+                << std::to_string(klen) + "M" << "\t"
+                << "*" << "\t" << 0 << "\t" << 0 << "\t"
+                << s.plain_seq.substr(0, klen) << "\t"
+                << "*" << std::endl;
+
+      std::cout << qidx + ".a2" << "\t" << 0 << "\t"
+                << gbz.index.metadata.fullPath(path_id >> 5).contig_name << "\t"
+                << reference_end << "\t" << 60 << "\t"
+                << std::to_string(klen) + "M" << "\t"
+                << "*" << "\t" << 0 << "\t" << 0 << "\t"
+                << s.plain_seq.substr(s.l - klen, klen) << "\t"
                 << "*" << std::endl;
       continue;
     }
@@ -152,9 +167,8 @@ int main_sam(int argc, char *argv[]) {
       seq = s.plain_seq.substr(0, klen - nn) +
             s.plain_seq.substr(s.l - klen, klen);
     }
-    if (!strand) {
-      seq = rc(seq);
-    }
+
+    // We do not need to reverse complement the sequence here. Since we report it along + strand
 
     std::cout << qidx << "\t" << flag << "\t"
               << gbz.index.metadata.fullPath(path_id >> 5).contig_name << "\t"
