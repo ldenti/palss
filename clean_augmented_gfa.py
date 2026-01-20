@@ -4,10 +4,19 @@ import re
 
 def main():
     gfa_fn = sys.argv[1]
-    minw = int(sys.argv[2])
+    gaf_fn = sys.argv[2]
+    minw = int(sys.argv[3])
+
+    print("Parsing GAF...", file=sys.stderr)
+    np_supports = {}
+    for line in open(gaf_fn):
+        fields = line.strip("\n").split("\t")
+        name = fields[0]
+        support = int(fields[15].split(":")[-1])
+        np_supports[name] = support
 
     print("Parsing paths...", file=sys.stderr)
-    new_paths = []
+    new_paths = {}
     V = {}
     for line in open(gfa_fn):
         path = []
@@ -16,13 +25,12 @@ def main():
             line = line.strip("\n").split("\t")
             name = line[1]
             path = [int(x[:-1]) for x in line[2].split(",")]
-            if "." in name:
-                new_paths.append(path)
+            if name in np_supports:
+                new_paths[name] = path
                 skip = True
         elif line.startswith("W"):
             line = line.strip("\n").split("\t")
             path = [int(x) for x in re.split("[<>]", line[6][1:])]
-            # path = [int(x) for x in line[6][1:].split(">")]
         else:
             continue
         if skip:
@@ -78,12 +86,12 @@ def main():
                     toremove.add(v1)
 
     print("Selecting segments to remove (support)...", file=sys.stderr)
-    for path in new_paths:
+    for name, path in new_paths.items():
         for v in path:
             if v in nV:
                 if not isinstance(nV[v], int):
                     nV[v] = 0
-                nV[v] += 1
+                nV[v] += np_supports[name]
     for v, w in nV.items():
         if w < minw:
             toremove.add(v)
