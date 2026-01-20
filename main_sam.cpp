@@ -168,7 +168,9 @@ int main_sam(int argc, char *argv[]) {
             s.plain_seq.substr(s.l - klen, klen);
     }
 
-    // We do not need to reverse complement the sequence here. Since we report it along + strand
+    // if (!strand) {
+    //   seq = rc(seq);
+    // }
 
     std::cout << qidx << "\t" << flag << "\t"
               << gbz.index.metadata.fullPath(path_id >> 5).contig_name << "\t"

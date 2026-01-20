@@ -577,11 +577,11 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       uint32_t eoff = s.eoff;
       if ((pt >> 1) & 1) {
         sv = s.sv ^ 1;
-        soff = graph.get_vertex_len(sv >> 1) - s.soff - 1;
+        soff = graph.get_vertex_len(sv >> 1) - soff - 1;
       }
       if (pt & 1) {
         ev = s.ev ^ 1;
-        eoff = graph.get_vertex_len(ev >> 1) - s.eoff - 1;
+        eoff = graph.get_vertex_len(ev >> 1) - eoff - 1;
       }
       if (((pt >> 2) & 1) == 0) {
         std::swap(sv, ev);
@@ -592,7 +592,7 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       // linking over the specific string (we have -1UL in this case)
       size_t dist;
       if (sv == ev) {
-        assert(soff < eoff);
+        assert(soff != eoff);
         if (soff <= eoff)
           dist = eoff - soff;
         else
@@ -724,7 +724,7 @@ int main_sfs(int argc, char *argv[]) {
     nreads += x;
 #pragma omp parallel for num_threads(nth) schedule(static, 1)
     for (int qq = 0; qq < x; ++qq) {
-      std::cerr << "=== " << rb->reads[qq]->name << " ===" << std::endl;
+      // std::cerr << "=== " << rb->reads[qq]->name << " ===" << std::endl;
       // convert to 1234
       uint8_t *seq = (uint8_t *)rb->reads[qq]->seq;
       int seql = rb->reads[qq]->seq_l;

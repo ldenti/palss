@@ -28,10 +28,12 @@ typedef struct {
   bool is_reference;
   std::string sequence;
   size_t l;
+  bool strand;
   gbwt::size_type dist_to_end;
   gbwt::size_type offset1;
   gbwt::size_type offset2;
   size_t cutpfx, cutsfx;
+  size_t ps, pe; // inclusive
   bool reversed;
 } path_t;
 bool operator==(const path_t &path1, const path_t &path2);

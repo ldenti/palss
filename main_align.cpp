@@ -124,33 +124,17 @@ int main_align(int argc, char *argv[]) {
   Graph graph(gbz_fn, "CHM13");
   graph.load();
   graph.load_fl();
+  const gbwt::FastLocate &fl = graph.get_fl();
 
   std::vector<sfs_t> specific_strings = load_sfs(sfs_fn);
   fprintf(stderr, "[M::%s] Loaded anchored specific strings in %.3f sec\n",
           __func__, realtime() - rt);
-
-  // we have inverted skmer and ekmer for reads on different strand
-  // XXX: can we "fix" this in sfs?
-  for (sfs_t &s : specific_strings) {
-    s.swapped = false;
-    if (s.skmer > s.ekmer) {
-      s.swapped = true;
-      std::swap(s.skmer, s.ekmer);
-      // FIXME: ugly
-      s.plain_seq = reverseAndComplement(s.plain_seq);
-      for (int i = 0; i < s.l; ++i)
-        s.seq[i] = s.plain_seq[i] < 128 ? to_int[(int)s.plain_seq[i]] - 1 : 4;
-      s.seq[s.l] = '\0';
-    }
-  }
 
   // Cluster specific strings based on their anchors (anchors have been
   // reversed)
   rt = realtime();
   std::sort(specific_strings.begin(), specific_strings.end(),
             [](const sfs_t &a, const sfs_t &b) { return a.skmer < b.skmer; });
-  // XXX: this can create problems depending on how things get sorted depending
-  // on ekmer when skmer is the same
   fprintf(stderr, "[M::%s] Sorted specific strings in %.3f sec\n", __func__,
           realtime() - rt);
 
@@ -214,17 +198,12 @@ int main_align(int argc, char *argv[]) {
   memset(&ez, 0, sizeof(ksw_extz_t));
 
   // TODO: parallelize
-  // int small_clusters = 0;
-  // int big_clusters = 0;
-  // int nopaths_clusters = 0;
-  // int noanchors_clusters = 0;
-  // int strange_clusters = 0;
 
   rt = realtime();
   for (size_t cidx = 0; cidx < clusters.size(); ++cidx) {
     std::vector<sfs_t> &cluster = clusters[cidx];
 
-    // if (cidx > 13)
+    // if (cidx != 33)
     //   continue;
 
     if ((cidx + 1) % 1000 == 0) {
@@ -232,105 +211,129 @@ int main_align(int argc, char *argv[]) {
               __func__, cidx + 1, clusters.size(), realtime() - rt);
     }
 
-    // if (cluster.size() < min_w) {
-    //   ++small_clusters;
-    //   continue;
-    // }
     if (cluster.size() > 64) {
       // FIXME
-      // ++big_clusters;
       continue;
     }
 
-    // for (const sfs_t &s : cluster) {
-    //   for (const auto &p : s.paths)
-    //     std::cerr << p << " ";
-    //   std::cerr << std::endl;
-    // }
-
-    int v1 = cluster.front().sv;
-    int v2 = cluster.front().ev;
+    const sfs_t &s0 = cluster.front();
 
     fprintf(stderr, "Cluster %ld: %s>%s\n", cidx,
-            graph.get_gfa_name(v1 >> 1).c_str(),
-            graph.get_gfa_name(v2 >> 1).c_str());
+            graph.get_gfa_name(s0.sv >> 1).c_str(),
+            graph.get_gfa_name(s0.ev >> 1).c_str());
 
-    // for (const sfs_t &s : cluster) {
-    //   std::cerr << s.rname << std::endl;
-    // }
-
-    // TODO: store path names
-    std::vector<path_t> paths = graph.get_paths(
-        v1, v2, 3,
-        false); // 1: + strand only; 2: - strand only; 3: both strands
-
-    // TODO: check paths are the same as those stored in sfs
-    size_t npaths = paths.size();
-    if (npaths == 0) {
-      // ++nopaths_clusters;
-      continue;
+    // is it enough to consider paths from s0 only?
+    std::map<uint64_t, uint64_t> path_map;
+    for (const uint64_t &p : s0.paths) {
+      path_map[p >> 4] = p;
     }
 
-    std::cerr << "===";
-    for (path_t &path : paths) {
-      std::cerr << " " << path.id;
-    }
-    std::cerr << std::endl;
+    uint32_t sv = s0.sv;
+    uint32_t sv_inv = sv ^ 1;
+    uint32_t soff = s0.soff;
+    uint32_t soff_inv = graph.get_vertex_len(sv >> 1) - soff - 1;
+    uint32_t ev = s0.ev;
+    uint32_t ev_inv = ev ^ 1;
+    uint32_t eoff = s0.eoff;
+    uint32_t eoff_inv = graph.get_vertex_len(ev >> 1) - eoff - 1;
 
-    // if (npaths > 1) {
+    uint64_t p0 = s0.paths.front();
+    bool p0_strand = (p0 >> 2) & 1;
+    bool p0_sinv = (p0 >> 1) & 1;
+    bool p0_einv = p0 & 1;
+
+    // Find paths going through sv and ev (both versions)
+    std::vector<path_t> paths1, paths2;
+
+    if (p0_strand) {
+      paths1 = graph.get_paths(p0_sinv ? sv_inv : sv, p0_einv ? ev_inv : ev, 1,
+                               false);
+      paths2 = graph.get_paths(p0_einv ? ev : ev_inv, p0_sinv ? sv : sv_inv, 1,
+                               false);
+    } else {
+      paths1 = graph.get_paths(p0_einv ? ev_inv : ev, p0_sinv ? sv_inv : sv, 1,
+                               false);
+      paths2 = graph.get_paths(p0_sinv ? sv : sv_inv, p0_einv ? ev : ev_inv, 1,
+                               false);
+    }
+    assert(paths1.size() > 0 || paths2.size() > 0);
+
+    std::vector<path_t> paths;
+    for (path_t &path : paths1) {
+      if (path_map.find(path.id) == path_map.end())
+        continue;
+      paths.push_back(path);
+      paths.back().strand = p0_strand;
+    }
+    for (path_t &path : paths2) {
+      if (path_map.find(path.id) == path_map.end())
+        continue;
+      paths.push_back(path);
+      paths.back().strand = !p0_strand;
+    }
+
+    // Keep only unique paths
     std::sort(paths.begin(), paths.end());
     paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
-    // }
-    size_t nupaths = paths.size();
-    fprintf(stderr, "%ld/%ld (%ld) paths\n", nupaths, npaths,
-            cluster.front().paths.size());
 
-    // get starting/ending kmers from specific strings
-    std::string first_kmer, last_kmer;
-
-    // for (const auto &s : cluster) {
-    first_kmer = cluster.front().plain_seq.substr(0, klen);
-    last_kmer =
-        cluster.front().plain_seq.substr(cluster.front().l - klen, klen);
-    std::cerr << first_kmer << " " << last_kmer << std::endl;
+    // TODO: keep track of all paths, even erased ones
 
     std::vector<std::vector<uint32_t>> path_kcounts(paths.size());
-    int p = 0;
-    for (path_t &path : paths) {
-      // std::cerr << path.id << "\n" << path.sequence << std::endl;
-      // XXX: we might avoid the find if we know the offsets and the length of
-      // the vertices
-      size_t p1 = path.sequence.find(first_kmer);
-      size_t p2 = path.sequence.find(last_kmer);
-      if (p1 == std::string::npos || p2 == std::string::npos) {
-        path.sequence = reverseAndComplement(path.sequence);
-        // XXX: instead of reversing the path, we should reverse the kmers
-        path.reversed = true;
-        p1 = path.sequence.find(first_kmer);
-        p2 = path.sequence.find(last_kmer);
-      }
-      if (p1 == std::string::npos || p2 == std::string::npos) {
-        // XXX: some paths are not compatible, we should intersect with paths
-        // assigned to sfs
-        continue;
-      }
-      std::cerr << graph.get_path_contig(path.id >> 1) << "("
-                << ((path.id & 1) ? "-" : "+") << "): " << p1 << ".." << p2
-                << std::endl;
-      // if (p2 < p1)
-      //   std::swap(p1, p2);
+    size_t pid = 0;
 
+    for (auto &path : paths) {
+      uint64_t p = path_map[path.id];
+
+      bool strand = (p >> 2) & 1;
+      assert(strand == path.strand);
+
+      bool sinv = (p >> 1) & 1;
+      bool einv = p & 1;
+
+      uint32_t v1 = sv;
+      uint32_t off1 = soff;
+      uint32_t v2 = ev;
+      uint32_t off2 = eoff;
+
+      if (sinv) {
+        v1 = sv_inv;
+        off1 = soff_inv;
+      }
+      if (einv) {
+        v2 = ev_inv;
+        off2 = eoff_inv;
+      }
+
+      if (strand == 0) {
+        std::swap(v1, v2);
+        std::swap(off1, off2);
+      }
+
+      /*
+       * If on + strand, path goes from (v1, s1) to (v2, s2), on - strand, it
+       * goes from (v2, ~s2) to (v1, ~s1)
+       */
+
+      assert(v1 == path.vertices.front() && v2 == path.vertices.back());
+
+      // path start/end positions (both inclusive)
+      path.ps = off1;
+      path.pe = path.sequence.size() - graph.get_vertex_len(v2 >> 1) + off2;
       path.l = path.sequence.size();
-      path.sequence = path.sequence.substr(p1, p2 - p1 + klen);
-      path.cutpfx = p1;
-      path.cutsfx = path.l - p2 + klen;
-      // FIXME: for GAF output, do we have to reverse vertices as well? and what
-      // about their strand?
-      // std::cerr << path.sequence << std::endl;
+      path.sequence = path.sequence.substr(path.ps, path.pe - path.ps + 1);
 
-      path_kcounts[p] =
+      // XXX: why do we need to do this only when strands differ?
+      path.reversed = p0_strand != strand;
+
+      // When needed, reverse path, count kmers (since we don't want to use
+      // canonical kmers), then reverse again
+      if (path.reversed)
+        path.sequence = reverseAndComplement(path.sequence);
+      path_kcounts[pid] =
           count_kmers_plain(path.sequence.c_str(), path.sequence.size(), cklen);
-      ++p;
+      if (path.reversed)
+        path.sequence = reverseAndComplement(path.sequence);
+      ++pid;
     }
 
     // Consensus via abpoa
@@ -352,7 +355,7 @@ int main_align(int argc, char *argv[]) {
       for (int i = 0; i < cons_l; ++i)
         cons_seq[i] = "ACGT"[(int)cons_seq[i]];
       cons_seq[cons_l] = '\0';
-      // std::cerr << "  = " << cons_seq << std::endl;
+      // std::cerr << "= " << cons_seq << std::endl;
 
       // === select best path ===
       std::vector<uint32_t> consensus_kcounts =
@@ -369,35 +372,22 @@ int main_align(int argc, char *argv[]) {
           best_p = i;
         }
       }
-      if (best_p == -1U) {
-        // XXX: we are here if we did not find both kmers on any path. Why can
-        // this happen?
-        continue;
-      }
-      // =======
+      assert(best_p != -1U);
 
       const path_t &path = paths[best_p];
+      // std::cerr << (path.reversed ? "<" : ">") << " " << path.sequence
+      //           << std::endl;
 
-      std::cerr << "Best path: " << graph.get_path_contig(path.id >> 1) << "("
-                << ((path.id & 1) ? "-" : "+") << ")" << " "
-                << path.vertices.size() << std::endl;
-      for (size_t i = 0; i < path.vertices.size(); ++i)
-        std::cerr << ((path.vertices[i] & 1) ? "<" : ">")
-                  << graph.get_gfa_name(path.vertices[i] >> 1);
-      std::cerr << std::endl;
+      std::cerr << graph.get_path_contig(path.id >> 1) << " "
+                << graph.get_gfa_name(path.vertices.front() >> 1)
+                << ((path.vertices.front() & 1) ? "-" : "+") << " > "
+                << graph.get_gfa_name(path.vertices.back() >> 1)
+                << ((path.vertices.back() & 1) ? "-" : "+") << std::endl;
 
-      // XXX: ugly
       std::string cseq_plain(cons_seq);
-      std::string pseq_plain(path.sequence);
-      size_t cutpfx = path.cutpfx, cutsfx = path.cutsfx;
-      if (path.reversed) {
-        // XXX: is this correct?
+      if (path.reversed)
         cseq_plain = reverseAndComplement(cseq_plain);
-        pseq_plain = reverseAndComplement(pseq_plain);
-
-        cutpfx = path.l - (cutpfx + path.sequence.size());
-      }
-
+      std::string pseq_plain(path.sequence);
       // go back to 0123
       for (int i = 0; i < cons_l; ++i)
         cons_seq[i] = to_int[(uint8_t)cseq_plain[i]] - 1;
@@ -407,16 +397,10 @@ int main_align(int argc, char *argv[]) {
         path_seq[i] = to_int[(uint8_t)pseq_plain[i]] - 1;
       path_seq[pseq_plain.size()] = '\0';
 
-      if (std::abs((int)pseq_plain.size() - cons_l) >= 50000) {
-        //       ++strange_clusters;
-        //       fprintf(stderr,
-        //               "Skipping cluster %ld.%d since path/consensus lengths
-        //               disagree "
-        //               "(%ld/%d)\n",
-        //               cidx, ci, path.sequence.size(), cons_l);
-        free(path_seq);
-        continue;
-      }
+      // if (std::abs((int)pseq_plain.size() - cons_l) >= 50000) {
+      //   free(path_seq);
+      //   continue;
+      // }
 
       fprintf(stderr, "Aligning %dbp against %ldbp\n", cons_l,
               path.sequence.size());
@@ -501,70 +485,38 @@ int main_align(int argc, char *argv[]) {
         path_seq[i] = "ACGT"[(uint8_t)path_seq[i]];
       path_seq[path.sequence.size()] = '\0';
 
-      std::cerr << "=== " << (path.id & 1) << " " << path.reversed << std::endl;
-
-      //     if (out_sam) {
-      //       std::string contig_name = graph.get_path_contig(path.id >> 1);
-
-      //       std::cout << cidx << "." << ci << "\t";
-      //       std::cout << 0 << "\t";
-      //       std::cout << contig_name << "\t";
-      //       std::cout << ref_paths[contig_name].offsets[path.vertices[0]] +
-      //                        path.cutpfx + 1
-      //                 << "\t";
-      //       std::cout << 60 << "\t";
-      //       std::cout << cigar << "\t";
-      //       std::cout << "*"
-      //                 << "\t";
-      //       std::cout << 0 << "\t";
-      //       std::cout << 0 << "\t";
-      //       std::cout << cons_seq << "\t";
-      //       std::cout << "*"
-      //                 << "\t";
-      //       std::cout << "cs:Z:" << cs << "\t";
-      //       std::cout << "cw:Z:" << abpoa_supp << "\t";
-      //       std::cout << "AS:i:" << ez.score << "\t";
-      //       // std::cout << "ps:Z:" << pseq;
-      //       std::cout << std::endl;
-      //     } else {
+      // since vertices might be split (if longer than 1024), the offset along
+      // path refers to "internal" vertices, not GFA segments
+      gbwtgraph::handle_t handle =
+          gbwtgraph::GBWTGraph::node_to_handle(path.vertices[0]);
+      size_t xx = graph.get_gbz().graph.get_segment_offset(handle);
+      size_t ps = xx + path.ps;
+      size_t pe = ps + path.sequence.size();
+      //
 
       // print GAF line
       std::cout << cidx << "." << ci << "\t";
       std::cout << cons_l << "\t";
       std::cout << 0 << "\t";
       std::cout << cons_l << "\t";
-      // std::cout << ((path.reversed) ? "-" : "+") << "\t";
-      std::cout << "+" << "\t";
-      if (path.id & 1) {
-        int x = path.vertices.size() - 1;
-        std::string segment_name = graph.get_gfa_name(path.vertices[x] >> 1);
-        std::cout << ((path.vertices[x] & 1) ? ">" : "<") << segment_name;
-        --x;
-        std::string last_segment_name = segment_name;
-        for (; x >= 0; --x) {
-          segment_name = graph.get_gfa_name(path.vertices[x] >> 1);
-          if (segment_name.compare(last_segment_name) != 0)
-            std::cout << ((path.vertices[x] & 1) ? ">" : "<") << segment_name;
-          last_segment_name = segment_name;
-        }
-        std::cout << "\t";
-      } else {
-        size_t x = 0;
-        std::string segment_name = graph.get_gfa_name(path.vertices[x] >> 1);
-        std::cout << ((path.vertices[x] & 1) ? "<" : ">") << segment_name;
-        ++x;
-        std::string last_segment_name = segment_name;
-        for (; x < path.vertices.size(); ++x) {
-          segment_name = graph.get_gfa_name(path.vertices[x] >> 1);
-          if (segment_name.compare(last_segment_name) != 0)
-            std::cout << ((path.vertices[x] & 1) ? "<" : ">") << segment_name;
-          last_segment_name = segment_name;
-        }
-        std::cout << "\t";
+      std::cout << (path.reversed ? "-" : "+") << "\t";
+      //
+      size_t x = 0;
+      std::string segment_name = graph.get_gfa_name(path.vertices[x] >> 1);
+      std::cout << ((path.vertices[x] & 1) ? "<" : ">") << segment_name;
+      ++x;
+      std::string last_segment_name = segment_name;
+      for (; x < path.vertices.size(); ++x) {
+        segment_name = graph.get_gfa_name(path.vertices[x] >> 1);
+        if (segment_name.compare(last_segment_name) != 0)
+          std::cout << ((path.vertices[x] & 1) ? "<" : ">") << segment_name;
+        last_segment_name = segment_name;
       }
+      std::cout << "\t";
+      //
       std::cout << path.l << "\t";
-      std::cout << cutpfx << "\t";
-      std::cout << cutpfx + path.sequence.size() << "\t";
+      std::cout << ps << "\t";
+      std::cout << pe << "\t";
       std::cout << tot_res_matches << "\t";
       std::cout << tot_cigar_len << "\t";
       std::cout << 60 << "\t";
@@ -579,10 +531,6 @@ int main_align(int argc, char *argv[]) {
 
       free(path_seq);
     }
-
-    // return 1;
-    //   }
-    // break;
   }
 
   free(ez.cigar);
@@ -594,16 +542,5 @@ int main_align(int argc, char *argv[]) {
   for (sfs_t &s : specific_strings)
     free(s.seq);
 
-  // fprintf(stderr, "Total clusters: %ld\n", clusters.size());
-  // fprintf(stderr, "Small clusters: %d (%f)\n", small_clusters,
-  //         (float)small_clusters / clusters.size());
-  // fprintf(stderr, "Big clusters: %d (%f)\n", big_clusters,
-  //         (float)big_clusters / clusters.size());
-  // fprintf(stderr, "NoPaths clusters: %d (%f)\n", nopaths_clusters,
-  //         (float)nopaths_clusters / clusters.size());
-  // fprintf(stderr, "NoAnchors clusters: %d (%f)\n", noanchors_clusters,
-  //         (float)noanchors_clusters / clusters.size());
-  // fprintf(stderr, "Strange clusters: %d (%f)\n", strange_clusters,
-  //         (float)strange_clusters / clusters.size());
   return 0;
 }
