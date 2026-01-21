@@ -1,0 +1,10 @@
+```
+cd utils
+g++ -I$PWD/../../include/ -L$PWD/../../lib -Wl,-rpath,$PWD/../../lib -o extract_subgraph extract_subgraph.cpp -lgbwtgraph -lgbwt -lsdsl -fopenmp -lhandlegraph
+cd ..
+
+bash prepare_data.sh [graph.gbz] [out_dir]
+bash simulate_sample.sh [hap1.fa] [hap2.fa] [real_sample.fq] [sample.fq.gz] [coverage]
+
+snakemake -c 4 -p --use-conda --config gbz=[graph.gbz] gfa=[graph.gfa] fq=[sample.fq.gz] wd=[out_dir] -s palss.smk
+```

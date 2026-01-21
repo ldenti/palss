@@ -1,6 +1,0 @@
-name: happy
-channels:
-  - conda-forge
-  - bioconda
-dependencies:
-  -  hap.py=0.3.15
