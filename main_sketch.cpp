@@ -257,6 +257,7 @@ int main_sketch(int argc, char *argv[]) {
   std::string ref_path = "CHM13"; // reference paths
   bool use_edges = true;
   // int nThreads = 4;               // number of threads
+
   // TODO: multithreading
 
   int _c;

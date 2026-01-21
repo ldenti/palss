@@ -7,7 +7,7 @@
 int main_sketch(int argc, char *argv[]);
 int main_dump(int argc, char *argv[]);
 int main_sfs(int argc, char *argv[]);
-int main_test(int argc, char *argv[]);
+// int main_test(int argc, char *argv[]);
 // int main_kan(int argc, char *argv[]);
 int main_sam(int argc, char *argv[]);
 // int main_anchor(int argc, char *argv[]);
@@ -38,8 +38,8 @@ int main(int argc, char *argv[]) {
   //   ret = main_anchor(argc - 1, argv + 1);
   else if (strcmp(argv[1], "align") == 0)
     ret = main_align(argc - 1, argv + 1);
-  else if (strcmp(argv[1], "test") == 0)
-    ret = main_test(argc - 1, argv + 1);
+  // else if (strcmp(argv[1], "test") == 0)
+  //   ret = main_test(argc - 1, argv + 1);
   // else if (strcmp(argv[1], "extract") == 0)
   //   ret = main_extract(argc - 1, argv + 1);
   else {

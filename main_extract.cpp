@@ -18,6 +18,7 @@ int main_extract(int argc, char *argv[]) {
   for (size_t pp = 0; pp < paths.size(); ++pp) {
     gbwt::size_type path_id = paths[pp];
     gbwt::size_type seq_id = gbwt::Path::encode(path_id, false);
+    // std::string sample_name = gbz.index.metadata.fullPath(path_id).sample_name;
     // std::string contig_name = gbz.index.metadata.fullPath(path_id).contig_name;
     // int haplotype = gbz.index.metadata.fullPath(path_id).haplotype;
     // int offset = gbz.index.metadata.fullPath(path_id).offset;

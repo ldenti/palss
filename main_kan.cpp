@@ -26,12 +26,12 @@ int main_kan(int argc, char *argv[]) {
       in_reads = false;
       break;
     case 'h':
-      fprintf(stderr, "%s", KAN_USAGE_MESSAGE);
+      // fprintf(stderr, "%s", KAN_USAGE_MESSAGE);
       return 0;
     }
   }
   if (argc - optind != 2) {
-    fprintf(stderr, "%s", KAN_USAGE_MESSAGE);
+    // fprintf(stderr, "%s", KAN_USAGE_MESSAGE);
     return 1;
   }
   char *skt_fn = argv[optind++];

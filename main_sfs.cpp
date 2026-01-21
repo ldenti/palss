@@ -674,13 +674,13 @@ int main_sfs(int argc, char *argv[]) {
       nth = std::stoi(optarg);
       break;
     case 'h':
-      fprintf(stderr, "%s", SEARCH_USAGE_MESSAGE);
+      fprintf(stderr, "%s", SFS_USAGE_MESSAGE);
       return 0;
     }
   }
 
   if (argc - optind != 4) {
-    fprintf(stderr, "%s", SEARCH_USAGE_MESSAGE);
+    fprintf(stderr, "%s", SFS_USAGE_MESSAGE);
     return 1;
   }
   std::string gbz_fn = argv[optind++];
@@ -764,34 +764,8 @@ int main_sfs(int argc, char *argv[]) {
                       << graph.get_gfa_name(s.ev >> 1) << "\t" << s.skmer
                       << "\t" << s.ekmer << "\t";
             std::cout << s.paths[0];
-            // << "|" << graph.get_path_sample(s.paths[0] >> 5) << "|"
-            // << graph.get_path_contig(s.paths[0] >> 5) << "|"
-            // << ((s.paths[0] >> 2) & 1) << ((s.paths[0] >> 1)
-            // & 1)
-            // << (s.paths[0] & 1) << "|" <<
-            // (s.qualities[0].first >> 32)
-            // << "/" << (uint32_t)s.qualities[0].first << "/"
-            // << (float)((s.qualities[0].first >> 32) /
-            //            (uint32_t)s.qualities[0].first)
-            // << "|" << (s.qualities[0].second >> 32) << "/"
-            // << (uint32_t)s.qualities[0].second << "/"
-            // << ((float)(s.qualities[0].second >> 32) /
-            //     (uint32_t)s.qualities[0].second);
             for (size_t p = 1; p < s.paths.size(); ++p)
               std::cout << "," << s.paths[p];
-            // << "|" << graph.get_path_sample(s.paths[p] >> 5) << "|"
-            // << graph.get_path_contig(s.paths[p] >> 5) << "|"
-            // << ((s.paths[p] >> 2) & 1) << ((s.paths[p] >> 1) & 1)
-            // << (s.paths[p] & 1) << "|"
-            // << (s.qualities[p].first >> 32) << "/"
-            // << (uint32_t)s.qualities[p].first << "/"
-            // << (float)((s.qualities[p].first >> 32) /
-            //            (uint32_t)s.qualities[p].first)
-            // << "|" << (s.qualities[p].second >> 32) << "/"
-            // << (uint32_t)s.qualities[p].second << "/"
-            // << ((float)(s.qualities[p].second >> 32) /
-            //     (uint32_t)s.qualities[p].second);
-
             std::cout << "\t" << s.plain_seq << std::endl;
           } else {
             std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"

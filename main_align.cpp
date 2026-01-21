@@ -9,12 +9,11 @@ extern "C" {
 #include "ksw2.h"
 }
 
-// #include "usage.h"
-
 #include "graph.hpp"
 #include "kmer.hpp"
 #include "misc.hpp"
 #include "sfs.hpp"
+#include "usage.hpp"
 
 float canberra(const std::vector<uint32_t> &v1,
                const std::vector<uint32_t> &v2) {
@@ -79,44 +78,24 @@ std::string reverseAndComplement(const std::string &input) {
 int main_align(int argc, char *argv[]) {
   double rt;
 
-  int klen = 31; // TODO: get k from somewhere else
   int cklen = 5;
 
-  // int nth = 4;    // number of threads
-  uint min_w = 2; // minimum size for clusters
-  // int min_as = 0; // minimum alignment score
-  bool out_sam = true;
-
   int _c;
-  while ((_c = getopt(argc, argv, "k:w:gh")) != -1) {
+  while ((_c = getopt(argc, argv, "h")) != -1) {
     switch (_c) {
-    case 'k':
-      klen = std::stoi(optarg);
-      break;
-    case 'w':
-      min_w = std::stoi(optarg);
-      break;
-    case 'g':
-      out_sam = false;
-      break;
-      //     // case 's':
-      //     //   min_as = std::stoi(optarg);
-      //     //   break;
-      //     // case '@':
-      //     //   nth = std::stoi(optarg);
-      //     //   break;
-      //     case 'p':
-      //       path_prefix = optarg;
-      //       break;
+    // case '@':
+    //   nth = std::stoi(optarg);
+    //   break;
     case 'h':
-      // fprintf(stderr, "%s", AUGMENT_USAGE_MESSAGE);
+      fprintf(stderr, "%s", ALIGN_USAGE_MESSAGE);
       return 0;
     }
   }
   if (argc - optind != 2) {
-    // fprintf(stderr, "%s", CALL_USAGE_MESSAGE);
+    fprintf(stderr, "%s", ALIGN_USAGE_MESSAGE);
     return 1;
   }
+
   std::string gbz_fn = argv[optind++];
   std::string sfs_fn = argv[optind++];
 
@@ -124,14 +103,16 @@ int main_align(int argc, char *argv[]) {
   Graph graph(gbz_fn, "CHM13");
   graph.load();
   graph.load_fl();
-  const gbwt::FastLocate &fl = graph.get_fl();
 
   std::vector<sfs_t> specific_strings = load_sfs(sfs_fn);
+  if (specific_strings.empty()) {
+    fprintf(stderr, "[W::%s] No specific strings. Halting..\n", __func__);
+    return 1;
+  }
   fprintf(stderr, "[M::%s] Loaded anchored specific strings in %.3f sec\n",
           __func__, realtime() - rt);
 
-  // Cluster specific strings based on their anchors (anchors have been
-  // reversed)
+  // Cluster specific strings based on their anchors
   rt = realtime();
   std::sort(specific_strings.begin(), specific_strings.end(),
             [](const sfs_t &a, const sfs_t &b) { return a.skmer < b.skmer; });
@@ -140,8 +121,9 @@ int main_align(int argc, char *argv[]) {
 
   rt = realtime();
   std::vector<std::vector<sfs_t>> clusters;
-  if (specific_strings.size() > 0)
-    clusters.push_back({specific_strings[0]});
+  // if (specific_strings.size() > 0)
+  clusters.push_back({specific_strings[0]});
+
   uint last_c = 0;
   for (uint ss = 1; ss < specific_strings.size(); ++ss) {
     const sfs_t &sfs = specific_strings[ss];
@@ -203,10 +185,7 @@ int main_align(int argc, char *argv[]) {
   for (size_t cidx = 0; cidx < clusters.size(); ++cidx) {
     std::vector<sfs_t> &cluster = clusters[cidx];
 
-    // if (cidx != 33)
-    //   continue;
-
-    if ((cidx + 1) % 1000 == 0) {
+    if ((cidx + 1) % 10000 == 0) {
       fprintf(stderr, "[M::%s] analyzed %ld/%ld clusters in %.3f sec\n",
               __func__, cidx + 1, clusters.size(), realtime() - rt);
     }
@@ -218,9 +197,9 @@ int main_align(int argc, char *argv[]) {
 
     const sfs_t &s0 = cluster.front();
 
-    fprintf(stderr, "Cluster %ld: %s>%s\n", cidx,
-            graph.get_gfa_name(s0.sv >> 1).c_str(),
-            graph.get_gfa_name(s0.ev >> 1).c_str());
+    // fprintf(stderr, "Cluster %ld: %s>%s\n", cidx,
+    //         graph.get_gfa_name(s0.sv >> 1).c_str(),
+    //         graph.get_gfa_name(s0.ev >> 1).c_str());
 
     // is it enough to consider paths from s0 only?
     std::map<uint64_t, uint64_t> path_map;
@@ -378,11 +357,11 @@ int main_align(int argc, char *argv[]) {
       // std::cerr << (path.reversed ? "<" : ">") << " " << path.sequence
       //           << std::endl;
 
-      std::cerr << graph.get_path_contig(path.id >> 1) << " "
-                << graph.get_gfa_name(path.vertices.front() >> 1)
-                << ((path.vertices.front() & 1) ? "-" : "+") << " > "
-                << graph.get_gfa_name(path.vertices.back() >> 1)
-                << ((path.vertices.back() & 1) ? "-" : "+") << std::endl;
+      // std::cerr << graph.get_path_contig(path.id >> 1) << " "
+      //           << graph.get_gfa_name(path.vertices.front() >> 1)
+      //           << ((path.vertices.front() & 1) ? "-" : "+") << " > "
+      //           << graph.get_gfa_name(path.vertices.back() >> 1)
+      //           << ((path.vertices.back() & 1) ? "-" : "+") << std::endl;
 
       std::string cseq_plain(cons_seq);
       if (path.reversed)
@@ -402,8 +381,9 @@ int main_align(int argc, char *argv[]) {
       //   continue;
       // }
 
-      fprintf(stderr, "Aligning %dbp against %ldbp\n", cons_l,
-              path.sequence.size());
+      // fprintf(stderr, "Aligning %dbp against %ldbp\n", cons_l,
+      //         path.sequence.size());
+
       ksw_extd2_sse(0, cons_l, (uint8_t *)cons_seq, path.sequence.size(),
                     (uint8_t *)path_seq, 5, mat, gapo, gape, gapo2, gape2, -1,
                     -1, -1, 0, &ez);

@@ -1,177 +1,123 @@
-// #include <filesystem>
-// #include <fstream>
-// #include <getopt.h>
+#include <fstream>
+#include <iostream>
 #include <string>
+#include <vector>
 
-#include "graph.hpp"
-// #include "kmer.hpp"
-// #include "misc.hpp"
-// #include "sketch.hpp"
-// #include "usage.hpp"
-
-// void print_path_visits(const gbwt::FastLocate &fl, uint32_t v) {
-//   const gbwt::Metadata &metadata = fl.index->metadata;
-
-//   // std::vector<gbwt::size_type> offsets = fl.locate(fl.index->find(v));
-//   std::vector<gbwt::size_type> offsets = fl.decompressSA(v);
-//   for (const auto &off : offsets) {
-//     gbwt::size_type path_id = fl.seqId(off) >> 1; // remove strand
-//     information std::string sample_name =
-//     metadata.fullPath(path_id).sample_name; std::string contig_name =
-//     metadata.fullPath(path_id).contig_name;
-//     // int haplotype = metadata.fullPath(path_id).haplotype;
-//     // int offset = metadata.fullPath(path_id).offset;
-//     std::cerr << "--- " << path_id << " " << sample_name << " " <<
-//     contig_name
-//               << std::endl;
-//   }
-//   std::cerr << std::endl;
-// }
-
-// Root/leaf path in the tree rooted at a given vertex
-typedef struct {
-  std::vector<gbwt::node_type> vertices;
-  size_t l; // length in bp after first vertex (root)
-} rlpath2_t;
-
-// TODO : we could improve this using some sort of caching
-std::vector<rlpath2_t> kdfs2(const gbwtgraph::GBZ &gbz,
-                             const gbwt::FastLocate &fl,
-                             const gbwt::node_type &source,
-                             const size_t &klen) {
-  std::vector<rlpath2_t> paths; // fully extended path
-  std::queue<rlpath2_t> queue;  // paths we still need to "extend"
-  queue.push({{source}, 0});
-  while (!queue.empty()) {
-    rlpath2_t path = queue.front();
-    queue.pop();
-    gbwt::node_type vertex = path.vertices.back();
-    gbwtgraph::handle_t handle = gbz.graph.node_to_handle(vertex);
-
-    // get outgoings edges
-    std::vector<gbwt::node_type> outs;
-    gbwt::SearchState state = gbz.graph.get_state(handle);
-    gbz.graph.follow_paths(
-        state, [&outs](const gbwt::SearchState &next_state) -> bool {
-          if (!next_state.empty())
-            outs.push_back(next_state.node);
-          return true;
-        });
-
-    bool extended = false;
-    for (const gbwt::node_type &v : outs) {
-      const gbwtgraph::handle_t &h = gbz.graph.node_to_handle(v);
-      size_t l = gbz.graph.get_length(h);
-      rlpath2_t new_path = path;
-      new_path.vertices.push_back(v);
-
-      // check if path is consistent with haplotypes
-      gbwt::size_type first;
-      gbwt::SearchState state =
-          fl.find(new_path.vertices.begin(), new_path.vertices.end(), first);
-      if (state.empty()) {
-        continue;
-      }
-      extended = true;
-      // add path to solutions or queue depending on sequence length
-      new_path.l += l;
-      if (new_path.l >= (size_t)klen - 1)
-        paths.push_back(new_path);
-      else
-        queue.push(new_path);
-    }
-    if (!extended) {
-      // add path to solutions since we cannot extend it, only if we added at
-      // least one vertex to it
-      if (path.vertices.size() > 1)
-        paths.push_back(path);
-    }
-  }
-  return paths;
-}
+#include "gbwt/fast_locate.h"
+#include "gbwt/gbwt.h"
+#include "gbwtgraph/gbz.h"
+#include "gbwtgraph/utils.h"
+#include "sdsl/simple_sds.hpp"
 
 int main_test(int argc, char *argv[]) {
   std::string gbz_fn = argv[1];
-  size_t klen = std::stoi(argv[2]);
+  std::string samples_fn = argv[2];
 
-  Graph graph(gbz_fn, "CHM13");
-  graph.load();
-  graph.build_fl();
+  std::vector<std::string> samples;
+  std::ifstream file(samples_fn);
+  std::string line;
+  while (std::getline(file, line))
+    samples.push_back(line);
+  file.close();
 
-  const gbwtgraph::GBZ &gbz = graph.get_gbz();
-  const gbwt::FastLocate &fl = graph.get_fl();
-  const gbwt::Metadata &metadata = graph.get_metadata();
+  gbwtgraph::GBZ gbz;
+  sdsl::simple_sds::load_from(gbz, gbz_fn);
 
-  // Get all anchors by visiting each vertex (kDFS)
-  size_t total_vertices = gbz.graph.max_node_id() - gbz.graph.min_node_id();
-  std::cerr << "---" << gbz.graph.min_node_id() << " "
-            << gbz.graph.max_node_id() << std::endl;
+  const gbwt::Metadata &metadata = gbz.index.metadata;
 
-  for (gbwtgraph::nid_t source_id = gbz.graph.min_node_id();
-       source_id <= gbz.graph.max_node_id(); ++source_id) {
+  std::map<gbwt::size_type, size_t> path_lengths;
 
-    /* note 1: segments longer than 1024 are split, so max_node_id >= #S
-     * note 2: not all IDs in [min_node_id, max_node_id] are actually vertices
-     * note 3: we need to check both strand for a node since outgoing edges
-     *         depends on node strand
-     * note 4: we will limit to haplotype paths on the + strand
-     **/
+  std::set<gbwt::node_type> nodes;
+  std::set<gbwt::edge_type> edges;
 
-    for (int strand = 0; strand < 2; ++strand) {
-      gbwtgraph::handle_t source_handle =
-          gbz.graph.get_handle(source_id, strand);
+  for (const std::string &sample : samples) {
+    gbwt::size_type sample_id = metadata.sample(sample);
+    std::vector<gbwt::size_type> paths = metadata.pathsForSample(sample_id);
+    for (size_t pp = 0; pp < paths.size(); ++pp) {
+      gbwt::size_type path_id = paths[pp];
+      gbwt::size_type seq_id = gbwt::Path::encode(path_id, false);
 
-      std::cout << source_id << " " << (strand ? "-" : "+")
-                << gbz.graph.get_segment_name(source_handle) << " "
-                << gbz.graph.get_length(source_handle) << std::endl;
+      size_t l = 0;
+      gbwt::edge_type curr = gbz.index.start(seq_id);
+      l += gbz.graph.get_length(
+          gbwtgraph::GBWTGraph::node_to_handle(curr.first));
+      nodes.insert(curr.first);
+      gbwt::node_type last = curr.first;
+      curr = gbz.index.LF(curr);
+      while (curr.first != gbwt::ENDMARKER) {
+        nodes.insert(curr.first);
+        l += gbz.graph.get_length(
+            gbwtgraph::GBWTGraph::node_to_handle(curr.first));
+        edges.insert(std::make_pair(last, curr.first));
+        last = curr.first;
+        curr = gbz.index.LF(curr);
+      }
+      path_lengths[path_id] = l;
+    }
+  }
+
+  // XXX: this could be done way better (no need to store strings)
+
+  // Print S lines
+  std::set<std::string> segments;
+  for (const auto &node : nodes) {
+    gbwtgraph::handle_t handle = gbz.graph.node_to_handle(node);
+    std::string gfa_name = gbz.graph.get_segment_name(handle);
+    if (segments.find(gfa_name) != segments.end())
+      continue;
+    std::cout << "S" << "\t" << gfa_name << "\t"
+              << gbz.graph.get_sequence(handle) << std::endl;
+    segments.insert(gfa_name);
+  }
+
+  // Print L lines
+  std::set<std::string> links;
+  for (const auto &edge : edges) {
+    gbwt::node_type from = edge.first;
+    gbwt::node_type to = edge.second;
+    std::string from_gfa_name =
+        gbz.graph.get_segment_name(gbz.graph.node_to_handle(from));
+    std::string to_gfa_name =
+        gbz.graph.get_segment_name(gbz.graph.node_to_handle(to));
+
+    if (from_gfa_name.compare(to_gfa_name) == 0)
       continue;
 
-      gbwt::node_type source = gbz.graph.handle_to_node(source_handle);
-      // iterate over all paths starting from this vertex (that are
-      // consistent with indexed haplotypes)
+    std::string line = "L\t" + from_gfa_name + "\t" +
+                       (gbwt::Node::is_reverse(from) ? '-' : '+') + "\t" +
+                       to_gfa_name + "\t" +
+                       (gbwt::Node::is_reverse(to) ? '-' : '+') + "\t" + "0M";
 
-      std::vector<rlpath2_t> paths = kdfs2(gbz, fl, source, klen);
+    if (links.find(line) != links.end())
+      continue;
+    std::cout << line << std::endl;
+    links.insert(line);
+  }
 
-      for (const rlpath2_t &p : paths) {
-        for (const auto &v : p.vertices) {
-          std::cout << graph.get_gfa_name(v >> 1) << " ";
-        }
-        std::cout << std::endl;
+  // Print W lines
+  for (const std::string &sample : samples) {
+    gbwt::size_type sample_id = metadata.sample(sample);
+    std::vector<gbwt::size_type> paths = metadata.pathsForSample(sample_id);
+    for (size_t pp = 0; pp < paths.size(); ++pp) {
+      gbwt::size_type path_id = paths[pp];
+
+      gbwt::FullPathName fpn = metadata.fullPath(pp);
+
+      std::cout << "W" << "\t" << fpn.sample_name << "\t";
+      size_t haplotype =
+          (fpn.haplotype == gbwtgraph::GBWTGraph::NO_PHASE ? 0 : fpn.haplotype);
+      std::cout << haplotype << "\t" << fpn.contig_name << "\t" << fpn.offset
+                << "\t" << fpn.offset + path_lengths[path_id] << "\t";
+
+      gbwt::size_type seq_id = gbwt::Path::encode(path_id, false);
+      gbwt::edge_type curr = gbz.index.start(seq_id);
+      while (curr.first != gbwt::ENDMARKER) {
+        std::cout << (gbwt::Node::is_reverse(curr.first) ? '<' : '>')
+                  << gbz.graph.get_segment_name(
+                         gbz.graph.node_to_handle(curr.first));
+        curr = gbz.index.LF(curr);
       }
-
-      for (const rlpath2_t &path : paths) {
-        // keep only paths on + strand
-        gbwt::size_type first;
-        gbwt::SearchState state =
-            fl.find(path.vertices.begin(), path.vertices.end(), first);
-        assert(!state.empty());
-
-        std::vector<gbwt::size_type> p_offsets = fl.locate(state, first);
-        bool on_plus = false;
-        bool is_ref = false;
-        //     // for (const auto &v : path.vertices)
-        //     //   std::cerr << graph.get_gfa_name(v >> 1) << ((v & 1) ? "-" :
-        //     "+")
-        //     //             << " ";
-        //     // std::cerr << std::endl;
-        for (const gbwt::size_type &p : p_offsets) {
-          if (gbwt::Path::is_reverse(p))
-            continue;
-          std::cerr << metadata.fullPath(gbwt::Path::id(p)).contig_name << " "
-                    << metadata.fullPath(gbwt::Path::id(p)).offset << std::endl;
-
-          auto f = metadata.findFragment(metadata.path(p));
-
-          std::string path_sequence;
-          // build path sequence and path info (vertex for each position)
-          for (const gbwt::node_type &v : path.vertices) {
-            gbwtgraph::handle_t h = gbwtgraph::GBWTGraph::node_to_handle(v);
-            gbwtgraph::view_type view = gbz.graph.get_sequence_view(h);
-            path_sequence.append(view.first, view.second);
-          }
-          std::cerr << path_sequence << std::endl;
-        }
-      }
+      std::cout << std::endl;
     }
   }
 

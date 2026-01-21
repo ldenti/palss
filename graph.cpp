@@ -73,8 +73,8 @@ std::vector<path_t> Graph::get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
   int ev2 = v2;
   std::vector<gbwt::size_type> intervals2 = fl.decompressSA(ev2);
 
-  // std::cerr << get_gfa_name(v1 >> 1) << " " << gbwt::Node::is_reverse(v1)
-  //           << std::endl;
+  // std::cerr << get_gfa_name(v1 >> 1) << ((v1 & 1) ? "-" : "+")
+  //               << " > " << get_gfa_name(v2 >> 1) << ((v2 & 1) ? "-" : "+") << std::endl;
 
   for (size_t i = 0; i < intervals1.size(); ++i) {
     gbwt::FastLocate::size_type int1 = intervals1[i];
