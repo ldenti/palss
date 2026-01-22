@@ -12,7 +12,7 @@ Ws = [1,2,3]
 
 GBZ = config["gbz"]
 GFA = config["gfa"]
-FQ = config["fq"]
+RAEDS = config["reads"] # already error-corrected
 WD=config["wd"]
 
 wildcard_constraints:
@@ -25,22 +25,22 @@ rule run:
         expand(pjoin(WD, "pangenome-augmented.k{k}.d{d}.w{w}.gfa"), k=Ks, d=Ds, w=Ws)
 
 
-rule palss_ec:
-    input:
-        fq=FQ,
-    output:
-        fa=pjoin(WD, "reads.ec.fa"),
-    params:
-        prefix=pjoin(WD, "reads"),
-    threads: workflow.cores
-    conda:
-        "./envs/hifiasm.yml"
-    log:
-        time=pjoin(WD, "times", "ec.time"),
-    shell:
-        """
-        /usr/bin/time -vo {log.time} hifiasm -t{threads} --write-ec --bin-only {input.fq} -o {params.prefix}
-        """
+# rule palss_ec:
+#     input:
+#         fq=FQ,
+#     output:
+#         fa=pjoin(WD, "reads.ec.fa"),
+#     params:
+#         prefix=pjoin(WD, "reads"),
+#     threads: workflow.cores
+#     conda:
+#         "./envs/hifiasm.yml"
+#     log:
+#         time=pjoin(WD, "times", "ec.time"),
+#     shell:
+#         """
+#         /usr/bin/time -vo {log.time} hifiasm -t{threads} --write-ec --bin-only {input.fq} -o {params.prefix}
+#         """
 
 
 rule palss_sketch:
@@ -75,7 +75,7 @@ rule palss_search:
         gbz=GBZ,
         skt=rules.palss_sketch.output.skt,
         fmd=rules.palss_fmd.output.fmd,
-        fa=rules.palss_ec.output.fa,
+        fa=READS,
     output:
         sfs=pjoin(WD, "specific_strings.k{k}.d{d}.txt"),
     threads: workflow.cores
@@ -112,7 +112,7 @@ rule palss_augment:
         time=pjoin(WD, "times", "augment.k{k}.d{d}.time"),
     shell:
         """
-        /usr/bin/time -vo {log.time} vg augment --include-paths --min-coverage 1 --gaf {input.gfa} {input.gaf} | vg view - > ./example/graph.augmented.gfa
+        /usr/bin/time -vo {log.time} vg augment --include-paths --min-coverage 1 --gaf {input.gfa} {input.gaf} | vg view - > {output.gfa}
         """
 
 rule palss_clean:
