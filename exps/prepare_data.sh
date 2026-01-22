@@ -32,7 +32,7 @@ do
     echo "CHM13" > $WD/$n/known_samples.txt
     tail -n +2 $WD/all_samples.txt | head -n $n >> $WD/$n/known_samples.txt
     $SD/utils/extract_subgraph $GBZ $WD/$n/known_samples.txt > $WD/$n/pangenome.gfa
-    vg gbwt --set-reference CHM13 --gbz-format -g $WD/$n/pangenome.gbz --xg-name $WD/$n/pangenome.gfa --index-paths
+    vg gbwt --gbz-format -g $WD/$n/pangenome.gbz --xg-name $WD/$n/pangenome.gfa --index-paths
 
     echo "[$(date)] Extracting full pangenome ($n)"
     echo "CHM13" > $WD/$n/all_samples.txt
