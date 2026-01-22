@@ -12,7 +12,7 @@ Ws = [1,2,3]
 
 GBZ = config["gbz"]
 GFA = config["gfa"]
-RAEDS = config["reads"] # already error-corrected
+READS = config["reads"] # already error-corrected
 WD=config["wd"]
 
 wildcard_constraints:
@@ -22,8 +22,8 @@ wildcard_constraints:
 
 rule run:
     input:
-        expand(pjoin(WD, "pangenome-augmented.k{k}.d{d}.w{w}.gfa"), k=Ks, d=Ds, w=Ws)
-
+        expand(pjoin(WD, "pangenome-augmented.k{k}.d{d}.w{w}.gfa"), k=Ks, d=Ds, w=Ws),
+        expand(pjoin(WD, "specific_strings.k{k}.d{d}.bam"), k=Ks, d=Ds),
 
 # rule palss_ec:
 #     input:
@@ -84,6 +84,18 @@ rule palss_search:
     shell:
         """
         /usr/bin/time -vo {log.time} ../palss sfs -@{threads} {input.gbz} {input.skt} {input.fmd} {input.fa} > {output.sfs}
+        """
+
+rule palss_sam:
+    input:
+        gbz=GBZ,
+        sfs=rules.palss_search.output.sfs,
+    output:
+        bam=pjoin(WD, "specific_strings.k{k}.d{d}.bam"),
+    shell:
+        """
+        ../palss sam {input.gbz} {input.sfs} | samtools view -bS | samtools sort > {output.bam}
+        samtools index {output.bam}
         """
 
 rule palss_align:
