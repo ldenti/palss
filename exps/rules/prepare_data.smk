@@ -83,15 +83,16 @@ rule combine:
         i=0
         for fq in {params.oprefix}/*.fq.gz
         do
-            python3 ./utils/remove_n.py $fq | gzip -c > $fq.clean &
+            python3 ./utils/remove_n.py $fq | gzip -c > $fq.clean.gz &
             i=$((i+1))
             if (( i % {threads} == 0 )); then
                 wait
             fi
         done
-        # XXX: this might crash if we have too many .fq.gz
-        cat {params.oprefix}/*.clean > {output.fq}
-        rm {params.oprefix}/*.clean
+        wait
+        #
+        cat {params.oprefix}/*.clean.gz > {output.fq}
+        rm {params.oprefix}/*.clean.gz
         """
 
 rule hifiasm_ec:

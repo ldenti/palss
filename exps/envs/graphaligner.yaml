@@ -1,5 +1,6 @@
 name: graphaligner
 channels:
+  - conda-forge
   - bioconda
 dependencies:
-  - graphaligner
+  - graphaligner=1.0.20
