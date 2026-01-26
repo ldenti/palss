@@ -37,7 +37,7 @@ std::vector<uint32_t> count_kmers_plain(const char *seq, int seql, int klen) {
   // uint64_t ckmer_d = std::min(kmer_d, rckmer_d);
   ++kcounts[kmer_d];
   for (int p = klen; p < seql; ++p) {
-    c = seq[p] < 5 ? seq[p] - 1 : rand() % 4;
+    c = to_int[(uint8_t)seq[p]] - 1;
     kmer_d = lsappend(kmer_d, c, klen);
     // rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
     // ckmer_d = std::min(kmer_d, rckmer_d);
@@ -346,6 +346,13 @@ int main_align(int argc, char *argv[]) {
         if (pkc.empty())
           continue;
         cd = canberra(consensus_kcounts, pkc);
+
+        // std::cerr << paths[i].id << " " << cd << " (" << best_cd << ")"
+        //           << std::endl;
+        // for (const auto &x : pkc)
+        //   std::cerr << x << " ";
+        // std::cerr << std::endl;
+
         if (cd < best_cd) {
           best_cd = cd;
           best_p = i;
