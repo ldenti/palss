@@ -6,6 +6,32 @@
 
 #include "gbwtgraph/gbz.h"
 
+// XXX: improve
+std::string reverseAndComplement(const std::string &input) {
+  std::string reversed(input.rbegin(), input.rend());
+  std::string complement;
+  for (char nucleotide : reversed) {
+    switch (nucleotide) {
+    case 'A':
+      complement += 'T';
+      break;
+    case 'T':
+      complement += 'A';
+      break;
+    case 'C':
+      complement += 'G';
+      break;
+    case 'G':
+      complement += 'C';
+      break;
+    default:
+      complement += nucleotide;
+      break;
+    }
+  }
+  return complement;
+}
+
 int main(int argc, char *argv[]) {
   std::string gbz_fn = argv[1];
   std::string samples_fn = argv[2];
@@ -64,8 +90,10 @@ int main(int argc, char *argv[]) {
     std::string gfa_name = gbz.graph.get_segment_name(handle);
     if (segments.find(gfa_name) != segments.end())
       continue;
-    std::cout << "S" << "\t" << gfa_name << "\t"
-              << gbz.graph.get_sequence(handle) << std::endl;
+    std::string seq = gbz.graph.get_sequence(handle);
+    std::cout << "S"
+              << "\t" << gfa_name << "\t"
+              << ((node & 1) ? reverseAndComplement(seq) : seq) << std::endl;
     segments.insert(gfa_name);
   }
 
@@ -102,7 +130,8 @@ int main(int argc, char *argv[]) {
 
       gbwt::FullPathName fpn = metadata.fullPath(path_id);
 
-      std::cout << "W" << "\t" << fpn.sample_name << "\t";
+      std::cout << "W"
+                << "\t" << fpn.sample_name << "\t";
       size_t haplotype =
           (fpn.haplotype == gbwtgraph::GBWTGraph::NO_PHASE ? 0 : fpn.haplotype);
       std::cout << haplotype << "\t" << fpn.contig_name << "\t" << fpn.offset
