@@ -19,12 +19,7 @@ vg augment --include-paths --min-coverage 1 --gaf $ORIGINAL_GFA $CONSENSUS_GAF |
 python3 $SD/clean_augmented_gfa.py $WD/augmented-pass0.gfa $CONSENSUS_GAF $SUPP 2> $WD/cleaning-pass1.log | vg mod --unchop - > $WD/augmented-pass1.gfa
 
 >&2 echo "[$(date)] Converting GAF to FASTA"
-rm -f $CONSENSUS_GAF.fa
-cut -f1,17 $CONSENSUS_GAF | while read idx seq
-do
-    echo ">$idx" >> $CONSENSUS_GAF.fa
-    echo $(echo $seq | cut -f3 -d":") >> $CONSENSUS_GAF.fa
-done
+cut -f1,17 $CONSENSUS_GAF | sed "s/^/>/" | sed "s/\tqs:Z:/\n/g" > $CONSENSUS_GAF.fa
 
 >&2 echo "[$(date)] GraphAligner to original GFA"
 GraphAligner --graph $ORIGINAL_GFA --reads $CONSENSUS_GAF.fa --alignments-out $WD/consensus_to_original.gaf --preset vg --threads $THREADS &> $WD/graphaligner_to_original.log

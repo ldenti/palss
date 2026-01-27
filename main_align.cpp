@@ -329,7 +329,7 @@ int main_align(int argc, char *argv[]) {
     // total_clusters += abc->n_cons;
     for (int ci = 0; ci < abc->n_cons; ++ci) {
       int cons_l = abc->cons_len[ci];
-      int abpoa_supp = abc->clu_n_seq[ci];
+      // int abpoa_supp = abc->clu_n_seq[ci];
       char *cons_seq = (char *)abc->cons_base[ci];
       for (int i = 0; i < cons_l; ++i)
         cons_seq[i] = "ACGT"[(int)cons_seq[i]];
@@ -511,7 +511,14 @@ int main_align(int argc, char *argv[]) {
       std::cout << "cg:Z:" << cigar << "\t";
       std::cout << "cs:Z:" << cs << "\t";
       // std::cout << "cl:Z:" << clipped << "\t";
-      std::cout << "cw:Z:" << abpoa_supp << "\t";
+      // std::cout << "cw:Z:" << abpoa_supp << "\t";
+      //
+      std::cout << "rs:Z:";
+      std::cout << cluster[abc->clu_read_ids[ci][0]].rname;
+      for (int x = 1; x < abc->clu_n_seq[ci]; ++x)
+        std::cout << "|" << cluster[abc->clu_read_ids[ci][x]].rname;
+      std::cout << "\t";
+      //
       std::cout << "qs:Z:" << cseq_plain << "\t";
       std::cout << "ps:Z:" << pseq_plain;
       std::cout << std::endl;

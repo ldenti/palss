@@ -3,11 +3,12 @@
   * reads: pjoin(WD, sample + "-reads.ec.fa"),
 """
 
+
 rule palss_sketch:
     input:
         gbz=pjoin(WD, "n{n}", "pangenome-{t}.gbz"),
     output:
-        skt=pjoin(WD, "n{n}", "pangenome-{t}.d{d}.skt")
+        skt=pjoin(WD, "n{n}", "pangenome-{t}.d{d}.skt"),
     log:
         time=pjoin(WD, "times", "n{n}", "palss-{t}", "sketch.d{d}.time"),
     shell:
@@ -20,7 +21,7 @@ rule palss_fmd:
     input:
         gbz=pjoin(WD, "n{n}", "pangenome-{t}.gbz"),
     output:
-        fmd=pjoin(WD, "n{n}", "pangenome-{t}.fmd")
+        fmd=pjoin(WD, "n{n}", "pangenome-{t}.fmd"),
     threads: workflow.cores
     log:
         time=pjoin(WD, "times", "n{n}", "palss-{t}", "fmd.time"),
@@ -47,6 +48,7 @@ rule palss_search:
         /usr/bin/time -vo {log.time} ../palss sfs -@{threads} {input.gbz} {input.skt} {input.fmd} {input.fa} > {output.sfs}
         """
 
+
 rule palss_sam:
     input:
         gbz=pjoin(WD, "n{n}", "pangenome-{t}.gbz"),
@@ -58,6 +60,7 @@ rule palss_sam:
         ../palss sam {input.gbz} {input.sfs} | samtools view -bS | samtools sort > {output.bam}
         samtools index {output.bam}
         """
+
 
 rule palss_align:
     input:
@@ -85,6 +88,7 @@ rule palss_augment:
         "../envs/graphaligner.yaml"
     log:
         time=pjoin(WD, "times", "n{n}", "palss-{t}", "augment.d{d}.w{w}.time"),
+    threads: workflow.cores
     shell:
         """
         /usr/bin/time -vo {log.time} bash ../scripts/augment.sh {input.gfa} {input.gaf} {wildcards.w} {params.wd} {threads} > {output.gfa}

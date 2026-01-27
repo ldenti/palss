@@ -14,16 +14,15 @@ def main():
     minw = int(sys.argv[3])
 
     print("Parsing GAF...", file=sys.stderr)
-    np_supports = {}
+    np_reads_support = {}
     for line in open(gaf_fn):
         fields = line.strip("\n").split("\t")
         name = fields[0]
-        support = int(fields[15].split(":")[-1])
-        np_supports[name] = support
+        np_reads_support[name] = set(fields[15].split(":")[-1].split("|"))
 
     print("Parsing paths...", file=sys.stderr)
     new_paths = {}
-    V = {}
+    knownV = set()
     for line in open(gfa_fn):
         path = []
         skip = False
@@ -31,7 +30,7 @@ def main():
             line = line.strip("\n").split("\t")
             name = line[1]
             path = [int(x[:-1]) for x in line[2].split(",")]
-            if name in np_supports:
+            if name in np_reads_support:
                 new_paths[name] = path
                 skip = True
         elif line.startswith("W"):
@@ -40,75 +39,36 @@ def main():
         else:
             continue
         if skip:
-            # path is a new path, do not add its vertices to V
+            # path is a new path, do not add its vertices to knownV
             continue
         for v in path:
-            V[v] = ""
+            knownV.add(v)
 
     print("Parsing segments...", file=sys.stderr)
-    nV = {}
-    # nV_info = {}
+    newV = {}
     for line in open(gfa_fn):
         if line.startswith("S"):
             _, v, seq = line.strip("\n").split("\t")
             v = int(v)
-            if v in V:
-                pass  # V[v] = seq
+            if v in knownV:
+                pass
             else:
-                nV[v] = 0  # seq
-                # nV_info[v] = []
+                newV[v] = set()
 
-    # print("Parsing links...", file=sys.stderr)
-    # inE = {}
-    # outE = {}
-    # for line in open(gfa_fn):
-    #     if line.startswith("L"):
-    #         _, v1, _, v2, *_ = line.split("\t")
-    #         v1, v2 = int(v1), int(v2)
-    #         outE[v1] = outE[v1] + [v2] if v1 in outE else [v2]
-    #         inE[v2] = inE[v2] + [v1] if v2 in inE else [v1]
-    #
-    # print("Selecting segments to remove...", file=sys.stderr)
     toremove = set()
-    # for _, oe in outE.items():
-    #     for v1 in oe:
-    #         # for each outgoing vertex that is novel
-    #         if v1 not in nV:
-    #             continue
-    #         seq1 = nV[v1]
-    #         # check if we already have it
-    #         for v2 in oe:
-    #             if v1 == v2:
-    #                 continue
-    #             seq2 = V[v2] if v2 in V else nV[v2]
-    #             if seq2 == seq1 or rc(seq2) == seq1:
-    #                 toremove.add(v1)
-    # for v, ie in inE.items():
-    #     for v1 in ie:
-    #         if v1 not in nV:
-    #             continue
-    #         seq1 = nV[v1]
-    #         for v2 in ie:
-    #             if v1 == v2:
-    #                 continue
-    #             seq2 = V[v2] if v2 in V else nV[v2]
-    #             if seq2 == seq1:
-    #                 toremove.add(v1)
-
-    print("Selecting segments to remove (support)...", file=sys.stderr)
+    print(
+        f"Selecting segments to remove (due to low support, threshold: {minw})...",
+        file=sys.stderr,
+    )
     for name, path in new_paths.items():
         for v in path:
-            if v in nV:
-                # if not isinstance(nV[v], int):
-                #     nV[v] = 0
-                nV[v] += np_supports[name]
-                # nV_info[v].append(name)
-    for v, w in nV.items():
-        if w < minw:
+            if v in newV:
+                newV[v] |= np_reads_support[name]
+    for v, w in newV.items():
+        if len(w) < minw:
             toremove.add(v)
-
     print(
-        f"Need to remove {len(toremove)} out of {len(nV)} novel vertices",
+        f"Need to remove {len(toremove)} out of {len(newV)} novel vertices",
         file=sys.stderr,
     )
 
@@ -119,8 +79,6 @@ def main():
             v = int(v)
             if v in toremove:
                 continue
-            # if v in nV:
-            #     line = line[:-1] + "\tNV:i:1\n"
         elif line.startswith("L"):
             _, v1, _, v2, *_ = line.split("\t")
             v1, v2 = int(v1), int(v2)
@@ -129,7 +87,7 @@ def main():
         elif line.startswith("P"):
             line = line.strip("\n").split("\t")
             name = line[1]
-            if name in np_supports:
+            if name in np_reads_support:
                 continue
         print(line, end="")
 
