@@ -33,5 +33,11 @@ python3 $SD/select_consensus.py $WD/consensus_to_original.gaf $WD/consensus_to_a
 >&2 echo "[$(date)] Augmenting (2)"
 vg augment --include-paths --min-coverage 1 --gaf $ORIGINAL_GFA $WD/resulting_consensus.gaf | vg view - > $WD/augmented-pass2.gfa
 
+>&2 echo "[$(date)] Converting GAF to FASTA"
+cut -f1,17 $WD/resulting_consensus.gaf | sed "s/^/>/" | sed "s/\tqs:Z:/\n/g" > $WD/resulting_consensus.gaf.fa
+
+>&2 echo "[$(date)] GraphAligner to augmented GFA (2)"
+GraphAligner --graph $WD/augmented-pass2.gfa --reads $WD/resulting_consensus.gaf.fa --alignments-out $WD/consensus_to_augmented.pass2.gaf --preset vg --threads $THREADS &> $WD/graphaligner_to_augmented.log
+
 >&2 echo "[$(date)] Cleaning augmentation (2)"
-python3 $SD/clean_augmented_gfa.py $WD/augmented-pass2.gfa $WD/resulting_consensus.gaf $SUPP 2> $WD/cleaning-pass2.log | vg mod --unchop -
+python3 $SD/clean_ununsed.py $WD/augmented-pass2.gfa $WD/resulting_consensus.gaf $WD/consensus_to_augmented.pass2.gaf $SUPP 2> $WD/cleaning-pass2.log | vg mod --unchop -
