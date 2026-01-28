@@ -36,8 +36,8 @@ rule install_minigraphcactus:
         git clone --recursive https://github.com/ComparativeGenomicsToolkit/cactus.git {params.d}
         cd {params.d}
         virtualenv -p python3 cactus_env
-        echo "export PATH=$(pwd)/bin:$PATH" >> cactus_env/bin/activate
-        echo "export PYTHONPATH=$(pwd)/lib:$PYTHONPATH" >> cactus_env/bin/activate
+        echo "export PATH=$(pwd)/bin:\$PATH" >> cactus_env/bin/activate
+        echo "export PYTHONPATH=$(pwd)/lib:\$PYTHONPATH" >> cactus_env/bin/activate
         set +u; source cactus_env/bin/activate; set -u
         python3 -m pip install -U setuptools pip wheel
         python3 -m pip install -U .
@@ -62,5 +62,5 @@ rule minigraphcactus:
     shell:
         """
         set +u; source {input.venv}; set -u
-        /usr/bin/time -vo {log.time} bash run_mgcactus.sh {input.ref} {input.gbz} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} > {output.gfa}
+        /usr/bin/time -vo {log.time} bash ./utils/run_mgcactus.sh {input.ref} {input.gbz} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} > {output.gfa}
         """

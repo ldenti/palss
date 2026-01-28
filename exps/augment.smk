@@ -63,7 +63,7 @@ rule run:
         # pjoin(WD, sample + "-reads.fq.gz"),
         # pjoin(WD, sample + "-reads.bam"),
         # pjoin(WD, sample + "-reads.ec.fa"),
-        pjoin(WD, sample + "-reads.ec.bam"),
+        # pjoin(WD, sample + "-reads.ec.bam"),
         # #
         # expand(pjoin(WD, "n{n}", "pangenome-oneout.gbz"), n=Ns),
         # expand(pjoin(WD, "n{n}", "pangenome-full.gbz"), n=Ns),
@@ -76,15 +76,17 @@ rule run:
         ),
         # expand(pjoin(WD, "n{n}", "palss-{t}", "pangenome-augmented.d{d}.w{w}.gfa"), n=Ns, d=Ds, w=Ws, t=["full", "oneout"]),
         # expand(pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"), n=Ns),
-        expand(
-            pjoin(WD, "n{n}", "graphaligner", "original-{t}.gaf"),
-            t=["full", "oneout"],
-            n=Ns,
-        ),
-        expand(
-            pjoin(WD, "n{n}", "graphaligner", "palss-{t}.d{d}.w{w}.gaf"),
-            t=["full", "oneout"],
-            n=Ns,
-            d=Ds,
-            w=Ws,
-        ),
+        # expand(
+        #     pjoin(WD, "n{n}", "graphaligner", "original-{t}.gaf"),
+        #     t=["full", "oneout"],
+        #     n=Ns,
+        # ),
+        # expand(
+        #     pjoin(WD, "n{n}", "graphaligner", "palss-{t}.d{d}.w{w}.gaf"),
+        #     t=["full", "oneout"],
+        #     n=Ns,
+        #     d=Ds,
+        #     w=Ws,
+        # ),
+        pjoin(WD, "support.csv"),
+        pjoin(WD, "nm.csv"),
