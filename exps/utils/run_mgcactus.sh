@@ -16,7 +16,7 @@ echo -e "# Haploid sample (reference):" > $WD/seqfile
 echo -e "CHM13\t$FA" >> $WD/seqfile
 
 echo "# Diploid samples:" >> $WD/seqfile
-vg gbwt --gbz-input --samples --list-names $gbz | grep -Pv "CHM13|GRCh38" | while read idx
+vg gbwt --gbz-input --samples --list-names $GBZ | grep -Pv "CHM13|GRCh38" | while read idx
 do
     vg paths --paths-by "$idx#1" --extract-fasta --xg $GBZ > $WD/$idx.h1.fa
     echo -e "$idx.1\t$WD/$idx.h1.fa" >> $WD/seqfile
@@ -28,7 +28,7 @@ echo -e "$name.1\t$HAP1" >> $WD/seqfile
 echo -e "$name.2\t$HAP2" >> $WD/seqfile
 
 rm -rf $WD/JOBSTORE
-/usr/bin/time -v cactus-pangenome $WD/JOBSTORE $WD/seqfile --outDir $WD --outName pangenome --reference CHM13
+/usr/bin/time -v cactus-pangenome $WD/JOBSTORE $WD/seqfile --outDir $WD --outName pangenome --reference CHM13 --maxCores $threads --logFile $WD/cactus-pangenome.log  # --binariesMode singularity
 
 zcat $WD/pangenome.gfa.gz | head -1
 zgrep "^S" $WD/pangenome.gfa.gz | cut -f1-3

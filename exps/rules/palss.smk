@@ -11,6 +11,7 @@ rule palss_sketch:
         skt=pjoin(WD, "n{n}", "pangenome-{t}.d{d}.skt"),
     log:
         time=pjoin(WD, "times", "n{n}", "palss-{t}", "sketch.d{d}.time"),
+    threads: workflow.cores / 2
     shell:
         """
         /usr/bin/time -vo {log.time} ../palss sketch -d{wildcards.d} {input.gbz} > {output.skt}
@@ -70,6 +71,7 @@ rule palss_align:
         gaf=pjoin(WD, "n{n}", "palss-{t}", "consensus.d{d}.gaf"),
     log:
         time=pjoin(WD, "times", "n{n}", "palss-{t}", "align.d{d}.time"),
+    threads: workflow.cores / 4
     shell:
         """
         /usr/bin/time -vo {log.time} ../palss align {input.gbz} {input.sfs} > {output.gaf}
