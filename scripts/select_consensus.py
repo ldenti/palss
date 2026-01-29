@@ -10,13 +10,22 @@ def parse_gaf(fn, span_ratio=0.9):
         reads.add(name)
 
         ql, qs, qe = int(ql), int(qs), int(qe)
-        # if qs != 0 or qe != ql - 1:
         if (qe - qs) / ql < span_ratio:
             continue
+        c = (qe - qs) / ql
 
         nm = int(fields[12].split(":")[-1])
+        # in case of multimappings, keep the one that covers more bases
+        # of the read and, in case of tie, the one with lowest NM
+        if name in alns:
+            old_c, old_nm, old_cigar = alns[name]
+            if old_c > c:
+                continue
+            if old_c == c and old_nm <= nm:
+                continue
+
         cigar = fields[16].split(":")[-1]
-        alns[name] = (nm, cigar)
+        alns[name] = (c, nm, cigar)
 
     return alns, reads
 
@@ -39,8 +48,8 @@ def main():
     tokeep = set()
     info = [0, 0, 0]
     for qname in set(original) & set(augmented):
-        onm, ocigar = original[qname]
-        anm, acigar = augmented[qname]
+        oc, onm, ocigar = original[qname]
+        ac, anm, acigar = augmented[qname]
         if onm == 0 or onm == anm:
             i = 0
         elif onm < anm:

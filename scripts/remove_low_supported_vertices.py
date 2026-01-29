@@ -1,12 +1,6 @@
 import sys
 import re
 
-complement = {"A": "T", "T": "A", "C": "G", "G": "C"}
-
-
-def rc(sequence):
-    return "".join(complement[base] for base in reversed(sequence))
-
 
 def main():
     gfa_fn = sys.argv[1]
