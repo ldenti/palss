@@ -34,6 +34,22 @@ def main():
     re_gaf_fn = sys.argv[3]  # selected consensus, realigned (pass1)
     re2_gaf_fn = sys.argv[4]  # selected consensus, realigned (pass2)
     minw = int(sys.argv[5])
+    mode = int(sys.argv[6])
+
+    skip_bad = False  # do not add bad alignments to used vertices
+    recover_bad = False  # if bad alignment, recover vertices from corresponding path
+    if mode == 0:
+        skip_bad = False
+        recover_bad = False
+    elif mode == 1:
+        skip_bad = False
+        recover_bad = True
+    elif mode == 2:
+        skip_bad = True
+        recover_bad = False
+    elif mode == 3:
+        skip_bad = True
+        recover_bad = True
 
     print("Getting support from palss GAF file...", file=sys.stderr)
     np_reads_support = {}
@@ -56,7 +72,9 @@ def main():
                 # this consensus was aligned better to pass1 graph, maybe due to vertex splitting (see comment in augment.sh)
                 # XXX: it seems better to not do this
                 bad_alignments.add(name)
-                # continue
+                print(name, p1_nm, p1_c, p1_cigar, nm, c, cigar, file=sys.stderr)
+                if skip_bad:
+                    continue
         used_vertices |= set([int(x) for x in re.split("[<>]", path[1:])])
 
     print("Parsing paths...", file=sys.stderr)
@@ -72,10 +90,9 @@ def main():
             if name in np_reads_support:
                 new_paths[name] = path
                 if name in bad_alignments:
-                    # this consensus has been aligned bad to the new graph (pass2). So we keep all vertices anyway
-                    # XXX: it seems better to not do this
-                    # used_vertices |= set(path)
-                    pass
+                    # this consensus has been aligned bad to the new graph (pass2). So we keep all augmented vertices anyway
+                    if recover_bad:
+                        used_vertices |= set(path)
                 skip = True
         elif line.startswith("W"):
             line = line.strip("\n").split("\t")

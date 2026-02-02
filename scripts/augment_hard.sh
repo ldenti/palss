@@ -9,6 +9,7 @@ CONSENSUS_GAF=$2
 SUPP=$3
 WD=$4
 THREADS=$5
+MODE=$6
 
 mkdir -p $WD
 
@@ -47,4 +48,4 @@ cut -f1,17 $WD/resulting_consensus.gaf | sed "s/^/>/" | sed "s/\tqs:Z:/\n/g" > $
 GraphAligner --graph $WD/augmented-pass2.clean.gfa --reads $WD/resulting_consensus.gaf.fa --alignments-out $WD/resulting_consensus_to_augmented.gaf --preset vg --threads $THREADS &> $WD/graphaligner_to_augmented.log
 
 >&2 echo "[$(date)] Cleaning augmentation (2)"
-python3 $SD/clean_ununsed.py $WD/augmented-pass2.clean.gfa $WD/resulting_consensus.gaf $WD/consensus_to_augmented.gaf $WD/resulting_consensus_to_augmented.gaf $SUPP 2> $WD/cleaning-pass2.log | vg mod --unchop -
+python3 $SD/clean_ununsed.py $WD/augmented-pass2.clean.gfa $WD/resulting_consensus.gaf $WD/consensus_to_augmented.gaf $WD/resulting_consensus_to_augmented.gaf $SUPP $MODE 2> $WD/cleaning-pass2.log | vg mod --unchop -

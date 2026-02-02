@@ -33,6 +33,8 @@ wildcard_constraints:
     t=r"full|oneout",
     w=r"\d+",
     d=r"\d\.\d+",
+    aug=r"simple|medium",
+    a=r"0|1|2|3",
 
 
 #

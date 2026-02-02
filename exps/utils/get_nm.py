@@ -41,14 +41,18 @@ def main():
         w, d = -1, -1
         graph = ""
         run = "full" if "full" in fn else "oneout"
+        augmentation = ""
         if "original" in fn:
             graph = "original"
         elif "mgcactus" in fn:
             graph = "mgcactus"
         else:
             graph = "palss"
+            if "simple" not in fn and "medium" not in fn and "hard" not in fn:
+                continue
             w = int(fn.split(".")[-2][1:])
             d = float(fn.split(".")[-4][1:] + "." + fn.split(".")[-3])
+            # augmentation = fn.split(".")[-5]
 
         nms = parse_gaf(gaf_fn)
         for qidx, (c, nm) in nms.items():

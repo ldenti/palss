@@ -78,20 +78,58 @@ rule palss_align:
         """
 
 
-rule palss_augment:
+rule palss_augment_simple:
     input:
         gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
         gaf=rules.palss_align.output.gaf,
     output:
-        gfa=pjoin(WD, "n{n}", "palss-{t}", "pangenome-augmented.d{d}.w{w}.gfa"),
+        gfa=pjoin(WD, "n{n}", "palss-{t}", "pangenome-augmented-simple.d{d}.w{w}.gfa"),
     params:
-        wd=pjoin(WD, "n{n}", "palss-{t}", "augment.d{d}.w{w}.wd"),
+        wd=pjoin(WD, "n{n}", "palss-{t}", "augment.d{d}.w{w}.simple.wd"),
     conda:
         "../envs/graphaligner.yaml"
     log:
-        time=pjoin(WD, "times", "n{n}", "palss-{t}", "augment.d{d}.w{w}.time"),
+        time=pjoin(WD, "times", "n{n}", "palss-{t}", "augment-simple.d{d}.w{w}.time"),
     threads: workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} bash ../scripts/augment.sh {input.gfa} {input.gaf} {wildcards.w} {params.wd} {threads} > {output.gfa}
+        /usr/bin/time -vo {log.time} bash ../scripts/augment_simple.sh {input.gfa} {input.gaf} {wildcards.w} {params.wd} {threads} > {output.gfa}
+        """
+
+
+rule palss_augment_medium:
+    input:
+        gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
+        gaf=rules.palss_align.output.gaf,
+    output:
+        gfa=pjoin(WD, "n{n}", "palss-{t}", "pangenome-augmented-medium.d{d}.w{w}.gfa"),
+    params:
+        wd=pjoin(WD, "n{n}", "palss-{t}", "augment.d{d}.w{w}.medium.wd"),
+    conda:
+        "../envs/graphaligner.yaml"
+    log:
+        time=pjoin(WD, "times", "n{n}", "palss-{t}", "augment-medium.d{d}.w{w}.time"),
+    threads: workflow.cores
+    shell:
+        """
+        /usr/bin/time -vo {log.time} bash ../scripts/augment_medium.sh {input.gfa} {input.gaf} {wildcards.w} {params.wd} {threads} > {output.gfa}
+        """
+
+
+rule palss_augment_hard:
+    input:
+        gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
+        gaf=rules.palss_align.output.gaf,
+    output:
+        gfa=pjoin(WD, "n{n}", "palss-{t}", "pangenome-augmented-hard{a}.d{d}.w{w}.gfa"),
+    params:
+        wd=pjoin(WD, "n{n}", "palss-{t}", "augment.d{d}.w{w}.hard{a}.wd"),
+    conda:
+        "../envs/graphaligner.yaml"
+    log:
+        time=pjoin(WD, "times", "n{n}", "palss-{t}", "augment-hard{a}.d{d}.w{w}.time"),
+    threads: workflow.cores
+    shell:
+        """
+        /usr/bin/time -vo {log.time} bash ../scripts/augment_hard.sh {input.gfa} {input.gaf} {wildcards.w} {params.wd} {threads} {wildcards.a} > {output.gfa}
         """

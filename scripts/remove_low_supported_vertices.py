@@ -3,8 +3,11 @@ import re
 
 
 def main():
+    # augmented graph, with paths referring to each consensus added to the graph
     gfa_fn = sys.argv[1]
+    # palss gaf for support
     gaf_fn = sys.argv[2]
+    # minimum support to keep (>=)
     minw = int(sys.argv[3])
 
     print("Parsing GAF...", file=sys.stderr)
@@ -49,7 +52,6 @@ def main():
             else:
                 newV[v] = set()
 
-    toremove = set()
     print(
         f"Selecting segments to remove (due to low support, threshold: {minw})...",
         file=sys.stderr,
@@ -58,6 +60,8 @@ def main():
         for v in path:
             if v in newV:
                 newV[v] |= np_reads_support[name]
+
+    toremove = set()
     for v, w in newV.items():
         if len(w) < minw:
             toremove.add(v)
@@ -82,6 +86,7 @@ def main():
             line = line.strip("\n").split("\t")
             name = line[1]
             if name in np_reads_support:
+                # do not print augmented paths referring to consensus
                 continue
         print(line, end="")
 

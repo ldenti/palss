@@ -69,9 +69,10 @@ def main():
         name = line.strip("\n").split("\t")[0]
         if name in tokeep:
             print(line, end="")
-        if name in augmented and name not in original:
-            print(line, end="")
-            rescued += 1
+        else:
+            if name in augmented and name not in original:
+                print(line, end="")
+                rescued += 1
     print(rescued, file=sys.stderr)
 
 
