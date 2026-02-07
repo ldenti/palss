@@ -20,21 +20,19 @@ REALFQ = config["realfq"]
 WD = config["wd"]
 REF = "CHM13"  # "GRCh38"
 
-coverage = 5  # coverage per haplotype
+coverage = 7.5  # coverage per haplotype
 
 #
 
-Ns = [8]
-Ds = [1.0]  # [0.1, 0.5, 1.0]
-Ws = [2]  # [1,2,3]
+Ns = [1, 8, 32]
+Ds = [1.0]  # [0.1, 0.5, 1.0] # Ds = [0.1, 0.5, 1.0]
+Ws = [2]  # , 3] #[1,2,3]
 
 
 wildcard_constraints:
     t=r"full|oneout",
     w=r"\d+",
     d=r"\d\.\d+",
-    aug=r"simple|medium",
-    a=r"0|1|2|3",
 
 
 #
@@ -92,3 +90,10 @@ rule run:
         # ),
         pjoin(WD, "support.csv"),
         pjoin(WD, "nm.csv"),
+        expand(
+            pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.bam"),
+            n=Ns,
+            d=Ds,
+            w=Ws,
+            t=["full", "oneout"],
+        ),

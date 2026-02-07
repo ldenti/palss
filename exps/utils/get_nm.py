@@ -1,6 +1,7 @@
 import sys
 import os
 import glob
+import pysam
 
 
 def parse_gaf(gaf_fn):
@@ -30,13 +31,24 @@ def parse_gaf(gaf_fn):
     return nms
 
 
+def parse_bam(bam_fn, Ns=[-1]):
+    fn = bam_fn.split("/")[-1]
+    for aln in pysam.AlignmentFile(bam_fn, "rb"):
+        if aln.is_secondary or aln.is_supplementary or aln.is_unmapped:
+            continue
+        nm = aln.get_tag("NM") if aln.has_tag("NM") else -1
+        for n in Ns:
+            print(fn, "reference", n, "-1", "-1", aln.query_name, 1, nm, sep=",")
+
+
 def main():
     WD = sys.argv[1]
 
+    Ns = set()
     print("fn,graph,n,w,d,read,cov,nm")
-    data = []
     for gaf_fn in glob.glob(os.path.join(WD, "n*", "graphaligner", "*.gaf")):
         n = int(gaf_fn.split("/")[-3][1:])
+        Ns.add(n)
         fn = gaf_fn.split("/")[-1]
         w, d = -1, -1
         graph = ""
@@ -48,7 +60,12 @@ def main():
             graph = "mgcactus"
         else:
             graph = "palss"
-            if "simple" not in fn and "medium" not in fn and "hard" not in fn:
+            if (
+                "simple" not in fn
+                and "medium" not in fn
+                and "hard" not in fn
+                and "new" not in fn
+            ):
                 continue
             w = int(fn.split(".")[-2][1:])
             d = float(fn.split(".")[-4][1:] + "." + fn.split(".")[-3])
@@ -58,6 +75,9 @@ def main():
         for qidx, (c, nm) in nms.items():
             print(fn, graph, n, w, d, qidx, c, nm, sep=",", flush=False)
         sys.stdout.flush()
+
+    parse_bam(os.path.join(WD, "HG01993-reads.bam"), Ns)
+    parse_bam(os.path.join(WD, "HG01993-reads.tohaps.bam"), Ns)
 
 
 if __name__ == "__main__":

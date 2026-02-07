@@ -3,6 +3,7 @@
 import sys
 import gzip
 
+
 def main():
     fq = sys.stdin
     if len(sys.argv) > 1:
