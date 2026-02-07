@@ -51,7 +51,7 @@ def main():
 
     # PALSS pangenomes
     for gfa_fn in glob.glob(
-        os.path.join(WD, "n*", "palss-*", "pangenome-augmented-*.*.gfa")
+        os.path.join(WD, "n*", "palss-*", "pangenome-augmented.*.*.gfa")
     ):
         print(gfa_fn, file=sys.stderr)
         n = int(gfa_fn.split("/")[-3][1:])
@@ -59,12 +59,11 @@ def main():
         fn = gfa_fn.split("/")[-1]
         w = int(fn.split(".")[-2][1:])
         d = float(fn.split(".")[-4][1:] + "." + fn.split(".")[-3])
-        augment = fn.split(".")[-5].split("-")[-1]
 
         novel_vertices = get_novel_vertices(gfa_fn)
 
         gaf_fn = os.path.join(
-            WD, f"n{n}", "graphaligner", f"palss-{run}.{augment}.d{d}.w{w}.gaf"
+            WD, f"n{n}", "graphaligner", f"palss-{run}.d{d}.w{w}.gaf"
         )
 
         for line in open(gaf_fn):
@@ -75,7 +74,7 @@ def main():
                 if v in novel_vertices:
                     novel_vertices[v][0] += 1
         for v, (supp, length) in novel_vertices.items():
-            print(run, augment, n, w, d, v, supp, length, sep=",", flush=False)
+            print(run, "palss", n, w, d, v, supp, length, sep=",", flush=False)
         sys.stdout.flush()
 
     # Other pangenomes
@@ -100,7 +99,7 @@ def main():
                 if v in novel_vertices:
                     novel_vertices[v][0] += 1
         for v, (supp, length) in novel_vertices.items():
-            print(run, run, n, -1, -1, v, supp, length, sep=",", flush=False)
+            print("oneout", run, n, -1, -1, v, supp, length, sep=",", flush=False)
         sys.stdout.flush()
 
 
