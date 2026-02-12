@@ -23,8 +23,8 @@ We explain how to run PALSS using the example data available in the `example` su
 # get paths from graph and build FMD-index
 LD_LIBRARY_PATH="$PWD/lib" ./build/gbwtgraph-prefix/src/gbwtgraph/bin/gbz_extract ./example/graph.gbz | ./build/rb3-prefix/src/rb3/ropebwt3 build -Ld - > ./example/paths.fa.fmd
 
-# sketch the graph (using 31-mers)
-./palss sketch -k31 ./example/graph.gbz > ./example/graph.gbz.skt
+# sketch the graph (using 4 threads and 31-mers)
+./palss sketch -@4 -k31 ./example/graph.gbz > ./example/graph.gbz.skt
 
 # search for specific strings in the haplotypes and anchor them to the graph
 ./palss sfs -@4 ./example/graph.gbz ./example/graph.gbz.skt ./example/paths.fa.fmd ./example/reads.fq > ./example/reads.sfs
@@ -32,11 +32,9 @@ LD_LIBRARY_PATH="$PWD/lib" ./build/gbwtgraph-prefix/src/gbwtgraph/bin/gbz_extrac
 # cluster specific strings and analyze clusters
 ./palss align ./example/graph.gbz ./example/reads.sfs > ./example/consensus.gaf
 
-# augment the graph
-vg augment --include-paths --min-coverage 1 --gaf ./example/graph.vg ./example/consensus.gaf | vg view - > ./example/graph.augmented.gfa
-
-# clean the augmented graph (keeping only new vertices supported by at least 2 reads)
-python3 clean_augmented_gfa.py ./example/graph.augmented.gfa ./example/consensus.gaf 2 > ./example/graph.augmented.clean.gfa
+# augment the graph and keeps novel vertices/edges supported by at least 2 reads
+# (this requires graph in GFA format + vg and GraphAligner must be in your $PATH)
+bash ./scripts/augment.sh ./example/graph.gfa ./example/consensus.gaf 2 ./example/augment.wd 4 > ./example/graph.augmented.gfa
 ```
 
 ### Experiments
