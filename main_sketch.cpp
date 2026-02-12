@@ -2,8 +2,10 @@
 #include <filesystem>
 #include <fstream>
 #include <getopt.h>
+#include <omp.h>
 #include <set>
 #include <string>
+// #include <execution>
 
 #include "anchor.hpp"
 #include "graph.hpp"
@@ -89,28 +91,17 @@ void get_anchors(anchors_t &anchors, const std::string &sequence,
       pos2 = 0;
     }
 
-    if (ckmer_d == 3475151856249781260)
-      std::cerr << "xxx" << std::endl;
     hash = XXH64(&ckmer_d, 8, 0); // xxseed = 0
     if (hash <= density) {
-      uint32_t av1, av2, apos, apos2;
       if (kmer_d != ckmer_d) {
         // we do not have canonical on path sequence, so we have to reverse the
         // positions
-        av1 = vinfo[pos + klen - 1];
-        av2 = vinfo[pos];
-        apos = vlengths.at(vinfo[pos + klen - 1]) - pos2 - 1;
-        apos2 = vlengths.at(vinfo[pos]) - pos - 1;
         anchors.push_back(anchor_t{
             ckmer_d, (uint32_t)(vinfo[pos + klen - 1] ^ 1),
             (uint32_t)(vinfo[pos] ^ 1),
             (uint32_t)vlengths.at(vinfo[pos + klen - 1]) - pos2 - 1,
             (uint32_t)vlengths.at(vinfo[pos]) - pos - 1, is_ref, true});
       } else {
-        av1 = vinfo[pos];
-        av2 = vinfo[pos + klen - 1];
-        apos = pos;
-        apos2 = pos2;
         anchors.push_back(anchor_t{ckmer_d, (uint32_t)vinfo[pos],
                                    (uint32_t)vinfo[pos + klen - 1], pos, pos2,
                                    is_ref, true});
@@ -222,8 +213,11 @@ size_t flag_repetitions(anchors_t &anchors, const Graph &graph) {
       } else if ((a_v1 == b_v2 && a_v2 == b_v1) &&
                  (a_p1 == b_p2 && a_p2 == b_p1) &&
                  (a_ir1 != b_ir2 && a_ir1 != b_ir2)) {
-        // XXX: not sure if we should keep these or not, still they should be a very tiny fraction
-        // On chr20 (8 samples), it is just 6/63696792 (9.4*10^-8)
+        // XXX: not sure if we should keep these or not, still they should be a
+        // very tiny fraction On chr20 (8 samples), it is just 6/63696792
+        // (9.4*10^-8)
+        //
+        // these are some sort of palindromes
         has_both = true;
       } else {
         // repetition
@@ -255,13 +249,12 @@ int main_sketch(int argc, char *argv[]) {
   size_t klen = 31;               // kmer size
   uint64_t density = -1;          // max hash (based on density [0,1])
   std::string ref_path = "CHM13"; // reference paths
-  bool use_edges = true;
-  // int nThreads = 4;               // number of threads
-
-  // TODO: multithreading
+  int nThreads = 4;               // number of threads
+  bool use_edges = true;          // store kmers over edges (still used to
+                                  // flag duplicates)
 
   int _c;
-  while ((_c = getopt(argc, argv, "k:d:r:eh")) != -1) {
+  while ((_c = getopt(argc, argv, "k:d:r:e@:h")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
@@ -270,9 +263,9 @@ int main_sketch(int argc, char *argv[]) {
       density =
           atof(optarg) == 1.0 ? (uint64_t)-1 : (uint64_t)-1 * atof(optarg);
       break;
-    // case '@':
-    //   nThreads = std::stoi(optarg);
-    //   break;
+    case '@':
+      nThreads = std::stoi(optarg);
+      break;
     case 'r':
       ref_path = optarg;
       break;
@@ -301,12 +294,16 @@ int main_sketch(int argc, char *argv[]) {
   const gbwt::Metadata &metadata = graph.get_metadata();
 
   // Get all anchors by visiting each vertex (kDFS)
-  anchors_t anchors;
-  int n_visited = 0;
+  std::vector<anchors_t> anchors_perthread(nThreads);
+  // int n_visited = 0;
   rt = realtime();
-  std::cerr << "Vertex range: [" << gbz.graph.min_node_id() << ","
-            << gbz.graph.max_node_id() << "]" << std::endl;
+
+  fprintf(stderr, "[M::%s] Vertex range: [%lld, %lld]\n", __func__,
+          gbz.graph.min_node_id(), gbz.graph.max_node_id());
+
   size_t total_vertices = gbz.graph.max_node_id() - gbz.graph.min_node_id();
+
+#pragma omp parallel for num_threads(nThreads) schedule(static, 1)
   for (gbwtgraph::nid_t source_id = gbz.graph.min_node_id();
        source_id <= gbz.graph.max_node_id(); ++source_id) {
 
@@ -396,29 +393,60 @@ int main_sketch(int argc, char *argv[]) {
       }
 
       for (const anchor_t &a : local_anchors) {
-        anchors.push_back(a);
+        anchors_perthread[omp_get_thread_num()].push_back(a);
       }
     }
 
-    ++n_visited;
-    if (n_visited % 500000 == 0) {
-      fprintf(stderr, "Visited %d/%ld vertices in %.3f sec\n", n_visited,
-              total_vertices, realtime() - rt);
-    }
+    // TODO: removed due to multithreading
+    // ++n_visited;
+    // if (n_visited % 500000 == 0) {
+    //   fprintf(stderr, "Visited %d/%ld vertices in %.3f sec\n", n_visited,
+    //           total_vertices, realtime() - rt);
+    // }
   }
+
+  size_t total_anchors = 0;
+  std::vector<size_t> cumulative_counts(anchors_perthread.size());
+  for (size_t aa = 0; aa < anchors_perthread.size(); ++aa) {
+    cumulative_counts[aa] = total_anchors;
+    total_anchors += anchors_perthread[aa].size();
+  }
+
   fprintf(stderr,
           "[M::%s] Extracted %ld anchors from %ld vertices in %.3f secs\n",
-          __func__, anchors.size(), total_vertices, realtime() - rt);
+          __func__, total_anchors, total_vertices, realtime() - rt);
+
+  // TODO: we might sort, flag and shift anchors in parallel here so that we
+  // (theoretically) need to sort less anchors later. This will require to get
+  // new cumulative counts and new total_anchors before "inserting"
+
+  anchors_t anchors(total_anchors);
+  anchors.reserve(total_anchors);
+
+  rt = realtime();
+#pragma omp parallel for num_threads(nThreads) schedule(static, 1)
+  for (size_t aa = 0; aa < anchors_perthread.size(); ++aa) {
+    // std::sort(
+    //     anchors_perthread[aa].begin(), anchors_perthread[aa].end(),
+    //     [](const anchor_t &x, const anchor_t &y) { return x.kmer < y.kmer;
+    //     });
+    std::move(anchors_perthread[aa].begin(), anchors_perthread[aa].end(),
+              anchors.begin() + cumulative_counts[aa]);
+    anchors_perthread[aa].clear();
+  }
+  fprintf(stderr, "[M::%s] Sorted and linearized anchors in %.3f secs\n",
+          __func__, realtime() - rt);
 
   rt = realtime();
   std::sort(
+      // std::execution::par,
       anchors.begin(), anchors.end(),
       [](const anchor_t &x, const anchor_t &y) { return x.kmer < y.kmer; });
-  fprintf(stderr, "[M::%s] Sorted anchors in %.3f secs\n", __func__,
+  fprintf(stderr, "[M::%s] Sorted all anchors in %.3f secs\n", __func__,
           realtime() - rt);
 
   rt = realtime();
-  size_t total_anchors = flag_repetitions(anchors, graph);
+  total_anchors = flag_repetitions(anchors, graph);
   fprintf(
       stderr,
       "[M::%s] Flagged other anchors in %.3f sec (resulting anchors: %ld)\n",
@@ -427,7 +455,12 @@ int main_sketch(int argc, char *argv[]) {
   // Build sketch
   rt = realtime();
   int shift = std::ceil(log2(total_anchors));
-  sketch_t *sketch = sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded
+  sketch_t *sketch =
+      sk_init((uint64_t)1 << shift, klen, 9); // XXX: hardcoded prefix size to 9
+  if (sketch == nullptr) {
+    fprintf(stderr, "[E::%s] Cannot allocate sketch. Halting..\n", __func__);
+    return -1;
+  }
 
   for (const anchor_t &a : anchors) {
     if (a.is_valid) {

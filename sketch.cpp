@@ -1,20 +1,31 @@
 #include "sketch.hpp"
 
 sketch_t *sk_init(int64_t n, int k, int m) {
+  fprintf(stderr, "[M::%s] Allocating ~%ldGB (size: %ld)\n", __func__,
+          n * 128 / 8 / 1024 / 1024 / 1024, n);
+
   sketch_t *sk = (sketch_t *)malloc(sizeof(sketch_t));
   sk->k = k;
   sk->m = m;
   sk->n = 0;
   sk->size = n;
-  fprintf(stderr, "[M::%s] Allocating ~%ldGB (size: %ld)\n", __func__,
-          n * 128 / 8 / 1024 / 1024 / 1024, sk->size);
   sk->np = (int64_t)1 << (2 * m);
+
   sk->pxs = (uint64_t *)malloc(sk->np * sizeof(uint64_t));
+  if (sk->pxs == nullptr)
+    return nullptr;
   for (int i = 0; i < sk->np; ++i)
     sk->pxs[i] = -1;
   sk->sxs = (uint64_t *)malloc(sk->size * sizeof(uint64_t));
+  if (sk->sxs == nullptr)
+    return nullptr;
   sk->vls = (uint64_t *)calloc(sk->size, sizeof(uint64_t));
+  if (sk->vls == nullptr)
+    return nullptr;
   sk->info = (uint32_t *)calloc(sk->size, sizeof(uint32_t));
+  if (sk->info == nullptr)
+    return nullptr;
+
   return sk;
 }
 
