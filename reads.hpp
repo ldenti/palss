@@ -6,7 +6,12 @@
 
 #include "kseq.h"
 
-KSEQ_INIT(gzFile, gzread)
+// KSEQ_INIT(gzFile, gzread)
+// XXX: init everything here was giving unused-function warnings since they were
+// not used here
+
+__KS_TYPE(gzFile)
+__KSEQ_TYPE(gzFile)
 
 typedef struct {
   char *name;

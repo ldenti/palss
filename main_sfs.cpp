@@ -239,7 +239,7 @@ anchors_t chain(const anchors_t &anchors, const Graph &graph,
           dist = dmemo[pid][xy];
         } else {
           dist = compute_distance_bp(graph, chain.back().v1, yy.v1, pid);
-          // dmemo[pid][xy] = dist;
+          dmemo[pid][xy] = dist;
         }
         if (dist == -1UL)
           rd = 0;
@@ -769,12 +769,26 @@ int main_sfs(int argc, char *argv[]) {
             std::cout << "\t" << s.plain_seq << std::endl;
           } else {
             std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"
-                      << s.l << "\t" << s.s + s.l << "\t" << "."
-                      << "\t" << "."
-                      << "\t" << "." << "\t" << "." << "\t" << "." << "\t"
-                      << "." << "\t" << "." << "\t" << "." << "\t";
+                      << s.l << "\t" << s.s + s.l << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t"
+                      << "."
+                      << "\t";
             std::cout << ".";
-            std::cout << "\t" << "." << std::endl;
+            std::cout << "\t"
+                      << "." << std::endl;
           }
         } else {
           std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"

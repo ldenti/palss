@@ -1,5 +1,11 @@
 #include "reads.hpp"
 
+__KS_BASIC(static, gzFile, 16384)
+__KS_GETUNTIL(static, gzread)
+__KS_INLINED(gzread)
+__KSEQ_BASIC(static, gzFile)
+__KSEQ_READ(static)
+
 read_t *rd_init() {
   read_t *r = (read_t *)malloc(sizeof(read_t));
   r->name = (char *)malloc(128);
