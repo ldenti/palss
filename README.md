@@ -42,6 +42,7 @@ Instructions and code to reproduce the experiments described in the [preprint](h
 
 ### Planned future improvements
 - [ ] refactor/improve code
-- [ ] parallelize, improve scalability
+- [ X ] parallelize
+- [ ] improve scalability
 
 For any question/doubt, please [open an issue](https://github.com/ldenti/palss/issues/new).

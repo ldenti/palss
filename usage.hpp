@@ -28,7 +28,7 @@ static const char *const SFS_USAGE_MESSAGE =
 static const char *const ALIGN_USAGE_MESSAGE =
     "Usage: palss align [options] <graph.gbz> <specific_strings.txt>\n"
     "Options:\n"
-    // "        -@ <INT>   set threads (default: 4)\n"
+    "        -@ <INT>   set threads (default: 4)\n"
     "        -h         display this help and exit\n"
     "\n";
 

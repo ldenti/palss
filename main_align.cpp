@@ -1,6 +1,7 @@
 // #include <algorithm>
 #include <getopt.h>
 #include <iostream>
+#include <omp.h>
 #include <string>
 #include <vector>
 
@@ -9,11 +10,41 @@ extern "C" {
 #include "ksw2.h"
 }
 
+#include "gaf.hpp"
 #include "graph.hpp"
 #include "kmer.hpp"
 #include "misc.hpp"
 #include "sfs.hpp"
 #include "usage.hpp"
+
+// TODO: clusters are pair of integers defining intervals in specific_strings
+std::vector<std::vector<sfs_t>>
+cluster_sfs(const std::vector<sfs_t> &specific_strings) {
+  std::vector<std::vector<sfs_t>> clusters;
+  // XXX: we are sure to have at least one specific string here
+  clusters.push_back({specific_strings[0]});
+
+  uint last_c = 0;
+  for (uint ss = 1; ss < specific_strings.size(); ++ss) {
+    const sfs_t &sfs = specific_strings[ss];
+
+    if (sfs.skmer == clusters[last_c][0].skmer) {
+      uint c = last_c;
+      for (c = last_c; c < clusters.size(); ++c) {
+        if (sfs.ekmer == clusters[c][0].ekmer)
+          break;
+      }
+      if (c < clusters.size())
+        clusters[c].push_back(sfs);
+      else
+        clusters.push_back({sfs});
+    } else {
+      clusters.push_back({sfs});
+      last_c = clusters.size() - 1;
+    }
+  }
+  return clusters;
+}
 
 float canberra(const std::vector<uint32_t> &v1,
                const std::vector<uint32_t> &v2) {
@@ -79,13 +110,14 @@ int main_align(int argc, char *argv[]) {
   double rt;
 
   int cklen = 5;
+  int nth = 4;
 
   int _c;
-  while ((_c = getopt(argc, argv, "h")) != -1) {
+  while ((_c = getopt(argc, argv, "@:h")) != -1) {
     switch (_c) {
-    // case '@':
-    //   nth = std::stoi(optarg);
-    //   break;
+    case '@':
+      nth = std::stoi(optarg);
+      break;
     case 'h':
       fprintf(stderr, "%s", ALIGN_USAGE_MESSAGE);
       return 0;
@@ -109,8 +141,8 @@ int main_align(int argc, char *argv[]) {
     fprintf(stderr, "[W::%s] No specific strings. Halting..\n", __func__);
     return 1;
   }
-  fprintf(stderr, "[M::%s] Loaded anchored specific strings in %.3f sec\n",
-          __func__, realtime() - rt);
+  fprintf(stderr, "[M::%s] Loaded %ld specific strings in %.3f sec\n", __func__,
+          specific_strings.size(), realtime() - rt);
 
   // Cluster specific strings based on their anchors
   rt = realtime();
@@ -120,53 +152,15 @@ int main_align(int argc, char *argv[]) {
           realtime() - rt);
 
   rt = realtime();
-  std::vector<std::vector<sfs_t>> clusters;
-  // if (specific_strings.size() > 0)
-  clusters.push_back({specific_strings[0]});
-
-  uint last_c = 0;
-  for (uint ss = 1; ss < specific_strings.size(); ++ss) {
-    const sfs_t &sfs = specific_strings[ss];
-
-    if (sfs.skmer == clusters[last_c][0].skmer) {
-      uint c = last_c;
-      for (c = last_c; c < clusters.size(); ++c) {
-        if (sfs.ekmer == clusters[c][0].ekmer)
-          break;
-      }
-      if (c < clusters.size())
-        clusters[c].push_back(sfs);
-      else
-        clusters.push_back({sfs});
-    } else {
-      clusters.push_back({sfs});
-      last_c = clusters.size() - 1;
-    }
-  }
+  std::vector<std::vector<sfs_t>> clusters = cluster_sfs(specific_strings);
   fprintf(stderr, "[M::%s] Built %ld clusters in %.3f sec\n", __func__,
           clusters.size(), realtime() - rt);
 
-  // Initialize abpoa
-  abpoa_t *ab = abpoa_init();
-  abpoa_para_t *abpt = abpoa_init_para();
-  abpt->align_mode = 0; // global
-  abpt->out_msa = 0;
-  abpt->out_cons = 1;
-  abpt->out_gfa = 0;
-  abpt->disable_seeding = 1;
-  abpt->progressive_poa = 0;
-  abpt->amb_strand = 0;
-  // abpt->wb = -1;
-  abpt->max_n_cons = 2;
-  abpt->min_freq = 0.25;
-  abpoa_post_set_para(abpt);
+  std::vector<abpoa_t *> abpoa_ts(nth);
+  std::vector<abpoa_para_t *> abpoa_para_ts(nth);
+  std::vector<ksw_extz_t> ksws(nth);
 
-  // XXX: Assuming clusters of size <= 64. TODO: reallocation
-  // alternatively, we could create a struct cluster_t with the array
-  uint8_t **cluster_seqs = (uint8_t **)malloc(sizeof(uint8_t *) * 64);
-  int *cluster_seqs_lens = (int *)malloc(sizeof(int) * 64);
-
-  // Initialize ksw2
+  // ksw2 parameters
   // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
   // asm5
   // int sc_mch = 1, sc_mis = -19, gapo = 39, gape = 3, gapo2 = 81, gape2 = 1;
@@ -176,22 +170,55 @@ int main_align(int argc, char *argv[]) {
          b = sc_mis < 0 ? (int8_t)sc_mis : -(int8_t)sc_mis; // a>0 and b<0
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
                     b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
-  ksw_extz_t ez;
-  memset(&ez, 0, sizeof(ksw_extz_t));
 
-  // TODO: parallelize
+  // XXX: Assuming clusters of size <= 64
+  // TODO: reallocation or we could create a struct cluster_t with the array
+
+  std::vector<uint8_t **> cluster_seqs(nth);
+  std::vector<int *> cluster_seqs_lens(nth);
+
+  for (int t = 0; t < nth; ++t) {
+    // init abpoa
+    abpoa_ts[t] = abpoa_init();
+    abpoa_para_ts[t] = abpoa_init_para();
+    abpoa_para_t *abpt = abpoa_para_ts[t];
+    abpt->align_mode = 0; // global
+    abpt->out_msa = 0;
+    abpt->out_cons = 1;
+    abpt->out_gfa = 0;
+    abpt->disable_seeding = 1;
+    abpt->progressive_poa = 0;
+    abpt->amb_strand = 0;
+    // abpt->wb = -1;
+    abpt->max_n_cons = 2;
+    abpt->min_freq = 0.25;
+    abpoa_post_set_para(abpt);
+
+    // init ksw2
+    memset(&ksws[t], 0, sizeof(ksw_extz_t));
+
+    // Array to store specific strings sequences
+    cluster_seqs[t] = (uint8_t **)malloc(sizeof(uint8_t *) * 64);
+    cluster_seqs_lens[t] = (int *)malloc(sizeof(int) * 64);
+  }
 
   rt = realtime();
+#pragma omp parallel for num_threads(nth) schedule(static, 1)
   for (size_t cidx = 0; cidx < clusters.size(); ++cidx) {
+    int tt = omp_get_thread_num();
     std::vector<sfs_t> &cluster = clusters[cidx];
 
-    if ((cidx + 1) % 10000 == 0) {
-      fprintf(stderr, "[M::%s] analyzed %ld/%ld clusters in %.3f sec\n",
-              __func__, cidx + 1, clusters.size(), realtime() - rt);
-    }
+    // if (cidx != 1600)
+    //   continue;
+    //   if ((cidx + 1) % 10000 == 0) {
+    //     fprintf(stderr, "[M::%s] analyzed %ld/%ld clusters in %.3f sec\n",
+    //             __func__, cidx + 1, clusters.size(), realtime() - rt);
+    //   }
 
     if (cluster.size() > 64) {
       // FIXME
+      fprintf(stderr, "[W::%s] skipping cluster %ld since >64\n", __func__,
+              cidx);
       continue;
     }
 
@@ -201,7 +228,7 @@ int main_align(int argc, char *argv[]) {
     //         graph.get_gfa_name(s0.sv >> 1).c_str(),
     //         graph.get_gfa_name(s0.ev >> 1).c_str());
 
-    // is it enough to consider paths from s0 only?
+    // XXX: is it enough to consider paths from s0 only?
     std::map<uint64_t, uint64_t> path_map;
     for (const uint64_t &p : s0.paths) {
       path_map[p >> 4] = p;
@@ -318,19 +345,20 @@ int main_align(int argc, char *argv[]) {
     // Consensus via abpoa
     int goods = 0;
     for (sfs_t &s : cluster) {
-      cluster_seqs_lens[goods] = s.l;
-      cluster_seqs[goods] = s.seq;
+      cluster_seqs_lens[tt][goods] = s.l;
+      cluster_seqs[tt][goods] = s.seq;
       ++goods;
     }
-    abpoa_msa(ab, abpt, goods, NULL, cluster_seqs_lens, cluster_seqs, NULL,
-              NULL);
+    abpoa_t *ab = abpoa_ts[tt];
+    abpoa_msa(ab, abpoa_para_ts[tt], goods, NULL, cluster_seqs_lens[tt],
+              cluster_seqs[tt], NULL, NULL);
 
     abpoa_cons_t *abc = ab->abc;
     // total_clusters += abc->n_cons;
-    for (int ci = 0; ci < abc->n_cons; ++ci) {
-      int cons_l = abc->cons_len[ci];
-      // int abpoa_supp = abc->clu_n_seq[ci];
-      char *cons_seq = (char *)abc->cons_base[ci];
+    for (int sub_cidx = 0; sub_cidx < abc->n_cons; ++sub_cidx) {
+      int cons_l = abc->cons_len[sub_cidx];
+      // int abpoa_supp = abc->clu_n_seq[sub_cidx];
+      char *cons_seq = (char *)abc->cons_base[sub_cidx];
       for (int i = 0; i < cons_l; ++i)
         cons_seq[i] = "ACGT"[(int)cons_seq[i]];
       cons_seq[cons_l] = '\0';
@@ -346,13 +374,6 @@ int main_align(int argc, char *argv[]) {
         if (pkc.empty())
           continue;
         cd = canberra(consensus_kcounts, pkc);
-
-        // std::cerr << paths[i].id << " " << cd << " (" << best_cd << ")"
-        //           << std::endl;
-        // for (const auto &x : pkc)
-        //   std::cerr << x << " ";
-        // std::cerr << std::endl;
-
         if (cd < best_cd) {
           best_cd = cd;
           best_p = i;
@@ -361,14 +382,6 @@ int main_align(int argc, char *argv[]) {
       assert(best_p != -1U);
 
       const path_t &path = paths[best_p];
-      // std::cerr << (path.reversed ? "<" : ">") << " " << path.sequence
-      //           << std::endl;
-
-      // std::cerr << graph.get_path_contig(path.id >> 1) << " "
-      //           << graph.get_gfa_name(path.vertices.front() >> 1)
-      //           << ((path.vertices.front() & 1) ? "-" : "+") << " > "
-      //           << graph.get_gfa_name(path.vertices.back() >> 1)
-      //           << ((path.vertices.back() & 1) ? "-" : "+") << std::endl;
 
       std::string cseq_plain(cons_seq);
       if (path.reversed)
@@ -383,14 +396,7 @@ int main_align(int argc, char *argv[]) {
         path_seq[i] = to_int[(uint8_t)pseq_plain[i]] - 1;
       path_seq[pseq_plain.size()] = '\0';
 
-      // if (std::abs((int)pseq_plain.size() - cons_l) >= 50000) {
-      //   free(path_seq);
-      //   continue;
-      // }
-
-      // fprintf(stderr, "Aligning %dbp against %ldbp\n", cons_l,
-      //         path.sequence.size());
-
+      ksw_extz_t ez = ksws[tt];
       ksw_extd2_sse(0, cons_l, (uint8_t *)cons_seq, path.sequence.size(),
                     (uint8_t *)path_seq, 5, mat, gapo, gape, gapo2, gape2, -1,
                     -1, -1, 0, &ez);
@@ -481,57 +487,52 @@ int main_align(int argc, char *argv[]) {
       size_t pe = ps + path.sequence.size();
       //
 
-      // print GAF line
-      std::cout << cidx << "." << ci << "\t";
-      std::cout << cons_l << "\t";
-      std::cout << 0 << "\t";
-      std::cout << cons_l << "\t";
-      std::cout << (path.reversed ? "-" : "+") << "\t";
-      //
-      size_t x = 0;
-      std::string segment_name = graph.get_gfa_name(path.vertices[x] >> 1);
-      std::cout << ((path.vertices[x] & 1) ? "<" : ">") << segment_name;
-      ++x;
+      GAFREC gr;
+      gr.qname = std::to_string(cidx) + "." + std::to_string(sub_cidx);
+
+      gr.qlen = cons_l;
+      gr.qs = 0;
+      gr.qe = cons_l;
+      gr.strand = !path.reversed;
+      // std::vector<std::string> path;
+      std::string segment_name = graph.get_gfa_name(path.vertices[0] >> 1);
+      gr.path.push_back(((path.vertices[0] & 1) ? "<" : ">") + segment_name);
       std::string last_segment_name = segment_name;
-      for (; x < path.vertices.size(); ++x) {
+      for (size_t x = 1; x < path.vertices.size(); ++x) {
         segment_name = graph.get_gfa_name(path.vertices[x] >> 1);
-        if (segment_name.compare(last_segment_name) != 0)
-          std::cout << ((path.vertices[x] & 1) ? "<" : ">") << segment_name;
-        last_segment_name = segment_name;
+        if (segment_name.compare(last_segment_name) != 0) {
+          gr.path.push_back(((path.vertices[x] & 1) ? "<" : ">") +
+                            segment_name);
+          last_segment_name = segment_name;
+        }
       }
-      std::cout << "\t";
-      //
-      std::cout << path.l << "\t";
-      std::cout << ps << "\t";
-      std::cout << pe << "\t";
-      std::cout << tot_res_matches << "\t";
-      std::cout << tot_cigar_len << "\t";
-      std::cout << 60 << "\t";
-      std::cout << "AS:i:" << ez.score << "\t";
-      std::cout << "cg:Z:" << cigar << "\t";
-      std::cout << "cs:Z:" << cs << "\t";
-      // std::cout << "cl:Z:" << clipped << "\t";
-      // std::cout << "cw:Z:" << abpoa_supp << "\t";
-      //
-      std::cout << "rs:Z:";
-      std::cout << cluster[abc->clu_read_ids[ci][0]].rname;
-      for (int x = 1; x < abc->clu_n_seq[ci]; ++x)
-        std::cout << "|" << cluster[abc->clu_read_ids[ci][x]].rname;
-      std::cout << "\t";
-      //
-      std::cout << "qs:Z:" << cseq_plain << "\t";
-      std::cout << "ps:Z:" << pseq_plain;
-      std::cout << std::endl;
+      gr.plen = path.l;
+      gr.ps = ps;
+      gr.pe = pe;
+      gr.tot_res_matches = tot_res_matches;
+      gr.tot_cigar_len = tot_cigar_len;
+      gr.mapq = 60;
+      gr.as = ez.score;
+      gr.cigar = cigar;
+      gr.cs = cs;
+      for (int x = 0; x < abc->clu_n_seq[sub_cidx]; ++x)
+        gr.reads.push_back(cluster[abc->clu_read_ids[sub_cidx][x]].rname);
+      gr.qseq = cseq_plain;
+      gr.pseq = pseq_plain;
+
+      gr.write();
 
       free(path_seq);
     }
   }
 
-  free(ez.cigar);
-  abpoa_free_para(abpt);
-  abpoa_free(ab);
-  free(cluster_seqs);
-  free(cluster_seqs_lens);
+  for (int t = 0; t < nth; ++t) {
+    free(ksws[t].cigar);
+    abpoa_free_para(abpoa_para_ts[t]);
+    abpoa_free(abpoa_ts[t]);
+    free(cluster_seqs[t]);
+    free(cluster_seqs_lens[t]);
+  }
 
   for (sfs_t &s : specific_strings)
     free(s.seq);
