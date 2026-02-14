@@ -19,6 +19,21 @@ rule graphaligner_original:
         """
 
 
+rule graphaligner_original_ec:
+    input:
+        gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
+        reads=pjoin(WD, sample + "-reads.ec.fa"),
+    output:
+        gaf=pjoin(WD, "n{n}", "graphaligner.ec", "original-{t}.gaf"),
+    conda:
+        "../envs/graphaligner.yaml"
+    threads: workflow.cores / 2
+    shell:
+        """
+        GraphAligner --graph {input.gfa} --reads {input.reads} --alignments-out {output.gaf} --preset vg --threads {threads}
+        """
+
+
 rule graphaligner_postpalss:
     input:
         gfa=pjoin(WD, "n{n}", "palss-{t}", "pangenome-augmented.d{d}.w{w}.gfa"),
@@ -140,4 +155,53 @@ rule get_nm:
     shell:
         """
         python3 ./utils/get_nm.py {WD} > {output.csv}
+        """
+
+
+rule get_correctness:
+    input:
+        expand(
+            pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.bam"),
+            t=["full", "oneout"],
+            n=Ns,
+            d=Ds,
+            w=Ws,
+        ),
+        expand(
+            pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.gaf"),
+            t=["full", "oneout"],
+            n=Ns,
+            d=Ds,
+            w=Ws,
+        ),
+    output:
+        csv=pjoin(WD, "correctness.csv"),
+    conda:
+        "../envs/pysam.yaml"
+    shell:
+        """
+        python3 ./utils/get_correctness.py {WD} > {output.csv}
+        """
+
+
+rule eval_anchoring:
+    input:
+        expand(
+            pjoin(WD, "n{n}", "palss-{t}", "specific_strings.d{d}.txt"),
+            t=["full", "oneout"],
+            n=Ns,
+            d=Ds,
+        ),
+        expand(
+            pjoin(WD, "n{n}", "graphaligner.ec", "original-{t}.gaf"),
+            t=["full", "oneout"],
+            n=Ns,
+        ),
+    output:
+        csv=pjoin(WD, "anchoring.csv"),
+    conda:
+        "../envs/pysam.yaml"
+    shell:
+        """
+        python3 ./utils/eval_anchoring.py {WD} > {output.csv}
         """

@@ -42,6 +42,7 @@ rule install_minigraphcactus:
         python3 -m pip install -U setuptools pip wheel
         python3 -m pip install -U .
         python3 -m pip install -U -r ./toil-requirement.txt
+        sed -i "s/base_singularity_call += \['-u', /base_singularity_call += \[/g" {params.d}/cactus_env/lib/python3.12/site-packages/cactus/shared/common.py
         """
 
 

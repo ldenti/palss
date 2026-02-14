@@ -41,7 +41,7 @@ rule palss_search:
         fa=pjoin(WD, sample + "-reads.ec.fa"),
     output:
         sfs=pjoin(WD, "n{n}", "palss-{t}", "specific_strings.d{d}.txt"),
-    threads: workflow.cores
+    threads: workflow.cores / 2
     log:
         time=pjoin(WD, "times", "n{n}", "palss-{t}", "search.d{d}.time"),
     shell:
@@ -87,6 +87,7 @@ rule palss_augment:
         gaf=pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.gaf"),
     params:
         wd=pjoin(WD, "n{n}", "palss-{t}", "augment.d{d}.w{w}.wd"),
+        log=pjoin(WD, "n{n}", "palss-{t}", "augment.d{d}.w{w}.log"),
     conda:
         "../envs/graphaligner.yaml"
     log:
@@ -94,6 +95,6 @@ rule palss_augment:
     threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} bash ../scripts/augment.sh {input.gfa} {input.gaf} {wildcards.w} {params.wd} {threads} > {output.gfa}
+        /usr/bin/time -vo {log.time} bash ../scripts/augment.sh {input.gfa} {input.gaf} {wildcards.w} {params.wd} {threads} > {output.gfa} 2> {params.log}
         mv {params.wd}/resulting_consensus.gaf {output.gaf}
         """

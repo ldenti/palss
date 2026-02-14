@@ -15,9 +15,10 @@ mkdir -p $WD
 >&2 echo "[$(date)] Augmenting"
 vg augment --include-paths --min-coverage 1 --gaf $ORIGINAL_GFA $CONSENSUS_GAF | vg view - > $WD/augmented.gfa
 
->&2 echo "[$(date)] Cleaning augmentation"
-python3 $SD/clean_augment.py 1 $WD/augmented.gfa $CONSENSUS_GAF $SUPP > $WD/augmented.clean.gfa 2> $WD/cleaning.log
+>&2 echo "[$(date)] Cleaning augmentation (1)"
+python3 $SD/clean_augment.py 1 $WD/augmented.gfa $CONSENSUS_GAF $SUPP > $WD/augmented.clean.gfa 2> $WD/cleaning-pass1.log
 
+>&2 echo "[$(date)] Unchopping (1)"
 vg mod --unchop $WD/augmented.clean.gfa > $WD/augmented.clean.unchopped.gfa
 
 >&2 echo "[$(date)] Converting GAF to FASTA"
@@ -29,5 +30,8 @@ GraphAligner --graph $ORIGINAL_GFA --reads $WD/consensus.fa --alignments-out $WD
 >&2 echo "[$(date)] GraphAligner to augmented GFA"
 GraphAligner --graph $WD/augmented.clean.unchopped.gfa --reads $WD/consensus.fa --alignments-out $WD/consensus_to_augmented.gaf --preset vg --threads $THREADS &> $WD/graphaligner_to_augmented.log
 
->&2 echo "[$(date)] Selecting consensus"
-python3 $SD/clean_augment.py 2 $WD/augmented.clean.gfa $WD/augmented.clean.unchopped.gfa $CONSENSUS_GAF $WD/consensus_to_original.gaf $WD/consensus_to_augmented.gaf 2 $WD/resulting_consensus.gaf 2> $WD/consensus_selection.log | vg mod --unchop -
+>&2 echo "[$(date)] Cleaning augmentation (2)"
+python3 $SD/clean_augment.py 2 $WD/augmented.clean.gfa $WD/augmented.clean.unchopped.gfa $CONSENSUS_GAF $WD/consensus_to_original.gaf $WD/consensus_to_augmented.gaf 2 $WD/resulting_consensus.gaf > $WD/augmented.clean.pass2.gfa 2> $WD/cleaning-pass2.log
+
+>&2 echo "[$(date)] Unchopping (2)"
+vg mod --unchop $WD/augmented.clean.pass2.gfa

@@ -24,9 +24,9 @@ coverage = 7.5  # coverage per haplotype
 
 #
 
-Ns = [1, 8, 32]
-Ds = [1.0]  # [0.1, 0.5, 1.0] # Ds = [0.1, 0.5, 1.0]
-Ws = [2]  # , 3] #[1,2,3]
+Ns = config["ns"]  # [1, 8, 32, 64]
+Ds = config["ds"]  # [0.1, 0.25, 0.5, 1.0]
+Ws = [2]  # , 3]
 
 
 wildcard_constraints:
@@ -90,10 +90,5 @@ rule run:
         # ),
         pjoin(WD, "support.csv"),
         pjoin(WD, "nm.csv"),
-        expand(
-            pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.bam"),
-            n=Ns,
-            d=Ds,
-            w=Ws,
-            t=["full", "oneout"],
-        ),
+        pjoin(WD, "correctness.csv"),
+        pjoin(WD, "anchoring.csv"),
