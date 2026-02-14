@@ -131,11 +131,13 @@ int main_align(int argc, char *argv[]) {
   std::string gbz_fn = argv[optind++];
   std::string sfs_fn = argv[optind++];
 
-  rt = realtime();
+  /** Load graph ****************************************************/
   Graph graph(gbz_fn, "CHM13");
   graph.load();
   graph.load_fl();
 
+  /** Load specific strings *****************************************/
+  rt = realtime();
   std::vector<sfs_t> specific_strings = load_sfs(sfs_fn);
   if (specific_strings.empty()) {
     fprintf(stderr, "[W::%s] No specific strings. Halting..\n", __func__);
@@ -144,7 +146,7 @@ int main_align(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] Loaded %ld specific strings in %.3f sec\n", __func__,
           specific_strings.size(), realtime() - rt);
 
-  // Cluster specific strings based on their anchors
+  /** Cluster specific strings based on their anchors ***************/
   rt = realtime();
   std::sort(specific_strings.begin(), specific_strings.end(),
             [](const sfs_t &a, const sfs_t &b) { return a.skmer < b.skmer; });
@@ -156,6 +158,7 @@ int main_align(int argc, char *argv[]) {
   fprintf(stderr, "[M::%s] Built %ld clusters in %.3f sec\n", __func__,
           clusters.size(), realtime() - rt);
 
+  // Initialize what we need for main loop
   std::vector<abpoa_t *> abpoa_ts(nth);
   std::vector<abpoa_para_t *> abpoa_para_ts(nth);
   std::vector<ksw_extz_t> ksws(nth);
@@ -170,9 +173,6 @@ int main_align(int argc, char *argv[]) {
          b = sc_mis < 0 ? (int8_t)sc_mis : -(int8_t)sc_mis; // a>0 and b<0
   int8_t mat[25] = {a, b, b, b, 0, b, a, b, b, 0, b, b, a,
                     b, 0, b, b, b, a, 0, 0, 0, 0, 0, 0};
-
-  // XXX: Assuming clusters of size <= 64
-  // TODO: reallocation or we could create a struct cluster_t with the array
 
   std::vector<uint8_t **> cluster_seqs(nth);
   std::vector<int *> cluster_seqs_lens(nth);
@@ -198,6 +198,8 @@ int main_align(int argc, char *argv[]) {
     memset(&ksws[t], 0, sizeof(ksw_extz_t));
 
     // Array to store specific strings sequences
+    // XXX: Assuming clusters of size <= 64
+    // TODO: reallocation or we could create a struct cluster_t with the array
     cluster_seqs[t] = (uint8_t **)malloc(sizeof(uint8_t *) * 64);
     cluster_seqs_lens[t] = (int *)malloc(sizeof(int) * 64);
   }
@@ -206,6 +208,7 @@ int main_align(int argc, char *argv[]) {
 #pragma omp parallel for num_threads(nth) schedule(static, 1)
   for (size_t cidx = 0; cidx < clusters.size(); ++cidx) {
     int tt = omp_get_thread_num();
+
     std::vector<sfs_t> &cluster = clusters[cidx];
 
     // if (cidx != 1600)
@@ -224,16 +227,15 @@ int main_align(int argc, char *argv[]) {
 
     const sfs_t &s0 = cluster.front();
 
-    // fprintf(stderr, "Cluster %ld: %s>%s\n", cidx,
-    //         graph.get_gfa_name(s0.sv >> 1).c_str(),
-    //         graph.get_gfa_name(s0.ev >> 1).c_str());
+    std::map<uint64_t, uint64_t>
+        path_map; // from graph path ID with only strand to palss path ID
 
     // XXX: is it enough to consider paths from s0 only?
-    std::map<uint64_t, uint64_t> path_map;
     for (const uint64_t &p : s0.paths) {
       path_map[p >> 4] = p;
     }
 
+    // Get anchor information from first specific string
     uint32_t sv = s0.sv;
     uint32_t sv_inv = sv ^ 1;
     uint32_t soff = s0.soff;
@@ -243,6 +245,8 @@ int main_align(int argc, char *argv[]) {
     uint32_t eoff = s0.eoff;
     uint32_t eoff_inv = graph.get_vertex_len(ev >> 1) - eoff - 1;
 
+    // Use first path as reference path, everything will be compared to its
+    // strand
     uint64_t p0 = s0.paths.front();
     bool p0_strand = (p0 >> 2) & 1;
     bool p0_sinv = (p0 >> 1) & 1;
@@ -277,48 +281,45 @@ int main_align(int argc, char *argv[]) {
       paths.push_back(path);
       paths.back().strand = !p0_strand;
     }
+    paths1.clear();
+    paths2.clear();
 
     // Keep only unique paths
     std::sort(paths.begin(), paths.end());
     paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
 
-    // TODO: keep track of all paths, even erased ones
+    // TODO: keep track of name paths
 
     std::vector<std::vector<uint32_t>> path_kcounts(paths.size());
     size_t pid = 0;
-
     for (auto &path : paths) {
       uint64_t p = path_map[path.id];
-
-      bool strand = (p >> 2) & 1;
-      assert(strand == path.strand);
-
-      bool sinv = (p >> 1) & 1;
-      bool einv = p & 1;
-
-      uint32_t v1 = sv;
-      uint32_t off1 = soff;
-      uint32_t v2 = ev;
-      uint32_t off2 = eoff;
-
-      if (sinv) {
-        v1 = sv_inv;
-        off1 = soff_inv;
-      }
-      if (einv) {
-        v2 = ev_inv;
-        off2 = eoff_inv;
-      }
-
-      if (strand == 0) {
-        std::swap(v1, v2);
-        std::swap(off1, off2);
-      }
 
       /*
        * If on + strand, path goes from (v1, s1) to (v2, s2), on - strand, it
        * goes from (v2, ~s2) to (v1, ~s1)
        */
+
+      uint32_t v1 = sv;
+      uint32_t off1 = soff;
+      if ((p >> 1) & 1) {
+        // need to invert first anchor
+        v1 = sv_inv;
+        off1 = soff_inv;
+      }
+
+      uint32_t v2 = ev;
+      uint32_t off2 = eoff;
+      if (p & 1) {
+        // need to invert second anchor
+        v2 = ev_inv;
+        off2 = eoff_inv;
+      }
+
+      if (path.strand == 0) {
+        std::swap(v1, v2);
+        std::swap(off1, off2);
+      }
 
       assert(v1 == path.vertices.front() && v2 == path.vertices.back());
 
@@ -328,8 +329,9 @@ int main_align(int argc, char *argv[]) {
       path.l = path.sequence.size();
       path.sequence = path.sequence.substr(path.ps, path.pe - path.ps + 1);
 
-      // XXX: why do we need to do this only when strands differ?
-      path.reversed = p0_strand != strand;
+      // XXX: sequence could be 0123 encoded here
+
+      path.reversed = p0_strand != path.strand;
 
       // When needed, reverse path, count kmers (since we don't want to use
       // canonical kmers), then reverse again
@@ -341,6 +343,7 @@ int main_align(int argc, char *argv[]) {
         path.sequence = reverseAndComplement(path.sequence);
       ++pid;
     }
+    /** *************************************************************/
 
     // Consensus via abpoa
     int goods = 0;
@@ -354,15 +357,17 @@ int main_align(int argc, char *argv[]) {
               cluster_seqs[tt], NULL, NULL);
 
     abpoa_cons_t *abc = ab->abc;
-    // total_clusters += abc->n_cons;
     for (int sub_cidx = 0; sub_cidx < abc->n_cons; ++sub_cidx) {
       int cons_l = abc->cons_len[sub_cidx];
       // int abpoa_supp = abc->clu_n_seq[sub_cidx];
       char *cons_seq = (char *)abc->cons_base[sub_cidx];
+
+      // XXX: seems we need ACGT just to count kmers from plain... we might
+      // avoid it and keep the string 0123-encoded
+
       for (int i = 0; i < cons_l; ++i)
         cons_seq[i] = "ACGT"[(int)cons_seq[i]];
       cons_seq[cons_l] = '\0';
-      // std::cerr << "= " << cons_seq << std::endl;
 
       // === select best path ===
       std::vector<uint32_t> consensus_kcounts =
@@ -401,14 +406,14 @@ int main_align(int argc, char *argv[]) {
                     (uint8_t *)path_seq, 5, mat, gapo, gape, gapo2, gape2, -1,
                     -1, -1, 0, &ez);
 
-      // OUTPUT
+      /** OUTPUT *****************************************************/
       if ((ez.cigar[0] & 0xf) != 0 || (ez.cigar[ez.n_cigar - 1] & 0xf) != 0) {
         // clipped = 1;
         free(path_seq);
         continue; // XXX: do we want these?
       }
 
-      // Parse CIGAR
+      // Build CIGAR and difference string
       int opl;
       int tot_cigar_len = 0;
       int tot_res_matches = 0;
@@ -471,6 +476,7 @@ int main_align(int argc, char *argv[]) {
         }
       }
 
+      // Convert to ACGT
       for (int i = 0; i < cons_l; ++i)
         cons_seq[i] = "ACGT"[(uint8_t)cons_seq[i]];
       cons_seq[cons_l] = '\0';
@@ -478,6 +484,7 @@ int main_align(int argc, char *argv[]) {
         path_seq[i] = "ACGT"[(uint8_t)path_seq[i]];
       path_seq[path.sequence.size()] = '\0';
 
+      // Get offsets along path
       // since vertices might be split (if longer than 1024), the offset along
       // path refers to "internal" vertices, not GFA segments
       gbwtgraph::handle_t handle =
@@ -485,16 +492,14 @@ int main_align(int argc, char *argv[]) {
       size_t xx = graph.get_gbz().graph.get_segment_offset(handle);
       size_t ps = xx + path.ps;
       size_t pe = ps + path.sequence.size();
-      //
 
+      // Build and write GAF record
       GAFREC gr;
       gr.qname = std::to_string(cidx) + "." + std::to_string(sub_cidx);
-
       gr.qlen = cons_l;
       gr.qs = 0;
       gr.qe = cons_l;
       gr.strand = !path.reversed;
-      // std::vector<std::string> path;
       std::string segment_name = graph.get_gfa_name(path.vertices[0] >> 1);
       gr.path.push_back(((path.vertices[0] & 1) ? "<" : ">") + segment_name);
       std::string last_segment_name = segment_name;
