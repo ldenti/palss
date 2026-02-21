@@ -27,7 +27,7 @@ done
 echo -e "$name.1\t$HAP1" >> $WD/seqfile
 echo -e "$name.2\t$HAP2" >> $WD/seqfile
 
-echo "[$(date)] Running minigraph-cactus"
+>&2 echo "[$(date)] Running minigraph-cactus"
 rm -rf $WD/JOBSTORE
 mkdir -p $WD/tmptmptmp
 /usr/bin/time -vo $WD/../minigraph-cactus.time cactus-pangenome $WD/JOBSTORE $WD/seqfile --outDir $WD --workDir $WD/tmptmptmp --outName pangenome --reference CHM13 --maxCores $threads --logColors False --logFile $WD/cactus-pangenome.log --binariesMode singularity

@@ -43,6 +43,7 @@ def parse_bam(bam_fn, Ns=[-1]):
 
 def main():
     WD = sys.argv[1]
+    sample = sys.argv[2]
 
     Ns = set()
     print("fn,graph,n,w,d,read,cov,nm")
@@ -68,8 +69,8 @@ def main():
             print(fn, graph, n, w, d, qidx, c, nm, sep=",", flush=False)
         sys.stdout.flush()
 
-    parse_bam(os.path.join(WD, "HG01993-reads.bam"), Ns)
-    parse_bam(os.path.join(WD, "HG01993-reads.tohaps.bam"), Ns)
+    parse_bam(os.path.join(WD, f"{sample}-reads.bam"), Ns)
+    parse_bam(os.path.join(WD, f"{sample}-reads.tohaps.bam"), Ns)
 
 
 if __name__ == "__main__":

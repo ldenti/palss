@@ -10,6 +10,7 @@ rule hifiasm:
     output:
         fa1=pjoin(WD, sample + ".asm.bp.hap1.p_ctg.fa"),
         fa2=pjoin(WD, sample + ".asm.bp.hap2.p_ctg.fa"),
+        fa=pjoin(WD, sample + ".asm.bp.haps.p_ctg.fa"),
     params:
         prefix=pjoin(WD, sample + ".asm"),
     threads: workflow.cores
@@ -22,6 +23,7 @@ rule hifiasm:
         /usr/bin/time -vo {log.time} hifiasm -o {params.prefix} -t{threads} {input.fq}
         awk '/^S/{{print ">"$2;print $3}}' {params.prefix}.bp.hap1.p_ctg.gfa > {output.fa1}
         awk '/^S/{{print ">"$2;print $3}}' {params.prefix}.bp.hap2.p_ctg.gfa > {output.fa2}
+        cat {output.fa1} {output.fa2} > {output.fa}
         """
 
 

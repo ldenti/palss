@@ -67,6 +67,19 @@ rule graphaligner_postmgc:
 # ====================================================================
 
 
+rule index_reference:
+    input:
+        fa=FA,
+    output:
+        FA + ".sa",
+    conda:
+        "../envs/bwa.yaml"
+    shell:
+        """
+        bwa index {input.fa}
+        """
+
+
 rule index_haplotypes:
     input:
         fa=pjoin(WD, sample + "-haps.fa"),
@@ -97,7 +110,62 @@ rule align_consensuses_to_haplotypes:
         hsa=pjoin(WD, sample + "-haps.fa.sa"),
         qfa=rules.gaf2fa.output.fa,
     output:
-        bam=pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.bam"),
+        bam=pjoin(
+            WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.to-contigs.bam"
+        ),
+    conda:
+        "../envs/bwa.yaml"
+    threads: workflow.cores
+    shell:
+        """
+        bwa mem -t{threads} {input.hfa} {input.qfa} | samtools view -bS | samtools sort > {output.bam}
+        samtools index {output.bam}
+        """
+
+
+rule align_consensuses_to_reference:
+    input:
+        hfa=FA,
+        hsa=FA + ".sa",
+        qfa=rules.gaf2fa.output.fa,
+    output:
+        bam=pjoin(
+            WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.to-reference.bam"
+        ),
+    conda:
+        "../envs/bwa.yaml"
+    threads: workflow.cores
+    shell:
+        """
+        bwa mem -t{threads} {input.hfa} {input.qfa} | samtools view -bS | samtools sort > {output.bam}
+        samtools index {output.bam}
+        """
+
+
+rule align_hifiasm_to_haplotypes:
+    input:
+        hfa=pjoin(WD, sample + "-haps.fa"),
+        hsa=pjoin(WD, sample + "-haps.fa.sa"),
+        qfa=pjoin(WD, sample + ".asm.bp.haps.p_ctg.fa"),
+    output:
+        bam=pjoin(WD, "hifiasm-to-original.bam"),
+    conda:
+        "../envs/bwa.yaml"
+    threads: workflow.cores
+    shell:
+        """
+        bwa mem -t{threads} {input.hfa} {input.qfa} | samtools view -bS | samtools sort > {output.bam}
+        samtools index {output.bam}
+        """
+
+
+rule align_hifiasm_to_reference:
+    input:
+        hfa=FA,
+        hsa=FA + ".sa",
+        qfa=pjoin(WD, sample + ".asm.bp.haps.p_ctg.fa"),
+    output:
+        bam=pjoin(WD, "hifiasm-to-reference.bam"),
     conda:
         "../envs/bwa.yaml"
     threads: workflow.cores
@@ -154,14 +222,16 @@ rule get_nm:
         "../envs/pysam.yaml"
     shell:
         """
-        python3 ./utils/get_nm.py {WD} > {output.csv}
+        python3 ./utils/get_nm.py {WD} {sample} > {output.csv}
         """
 
 
 rule get_correctness:
     input:
         expand(
-            pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.bam"),
+            pjoin(
+                WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.to-contigs.bam"
+            ),
             t=["full", "oneout"],
             n=Ns,
             d=Ds,

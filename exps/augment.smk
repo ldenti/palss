@@ -8,7 +8,7 @@ import random
 configfile: "config/config.yaml"
 
 
-seed = 23
+seed = config["seed"]
 random.seed(seed)
 
 FA = config["fa"]
@@ -20,7 +20,8 @@ REALFQ = config["realfq"]
 WD = config["wd"]
 REF = "CHM13"  # "GRCh38"
 
-coverage = 7.5  # coverage per haplotype
+coverage = config["cov"] / 2  # coverage per haplotype
+print(coverage)
 
 #
 
@@ -92,3 +93,6 @@ rule run:
         pjoin(WD, "nm.csv"),
         pjoin(WD, "correctness.csv"),
         pjoin(WD, "anchoring.csv"),
+        #
+        pjoin(WD, "hifiasm-to-reference.bam"),
+        pjoin(WD, "hifiasm-to-original.bam"),

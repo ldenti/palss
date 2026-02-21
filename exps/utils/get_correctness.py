@@ -54,7 +54,7 @@ def main():
         graph = fields[-2].split("-")[1]
         n = int(fields[-3][1:])
 
-        bam_fn = gaf_fn[:-4] + ".bam"
+        bam_fn = gaf_fn[:-4] + ".to-contigs.bam"
 
         newv, v2c, c2v = parse_gaf(gaf_fn)
 
