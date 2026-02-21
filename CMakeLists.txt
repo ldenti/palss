@@ -168,7 +168,7 @@ target_link_libraries(palss
 
     PUBLIC RB3
     PUBLIC z
-    PUBLIC profiler
+    # PUBLIC profiler
     PUBLIC pthread
     PUBLIC OpenMP::OpenMP_C
     PUBLIC OpenMP::OpenMP_CXX
