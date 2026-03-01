@@ -48,6 +48,7 @@ def main():
     Ns = set()
     print("fn,graph,n,w,d,read,cov,nm")
     for gaf_fn in glob.glob(os.path.join(WD, "n*", "graphaligner", "*.gaf")):
+        print(gaf_fn, file=sys.stderr)
         n = int(gaf_fn.split("/")[-3][1:])
         Ns.add(n)
         fn = gaf_fn.split("/")[-1]

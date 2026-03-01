@@ -6,7 +6,7 @@
 
 rule hifiasm:
     input:
-        fq=pjoin(WD, sample + "-reads.ec.fa"),
+        fq=pjoin(WD, sample + "-reads.fq.gz"),
     output:
         fa1=pjoin(WD, sample + ".asm.bp.hap1.p_ctg.fa"),
         fa2=pjoin(WD, sample + ".asm.bp.hap2.p_ctg.fa"),

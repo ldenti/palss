@@ -21,12 +21,12 @@ WD = config["wd"]
 REF = "CHM13"  # "GRCh38"
 
 coverage = config["cov"] / 2  # coverage per haplotype
-print(coverage)
+
 
 #
 
-Ns = config["ns"]  # [1, 8, 32, 64]
-Ds = config["ds"]  # [0.1, 0.25, 0.5, 1.0]
+Ns = config["ns"]
+Ds = config["ds"]
 Ws = [2]  # , 3]
 
 
