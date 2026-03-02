@@ -1,15 +1,18 @@
-fa: /scratch/luca-palss/chr20.fa
-gbz: /scratch/luca-palss/chr20.gbz
-samples: /scratch/luca-palss/hprc-v2.0.samples.list
-realfq: /scratch/luca-palss/seqII2.0.real.fq
-wd: /scratch/luca-palss/chr20-out
+seed: 11
+coverage: 10
+fa: /data/chr20.fa
+gbz: /data/hprc-chm13.v2/chr20.gbz
+samples: /data/hprc-chm13.v2/all_samples.list
+realfq: /data/reads-4sampling/PB.SequelII.fq
+wd: /data/chr20-new-out
 ns:
-  - 1
-  - 8
-  - 32
-  - 64
+  # - 1
+  - 2
+  # - 8
+  # - 32
+  # - 64
 ds:
   - 0.1
-  - 0.25
-  - 0.5
-  - 1.0
+  # - 0.25
+  # - 0.5
+  # - 1.0

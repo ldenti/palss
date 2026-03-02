@@ -1,6 +1,6 @@
 """
   * pangenome: pjoin(WD, "n{n}", "pangenome-{t}.gbz")
-  * reads: pjoin(WD, sample + "-reads.ec.fa"),
+  * reads: pjoin(WD, sample + "-reads.fq"), pjoin(WD, sample + "-reads.ec.fa"),
 """
 
 
@@ -28,34 +28,61 @@ rule palss_fmd:
         time=pjoin(WD, "times", "n{n}", "palss-{t}", "fmd.time"),
     shell:
         """
-        # -m 2G
-        /usr/bin/time -vo {log.time} sh -c 'LD_LIBRARY_PATH="$PWD/../lib" ../build/gbwtgraph-prefix/src/gbwtgraph/bin/gbz_extract {input.gbz} | ../build/rb3-prefix/src/rb3/ropebwt3 build -t {threads} -Ld - > {output.fmd}'
+        /usr/bin/time -vo {log.time} sh -c 'LD_LIBRARY_PATH="$PWD/../lib" ../build/gbwtgraph-prefix/src/gbwtgraph/bin/gbz_extract {input.gbz} | ../build/rb3-prefix/src/rb3/ropebwt3 build -t {threads} -m 2G -Ld - > {output.fmd}'
         """
 
 
-rule palss_search:
+rule palss0_search:
     input:
         gbz=pjoin(WD, "n{n}", "pangenome-{t}.gbz"),
         skt=rules.palss_sketch.output.skt,
         fmd=rules.palss_fmd.output.fmd,
-        fa=pjoin(WD, sample + "-reads.ec.fa"),
+        reads=pjoin(WD, sample + "-reads.ec.fa"),
     output:
-        sfs=pjoin(WD, "n{n}", "palss-{t}", "specific_strings.d{d}.txt"),
+        sfs=pjoin(WD, "n{n}", "palss0-{t}", "specific_strings.d{d}.txt"),
     threads: workflow.cores
     log:
-        time=pjoin(WD, "times", "n{n}", "palss-{t}", "search.d{d}.time"),
+        time=pjoin(WD, "times", "n{n}", "palss0-{t}", "search.d{d}.time"),
     shell:
         """
-        /usr/bin/time -vo {log.time} ../palss sfs -@{threads} {input.gbz} {input.skt} {input.fmd} {input.fa} > {output.sfs}
+        /usr/bin/time -vo {log.time} ../palss sfs -@{threads} {input.gbz} {input.skt} {input.fmd} {input.reads} > {output.sfs}
+        """
+
+
+rule palss1_search:
+    input:
+        gbz=pjoin(WD, "n{n}", "pangenome-{t}.gbz"),
+        skt=rules.palss_sketch.output.skt,
+        fmd=rules.palss_fmd.output.fmd,
+        reads=pjoin(WD, sample + "-reads.ec.fa"),
+    output:
+        sfs=pjoin(WD, "n{n}", "palss1-{t}", "specific_strings.d{d}.txt"),
+        fa=pjoin(
+            WD,
+            "n{n}",
+            "palss1-{t}",
+            "specific_strings.d{d}.txt.reads_with_unanchored.bp.p_ctg.fa",
+        ),
+    threads: workflow.cores
+    log:
+        time=pjoin(WD, "times", "n{n}", "palss1-{t}", "search.d{d}.time"),
+    shell:
+        """
+        /usr/bin/time -vo {log.time} ../palss sfs -@{threads} {input.gbz} {input.skt} {input.fmd} {input.reads} > {output.sfs}
+        grep -P "^1|^2|^3" {output.sfs} | cut -f2 | sort -u > {output.sfs}.reads_with_unanchored.list
+        python3 ./utils/subfa.py {input.reads} {output.sfs}.reads_with_unanchored.list > {output.sfs}.reads_with_unanchored.fa
+        /home/ld/code/hifiasm/hifiasm -r0 -o {output.sfs}.reads_with_unanchored -t{threads} {output.sfs}.reads_with_unanchored.fa
+        awk '/^S/{{print ">"$2;print $3}}' {output.sfs}.reads_with_unanchored.bp.p_ctg.gfa > {output.fa}
+        /usr/bin/time -vao {log.time} ../palss sfs -@{threads} {input.gbz} {input.skt} {input.fmd} {output.fa} >> {output.sfs}
         """
 
 
 rule palss_sam:
     input:
         gbz=pjoin(WD, "n{n}", "pangenome-{t}.gbz"),
-        sfs=rules.palss_search.output.sfs,
+        sfs=pjoin(WD, "n{n}", "palss{pv}-{t}", "specific_strings.d{d}.txt"),
     output:
-        bam=pjoin(WD, "n{n}", "palss-{t}", "specific_strings.d{d}.bam"),
+        bam=pjoin(WD, "n{n}", "palss{pv}-{t}", "specific_strings.d{d}.bam"),
     shell:
         """
         ../palss sam {input.gbz} {input.sfs} | samtools view -bS | samtools sort > {output.bam}
@@ -66,11 +93,11 @@ rule palss_sam:
 rule palss_align:
     input:
         gbz=pjoin(WD, "n{n}", "pangenome-{t}.gbz"),
-        sfs=rules.palss_search.output.sfs,
+        sfs=pjoin(WD, "n{n}", "palss{pv}-{t}", "specific_strings.d{d}.txt"),
     output:
-        gaf=pjoin(WD, "n{n}", "palss-{t}", "consensus.d{d}.gaf"),
+        gaf=pjoin(WD, "n{n}", "palss{pv}-{t}", "consensus.d{d}.gaf"),
     log:
-        time=pjoin(WD, "times", "n{n}", "palss-{t}", "align.d{d}.time"),
+        time=pjoin(WD, "times", "n{n}", "palss{pv}-{t}", "align.d{d}.time"),
     threads: workflow.cores
     shell:
         """
@@ -83,18 +110,29 @@ rule palss_augment:
         gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
         gaf=rules.palss_align.output.gaf,
     output:
-        gfa=pjoin(WD, "n{n}", "palss-{t}", "pangenome-augmented.d{d}.w{w}.gfa"),
-        gaf=pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.gaf"),
+        gfa=pjoin(WD, "n{n}", "palss{pv}-{t}", "pangenome-augmented.d{d}.w{w}.gfa"),
+        gaf=pjoin(WD, "n{n}", "palss{pv}-{t}", "resulting-consensus.d{d}.w{w}.gaf"),
     params:
-        wd=pjoin(WD, "n{n}", "palss-{t}", "augment.d{d}.w{w}.wd"),
-        log=pjoin(WD, "n{n}", "palss-{t}", "augment.d{d}.w{w}.log"),
+        wd=pjoin(WD, "n{n}", "palss{pv}-{t}", "augment.d{d}.w{w}.wd"),
+        log=pjoin(WD, "n{n}", "palss{pv}-{t}", "augment.d{d}.w{w}.log"),
     conda:
         "../envs/graphaligner.yaml"
     log:
-        time=pjoin(WD, "times", "n{n}", "palss-{t}", "augment.d{d}.w{w}.time"),
-    threads: workflow.cores / 8
+        time=pjoin(WD, "times", "n{n}", "palss{pv}-{t}", "augment.d{d}.w{w}.time"),
+    threads: max(1, workflow.cores / 8)
     shell:
         """
         /usr/bin/time -vo {log.time} bash ../scripts/augment.sh {input.gfa} {input.gaf} {wildcards.w} {params.wd} {threads} > {output.gfa} 2> {params.log}
         mv {params.wd}/resulting_consensus.gaf {output.gaf}
+        """
+
+
+rule gaf2fa:
+    input:
+        gaf=rules.palss_augment.output.gaf,
+    output:
+        fa=pjoin(WD, "n{n}", "palss{pv}-{t}", "resulting-consensus.d{d}.w{w}.fa"),
+    shell:
+        """
+        cut -f1,17 {input.gaf} | sed "s/^/>/" | sed "s/\\tqs:Z:/\\n/g" > {output.fa}
         """

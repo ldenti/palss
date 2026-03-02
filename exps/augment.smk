@@ -20,7 +20,7 @@ REALFQ = config["realfq"]
 WD = config["wd"]
 REF = "CHM13"  # "GRCh38"
 
-coverage = config["cov"] / 2  # coverage per haplotype
+coverage = config["coverage"] / 2  # coverage per haplotype
 
 
 #
@@ -34,6 +34,7 @@ wildcard_constraints:
     t=r"full|oneout",
     w=r"\d+",
     d=r"\d\.\d+",
+    pv=r"0|1",
 
 
 #
@@ -53,46 +54,86 @@ print(sample, kept_samples)
 
 include: "./rules/prepare_data.smk"
 include: "./rules/palss.smk"
-include: "./rules/analyze.smk"
+include: "./rules/analyses.smk"
 include: "./rules/mgc.smk"
 
 
 rule run:
     input:
-        # pjoin(WD, sample + "-hap1.bam"),
-        # pjoin(WD, sample + "-hap2.bam"),
-        # pjoin(WD, sample + "-reads.fq.gz"),
-        # pjoin(WD, sample + "-reads.bam"),
-        # pjoin(WD, sample + "-reads.ec.fa"),
-        # pjoin(WD, sample + "-reads.ec.bam"),
-        # #
-        # expand(pjoin(WD, "n{n}", "pangenome-oneout.gbz"), n=Ns),
-        # expand(pjoin(WD, "n{n}", "pangenome-full.gbz"), n=Ns),
+        # contig alignment to reference
+        pjoin(WD, sample + "-hap1.bam"),
+        pjoin(WD, sample + "-hap2.bam"),
+        # reads alignment to reference
+        pjoin(WD, sample + "-reads.bam"),
+        pjoin(WD, sample + "-reads.ec.bam"),
+        # reads alignment to real contigs
+        pjoin(WD, sample + "-reads.tohaps.bam"),
+        #
+        # hifiasm contigs aligned to reference
+        pjoin(WD, sample + ".asm.bp.hap1.p_ctg.bam"),
+        pjoin(WD, sample + ".asm.bp.hap2.p_ctg.bam"),
+        # minigraph-cactus
+        # expand(pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"), n=Ns),
+        #
+        # PALSS
+        expand(
+            pjoin(WD, "n{n}", "palss{pv}-{t}", "pangenome-augmented.d{d}.w{w}.gfa"),
+            n=Ns,
+            t=["full", "oneout"],
+            d=Ds,
+            w=Ws,
+            pv=[0, 1],
+        ),
         #
         expand(
-            pjoin(WD, "n{n}", "palss-{t}", "specific_strings.d{d}.bam"),
+            pjoin(WD, "n{n}", "palss{pv}-{t}", "specific_strings.d{d}.bam"),
             n=Ns,
             d=Ds,
             t=["full", "oneout"],
+            pv=[0, 1],
         ),
-        # expand(pjoin(WD, "n{n}", "palss-{t}", "pangenome-augmented.d{d}.w{w}.gfa"), n=Ns, d=Ds, w=Ws, t=["full", "oneout"]),
-        # expand(pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"), n=Ns),
-        # expand(
-        #     pjoin(WD, "n{n}", "graphaligner", "original-{t}.gaf"),
-        #     t=["full", "oneout"],
-        #     n=Ns,
-        # ),
-        # expand(
-        #     pjoin(WD, "n{n}", "graphaligner", "palss-{t}.d{d}.w{w}.gaf"),
-        #     t=["full", "oneout"],
-        #     n=Ns,
-        #     d=Ds,
-        #     w=Ws,
-        # ),
-        pjoin(WD, "support.csv"),
-        pjoin(WD, "nm.csv"),
-        pjoin(WD, "correctness.csv"),
-        pjoin(WD, "anchoring.csv"),
         #
-        pjoin(WD, "hifiasm-to-reference.bam"),
-        pjoin(WD, "hifiasm-to-original.bam"),
+        # PALSS (oneout) unanchored contigs to FULL/ONEOUT graphs
+        expand(
+            pjoin(
+                WD,
+                "n{n}",
+                "palss1-oneout",
+                "specific_strings.d{d}.txt.reads_with_unanchored.bp.p_ctg.to-{t}.gaf",
+            ),
+            n=Ns,
+            t=["full", "oneout"],
+            d=Ds,
+            w=Ws,
+        ),
+        # PALSS consensus to real contigs
+        expand(
+            pjoin(
+                WD,
+                "n{n}",
+                "palss{pv}-{t}",
+                "resulting-consensus.d{d}.w{w}.to-contigs.bam",
+            ),
+            n=Ns,
+            t=["full", "oneout"],
+            d=Ds,
+            w=Ws,
+            pv=[0, 1],
+        ),
+        #
+        # real contigs alignments
+        expand(
+            pjoin(WD, "n{n}", "truecontigs-aln", "original-{t}.gaf"),
+            n=Ns,
+            t=["full", "oneout"],
+        ),
+        expand(
+            pjoin(WD, "n{n}", "truecontigs-aln", "palss{pv}-{t}.d{d}.w{w}.gaf"),
+            n=Ns,
+            t=["full", "oneout"],
+            d=Ds,
+            w=Ws,
+            pv=[0, 1],
+        ),
+        # expand(pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.gaf"), n=Ns),
+        pjoin(WD, sample + "-haps.50k-overlapping.bam"),

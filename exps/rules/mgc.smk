@@ -27,6 +27,22 @@ rule hifiasm:
         """
 
 
+rule align_mgc_contigs:
+    input:
+        fa=FA,
+        faq=pjoin(WD, sample + ".asm.bp.hap{h}.p_ctg.fa"),
+    output:
+        bam=pjoin(WD, sample + ".asm.bp.hap{h}.p_ctg.bam"),
+    conda:
+        "../envs/minimap2.yaml"
+    threads: workflow.cores
+    shell:
+        """
+        minimap2 -t{threads} --MD -ax asm5 --eqx {input.fa} {input.faq} | samtools view -bS | samtools sort > {output.bam}
+        samtools index {output.bam}
+        """
+
+
 rule install_minigraphcactus:
     output:
         pjoin(WD, "mgc-src", "cactus_env", "bin", "activate"),
@@ -37,14 +53,15 @@ rule install_minigraphcactus:
         rm -rf {params.d}
         git clone --recursive https://github.com/ComparativeGenomicsToolkit/cactus.git {params.d}
         cd {params.d}
-        virtualenv -p python3 cactus_env
+        git checkout v3.1.4
+        virtualenv -p python3.9 cactus_env
         echo "export PATH=$(pwd)/bin:\$PATH" >> cactus_env/bin/activate
         echo "export PYTHONPATH=$(pwd)/lib:\$PYTHONPATH" >> cactus_env/bin/activate
         set +u; source cactus_env/bin/activate; set -u
         python3 -m pip install -U setuptools pip wheel
         python3 -m pip install -U .
         python3 -m pip install -U -r ./toil-requirement.txt
-        sed -i "s/base_singularity_call += \['-u', /base_singularity_call += \[/g" {params.d}/cactus_env/lib/python3.12/site-packages/cactus/shared/common.py
+        sed -i "s/base_singularity_call += \['-u', /base_singularity_call += \[/g" {params.d}/cactus_env/lib64/python3.9/site-packages/cactus/shared/common.py
         """
 
 

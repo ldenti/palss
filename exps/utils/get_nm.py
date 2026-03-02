@@ -47,7 +47,7 @@ def main():
 
     Ns = set()
     print("fn,graph,n,w,d,read,cov,nm")
-    for gaf_fn in glob.glob(os.path.join(WD, "n*", "graphaligner", "*.gaf")):
+    for gaf_fn in glob.glob(os.path.join(WD, "n*", "truecontigs-aln", "*.gaf")):
         print(gaf_fn, file=sys.stderr)
         n = int(gaf_fn.split("/")[-3][1:])
         Ns.add(n)
@@ -70,8 +70,8 @@ def main():
             print(fn, graph, n, w, d, qidx, c, nm, sep=",", flush=False)
         sys.stdout.flush()
 
-    parse_bam(os.path.join(WD, f"{sample}-reads.bam"), Ns)
-    parse_bam(os.path.join(WD, f"{sample}-reads.tohaps.bam"), Ns)
+    parse_bam(os.path.join(WD, f"{sample}-haps.50k-overlapping.bam"), Ns)
+    # parse_bam(os.path.join(WD, f"{sample}-reads.tohaps.bam"), Ns)
 
 
 if __name__ == "__main__":

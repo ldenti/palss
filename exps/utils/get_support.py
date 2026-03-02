@@ -105,7 +105,9 @@ def main():
         novel_vertices = get_novel_vertices(gfa_fn)
         novel_edges = get_novel_edges(gfa_fn, novel_vertices)
 
-        gaf_fn = os.path.join(WD, f"n{n}", "graphaligner", f"palss-{run}.d{d}.w{w}.gaf")
+        gaf_fn = os.path.join(
+            WD, f"n{n}", "truecontigs-aln", f"palss-{run}.d{d}.w{w}.gaf"
+        )
 
         for line in open(gaf_fn):
             line = line.strip("\n").split("\t")
@@ -155,7 +157,7 @@ def main():
         fn = f"{run}.gaf"
         if run != "mgcactus":
             fn = f"original-{run}.gaf"
-        gaf_fn = os.path.join(WD, f"n{n}", "graphaligner", fn)
+        gaf_fn = os.path.join(WD, f"n{n}", "truecontigs-aln", fn)
         for line in open(gaf_fn):
             line = line.strip("\n").split("\t")
             path = line[5]
