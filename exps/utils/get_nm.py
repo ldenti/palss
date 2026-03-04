@@ -46,28 +46,31 @@ def main():
     sample = sys.argv[2]
 
     Ns = set()
-    print("fn,graph,n,w,d,read,cov,nm")
+    print("fn,graph,n,w,d,cut,iden,read,cov,nm")
     for gaf_fn in glob.glob(os.path.join(WD, "n*", "truecontigs-aln", "*.gaf")):
         print(gaf_fn, file=sys.stderr)
         n = int(gaf_fn.split("/")[-3][1:])
         Ns.add(n)
         fn = gaf_fn.split("/")[-1]
-        w, d = -1, -1
+        w, d, i = -1, -1, -1
+        cut = False
         graph = ""
-        run = "full" if "full" in fn else "oneout"
-        augmentation = ""
         if "original" in fn:
             graph = "original"
         elif "mgcactus" in fn:
             graph = "mgcactus"
         else:
-            graph = "palss"
-            w = int(fn.split(".")[-2][1:])
-            d = float(fn.split(".")[-4][1:] + "." + fn.split(".")[-3])
+            graph = "palss-"
+            graph += "full" if "full" in fn else "oneout"
+            # palss-full.d0.1.w2.1.id0.9.gaf
+            i = float(fn.split(".")[-3][2:] + "." + fn.split(".")[-2])
+            cut = fn.split(".")[-4] == "1"
+            w = int(fn.split(".")[-5][1:])
+            d = float(fn.split(".")[-7][1:] + "." + fn.split(".")[-6])
 
         nms = parse_gaf(gaf_fn)
         for qidx, (c, nm) in nms.items():
-            print(fn, graph, n, w, d, qidx, c, nm, sep=",", flush=False)
+            print(fn, graph, n, w, d, cut, i, qidx, c, nm, sep=",", flush=False)
         sys.stdout.flush()
 
     parse_bam(os.path.join(WD, f"{sample}-haps.50k-overlapping.bam"), Ns)

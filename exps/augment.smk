@@ -34,7 +34,7 @@ wildcard_constraints:
     t=r"full|oneout",
     w=r"\d+",
     d=r"\d\.\d+",
-    pv=r"0|1",
+    iden=r"\d\.\d+",
 
 
 #
@@ -73,39 +73,31 @@ rule run:
         pjoin(WD, sample + ".asm.bp.hap1.p_ctg.bam"),
         pjoin(WD, sample + ".asm.bp.hap2.p_ctg.bam"),
         # minigraph-cactus
-        # expand(pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"), n=Ns),
+        expand(pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"), n=Ns),
         #
         # PALSS
-        expand(
-            pjoin(WD, "n{n}", "palss{pv}-{t}", "pangenome-augmented.d{d}.w{w}.gfa"),
-            n=Ns,
-            t=["full", "oneout"],
-            d=Ds,
-            w=Ws,
-            pv=[0, 1],
-        ),
-        #
-        expand(
-            pjoin(WD, "n{n}", "palss{pv}-{t}", "specific_strings.d{d}.bam"),
-            n=Ns,
-            d=Ds,
-            t=["full", "oneout"],
-            pv=[0, 1],
-        ),
-        #
-        # PALSS (oneout) unanchored contigs to FULL/ONEOUT graphs
         expand(
             pjoin(
                 WD,
                 "n{n}",
-                "palss1-oneout",
-                "specific_strings.d{d}.txt.reads_with_unanchored.bp.p_ctg.to-{t}.gaf",
+                "palss-{t}",
+                "pangenome-augmented.d{d}.w{w}.id{iden}.gfa",
             ),
             n=Ns,
             t=["full", "oneout"],
             d=Ds,
             w=Ws,
+            iden=[0.0, 0.8, 0.9, 0.97, 1.1],
         ),
+        #
+        # expand(
+        #     pjoin(WD, "n{n}", "palss{pv}-{t}", "specific_strings.d{d}.bam"),
+        #     n=Ns,
+        #     d=Ds,
+        #     t=["full", "oneout"],
+        #     pv=[0, 1],
+        # ),
+        #
         # PALSS consensus to real contigs
         expand(
             pjoin(
@@ -120,6 +112,18 @@ rule run:
             w=Ws,
             pv=[0, 1],
         ),
+        # # PALSS unanchored contigs to both graphs
+        # expand(
+        #     pjoin(
+        #         WD,
+        #         "n{n}",
+        #         "palss-oneout",
+        #         "specific_strings.d{d}.txt.reads_with_unanchored.bp.p_ctg.to-{t}.gaf",
+        #     ),
+        #     n=Ns,
+        #     t=["full", "oneout"],
+        #     d=Ds,
+        # ),
         #
         # real contigs alignments
         expand(
@@ -128,12 +132,12 @@ rule run:
             t=["full", "oneout"],
         ),
         expand(
-            pjoin(WD, "n{n}", "truecontigs-aln", "palss{pv}-{t}.d{d}.w{w}.gaf"),
+            pjoin(WD, "n{n}", "truecontigs-aln", "palss-{t}.d{d}.w{w}.id{iden}.gaf"),
             n=Ns,
             t=["full", "oneout"],
             d=Ds,
             w=Ws,
-            pv=[0, 1],
+            iden=[0.0, 0.8, 0.9, 0.97, 1.1],
         ),
-        # expand(pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.gaf"), n=Ns),
+        expand(pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.gaf"), n=Ns),
         pjoin(WD, sample + "-haps.50k-overlapping.bam"),

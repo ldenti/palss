@@ -6,7 +6,7 @@ samples: /data/hprc-chm13.v2/all_samples.list
 realfq: /data/reads-4sampling/PB.SequelII.fq
 wd: /data/chr20-new-out
 ns:
-  # - 1
+  - 1
   - 2
   # - 8
   # - 32

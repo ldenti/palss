@@ -32,31 +32,34 @@ rule align_consensuses_to_haplotypes:
         """
 
 
-rule align_unanchored_contigs:
-    input:
-        gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
-        fa=pjoin(
-            WD,
-            "n{n}",
-            "palss1-oneout",
-            "specific_strings.d{d}.txt.reads_with_unanchored.bp.p_ctg.fa",
-        ),
-    output:
-        gaf=pjoin(
-            WD,
-            "n{n}",
-            "palss1-oneout",
-            "specific_strings.d{d}.txt.reads_with_unanchored.bp.p_ctg.to-{t}.gaf",
-        ),
-    conda:
-        "../envs/graphaligner.yaml"
-    threads: workflow.cores / 2
-    shell:
-        """
-        GraphAligner --graph {input.gfa} --reads {input.fa} --alignments-out {output.gaf} --preset vg --threads {threads}
-        """
+# # align unanchored contigs to both graphs
+# #######################################################################
+# rule align_unanchored_contigs:
+#     input:
+#         gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
+#         fa=pjoin(
+#             WD,
+#             "n{n}",
+#             "palss-oneout",
+#             "specific_strings.d{d}.txt.reads_with_unanchored.bp.p_ctg.fa",
+#         ),
+#     output:
+#         gaf=pjoin(
+#             WD,
+#             "n{n}",
+#             "palss-oneout",
+#             "specific_strings.d{d}.txt.reads_with_unanchored.bp.p_ctg.to-{t}.gaf",
+#         ),
+#     conda:
+#         "../envs/graphaligner.yaml"
+#     threads: workflow.cores / 2
+#     shell:
+#         """
+#         GraphAligner --graph {input.gfa} --reads {input.fa} --alignments-out {output.gaf} --preset vg --threads {threads}
+#         """
 
 
+# Split true contigs and align to all graphs and reference
 #######################################################################
 
 
@@ -71,7 +74,7 @@ rule split_haplotypes:
         """
 
 
-rule shap_to_original:
+rule hapsegs_to_original:
     input:
         gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
         fa=rules.split_haplotypes.output.fa,
@@ -86,12 +89,12 @@ rule shap_to_original:
         """
 
 
-rule shap_to_palss:
+rule hapsegs_to_palss:
     input:
-        gfa=pjoin(WD, "n{n}", "palss{pv}-{t}", "pangenome-augmented.d{d}.w{w}.gfa"),
+        gfa=pjoin(WD, "n{n}", "palss-{t}", "pangenome-augmented.d{d}.w{w}.id{iden}.gfa"),
         fa=rules.split_haplotypes.output.fa,
     output:
-        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "palss{pv}-{t}.d{d}.w{w}.gaf"),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "palss-{t}.d{d}.w{w}.id{iden}.gaf"),
     conda:
         "../envs/graphaligner.yaml"
     threads: workflow.cores / 2
@@ -101,7 +104,7 @@ rule shap_to_palss:
         """
 
 
-rule shap_to_mgc:
+rule hapsegs_to_mgc:
     input:
         gfa=pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"),
         fa=rules.split_haplotypes.output.fa,
@@ -116,7 +119,7 @@ rule shap_to_mgc:
         """
 
 
-rule shap_to_ref:
+rule hapsegs_to_ref:
     input:
         fa=FA,
         qfa=rules.split_haplotypes.output.fa,

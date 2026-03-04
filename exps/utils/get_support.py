@@ -92,21 +92,24 @@ def main():
     print("graph,augmentation,n,w,d,kind,v,supp,l")
 
     # PALSS pangenomes
+    # pangenome-augmented.d0.1.w2.1.id1.1.gfa
     for gfa_fn in glob.glob(
-        os.path.join(WD, "n*", "palss-*", "pangenome-augmented.*.*.gfa")
+        os.path.join(WD, "n*", "palss*-*", "pangenome-augmented.d*.*.w*.*.id*.*.gfa")
     ):
         print(gfa_fn, file=sys.stderr)
         n = int(gfa_fn.split("/")[-3][1:])
         run = "oneout" if "oneout" in gfa_fn else "full"
         fn = gfa_fn.split("/")[-1]
-        w = int(fn.split(".")[-2][1:])
-        d = float(fn.split(".")[-4][1:] + "." + fn.split(".")[-3])
+        i = float(fn.split(".")[-3][2:] + "." + fn.split(".")[-2])
+        cut = fn.split(".")[-4]
+        w = int(fn.split(".")[-5][1:])
+        d = float(fn.split(".")[-7][1:] + "." + fn.split(".")[-6])
 
         novel_vertices = get_novel_vertices(gfa_fn)
-        novel_edges = get_novel_edges(gfa_fn, novel_vertices)
+        # novel_edges = get_novel_edges(gfa_fn, novel_vertices)
 
         gaf_fn = os.path.join(
-            WD, f"n{n}", "truecontigs-aln", f"palss-{run}.d{d}.w{w}.gaf"
+            WD, f"n{n}", "truecontigs-aln", f"palss-{run}.d{d}.w{w}.{cut}.id{i}.gaf"
         )
 
         for line in open(gaf_fn):
@@ -120,27 +123,41 @@ def main():
             for v1, v2 in zip(path[:-1], path[1:]):
                 if v2 in novel_vertices:
                     novel_vertices[v2][0] += 1
-                e = (min(v1, v2), max(v1, v2))
-                if e in novel_edges:
-                    novel_edges[e] += 1
+                # e = (min(v1, v2), max(v1, v2))
+                # if e in novel_edges:
+                #     novel_edges[e] += 1
         for v, (supp, length) in novel_vertices.items():
             print(
-                run, "palss", n, w, d, "vertex", v, supp, length, sep=",", flush=False
-            )
-        for (v1, v2), supp in novel_edges.items():
-            print(
                 run,
-                "palss",
+                f"palss",
                 n,
                 w,
                 d,
-                "edge",
-                f"{v1}.{v2}",
+                cut,
+                i,
+                "vertex",
+                v,
                 supp,
-                -1,
+                length,
                 sep=",",
                 flush=False,
             )
+        # for (v1, v2), supp in novel_edges.items():
+        #     print(
+        #         run,
+        #         f"palss{pv}",
+        #         n,
+        #         w,
+        #         d,
+        #         cut,
+        #         i,
+        #         "edge",
+        #         f"{v1}.{v2}",
+        #         supp,
+        #         -1,
+        #         sep=",",
+        #         flush=False,
+        #     )
         sys.stdout.flush()
 
     # Other pangenomes
@@ -152,7 +169,7 @@ def main():
             continue
 
         novel_vertices = get_novel_vertices(gfa_fn, sample)
-        novel_edges = get_novel_edges(gfa_fn, sample)
+        # novel_edges = get_novel_edges(gfa_fn, sample)
 
         fn = f"{run}.gaf"
         if run != "mgcactus":
@@ -169,14 +186,16 @@ def main():
             for v1, v2 in zip(path[:-1], path[1:]):
                 if v2 in novel_vertices:
                     novel_vertices[v2][0] += 1
-                e = (min(v1, v2), max(v1, v2))
-                if e in novel_edges:
-                    novel_edges[e] += 1
+                # e = (min(v1, v2), max(v1, v2))
+                # if e in novel_edges:
+                #     novel_edges[e] += 1
         for v, (supp, length) in novel_vertices.items():
             print(
                 "oneout",
                 run,
                 n,
+                -1,
+                -1,
                 -1,
                 -1,
                 "vertex",
@@ -186,20 +205,22 @@ def main():
                 sep=",",
                 flush=False,
             )
-        for (v1, v2), supp in novel_edges.items():
-            print(
-                "oneout",
-                run,
-                n,
-                -1,
-                -1,
-                "edge",
-                f"{v1}.{v2}",
-                supp,
-                -1,
-                sep=",",
-                flush=False,
-            )
+        # for (v1, v2), supp in novel_edges.items():
+        #     print(
+        #         "oneout",
+        #         run,
+        #         n,
+        #         -1,
+        #         -1,
+        #         -1,
+        #         -1,
+        #         "edge",
+        #         f"{v1}.{v2}",
+        #         supp,
+        #         -1,
+        #         sep=",",
+        #         flush=False,
+        #     )
         sys.stdout.flush()
 
 
