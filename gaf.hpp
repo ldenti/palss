@@ -18,6 +18,7 @@ public:
   std::string cigar, cs;
   std::vector<std::string> reads;
   std::string qseq, pseq;
+  bool clipped;
 
   GAFREC();
   void write();

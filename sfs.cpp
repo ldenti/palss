@@ -9,51 +9,44 @@ std::vector<std::string> split(const std::string &s, char delimiter) {
   return tokens;
 }
 
-// std::map<std::string, std::vector<sfs_t>> load_sfs(const std::string &fn) {
-//   std::ifstream fp(fn);
-//   std::string line;
-//   std::map<std::string, std::vector<sfs_t>> specific_strings;
-//   if (!fp.is_open()) {
-//     fprintf(stderr, "Unable to open SFS file!");
-//     return specific_strings;
-//   }
-//   while (getline(fp, line)) {
-//     if (line[0] != '0')
-//       continue;
+std::string sfs_to_string(const sfs_t &s, const std::string &v1,
+                          const std::string &v2) {
+  std::ostringstream oss;
+  oss << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t" << s.l << "\t"
+      << s.s + s.l << "\t";
+  if (s.flag == 0) {
+    oss << s.sv << "\t" << s.ev << "\t" << s.soff << "\t" << s.eoff << "\t"
+        << v1 << "\t" << v2 << "\t" << s.skmer << "\t" << s.ekmer << "\t";
+    oss << s.paths[0];
+    for (size_t p = 1; p < s.paths.size(); ++p)
+      oss << "," << s.paths[p];
+    oss << "\t" << s.plain_seq;
+  } else {
+    oss << "."
+        << "\t"
+        << "."
+        << "\t"
+        << "."
+        << "\t"
+        << "."
+        << "\t"
+        << "."
+        << "\t"
+        << "."
+        << "\t"
+        << "."
+        << "\t"
+        << "."
+        << "\t"
+        << "."
+        << "\t"
+        << ".";
+  }
+  oss << "\n";
+  return oss.str();
+}
 
-//     std::vector<std::string> tokens = split(line, '\t');
-
-//     sfs_t s;
-//     s.flag = 0;
-//     s.rname = tokens[1];
-//     s.s = std::stoi(tokens[2]);
-//     s.l = std::stoi(tokens[3]);
-//     // s.end = std::stoi(tokens[4]);
-//     // if (tokens.size() > 5) {
-//     //   // anchored specific strings
-//     //   s.sv1 = std::stoi(tokens[5]);
-//     //   s.sv2 = std::stoi(tokens[6]);
-//     //   s.ev1 = std::stoi(tokens[7]);
-//     //   s.ev2 = std::stoi(tokens[8]);
-//     //   // assuming skmer <= ekmer
-//     //   s.skmer = std::stoul(tokens[9]);
-//     //   s.ekmer = std::stoul(tokens[10]);
-//     //   //
-//     //   s.plain_seq = tokens[12];
-//     //   s.seq = (uint8_t *)malloc(s.l + 1);
-//     //   for (int i = 0; i < s.l; ++i)
-//     //     s.seq[i] = tokens[12][i] < 128 ? to_int[(int)tokens[12][i]] - 1 :
-//     4;
-//     //   s.seq[s.l] = '\0';
-//     // }
-//     specific_strings[s.rname].push_back(s);
-//   }
-//   fp.close();
-
-//   return specific_strings;
-// }
-
-sfs_t parse_sfs_line(const std::string &line) {
+sfs_t read_sfs_line(const std::string &line) {
   std::vector<std::string> tokens = split(line, '\t');
 
   sfs_t s;
@@ -98,7 +91,7 @@ std::vector<sfs_t> load_sfs(const std::string &fn) {
   while (getline(fp, line)) {
     if (line[0] != '0')
       continue;
-    sfs_t s = parse_sfs_line(line);
+    sfs_t s = read_sfs_line(line);
     specific_strings.push_back(s);
   }
   fp.close();

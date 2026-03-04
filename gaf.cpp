@@ -13,7 +13,9 @@ void GAFREC::write() {
       << "\t" << tot_cigar_len << "\t" << mapq << "\t"
       << "AS:i:" << as << "\t"
       << "cg:Z:" << cigar << "\t"
-      << "cs:Z:" << cs << "\t"
+      << "cs:Z:" << cs
+      << "\t"
+      // << "cl:Z:" << (clipped ? 1 : 0) << "\t"
       << "rs:Z:";
   oss << reads[0];
   for (size_t x = 1; x < reads.size(); ++x)

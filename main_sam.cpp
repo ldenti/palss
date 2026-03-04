@@ -88,7 +88,7 @@ int main_sam(int argc, char *argv[]) {
     if (line[0] != '0')
       continue;
 
-    sfs_t s = parse_sfs_line(line);
+    sfs_t s = read_sfs_line(line);
 
     size_t path_id;
     bool on_ref = false;

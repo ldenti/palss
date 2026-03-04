@@ -745,61 +745,36 @@ int main_sfs(int argc, char *argv[]) {
       }
 
       // fill sequence
-      for (sfs_t &s : output[qq])
+      for (sfs_t &s : output[qq]) {
         fill_sequence(s, seq);
-    }
 
-    // output
-    // TODO: use a thread to do this (as in SVDSS)
-    for (int qq = 0; qq < x; ++qq) {
-      for (uint j = 0; j < output[qq].size(); ++j) {
-        const sfs_t &s = output[qq][j];
-        ++total;
-        if (anchoring) {
-          if (s.flag == 0) {
-            std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"
-                      << s.l << "\t" << s.s + s.l << "\t" << s.sv << "\t"
-                      << s.ev << "\t" << s.soff << "\t" << s.eoff << "\t"
-                      << graph.get_gfa_name(s.sv >> 1) << "\t"
-                      << graph.get_gfa_name(s.ev >> 1) << "\t" << s.skmer
-                      << "\t" << s.ekmer << "\t";
-            std::cout << s.paths[0];
-            for (size_t p = 1; p < s.paths.size(); ++p)
-              std::cout << "," << s.paths[p];
-            std::cout << "\t" << s.plain_seq << std::endl;
-          } else {
-            std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"
-                      << s.l << "\t" << s.s + s.l << "\t"
-                      << "."
-                      << "\t"
-                      << "."
-                      << "\t"
-                      << "."
-                      << "\t"
-                      << "."
-                      << "\t"
-                      << "."
-                      << "\t"
-                      << "."
-                      << "\t"
-                      << "."
-                      << "\t"
-                      << "."
-                      << "\t";
-            std::cout << ".";
-            std::cout << "\t"
-                      << "." << std::endl;
-          }
+        if (anchoring & (s.flag == 0)) {
+          std::cout << sfs_to_string(s, graph.get_gfa_name(s.sv >> 1),
+                                     graph.get_gfa_name(s.sv >> 1));
         } else {
-          std::cout << (int)s.flag << "\t" << s.rname << "\t" << s.s << "\t"
-                    << s.l << "\t" << s.s + s.l << "\t" << s.plain_seq
-                    << std::endl;
+          std::cout << sfs_to_string(s, "", "");
         }
       }
     }
-    fprintf(stderr,
-            "[M::%s] computed %d specific strings from %d reads in %.3f sec\n",
-            __func__, total, nreads, realtime() - rt);
+
+    // // output
+    // // TODO: use a thread to do this (as in SVDSS)
+    // for (int qq = 0; qq < x; ++qq) {
+    //   for (uint j = 0; j < output[qq].size(); ++j) {
+    //     const sfs_t &s = output[qq][j];
+    //     ++total;
+    //     if (anchoring & (s.flag == 0)) {
+    //       std::cout << sfs_to_string(s, graph.get_gfa_name(s.sv >> 1),
+    //                                  graph.get_gfa_name(s.sv >> 1));
+    //     } else {
+    //       std::cout << sfs_to_string(s, "", "");
+    //     }
+    //   }
+    // }
+    // fprintf(stderr,
+    //         "[M::%s] computed %d specific strings from %d reads in %.3f
+    //         sec\n",
+    //         __func__, total, nreads, realtime() - rt);
   }
 
   rbx_destroy(rb);

@@ -1,10 +1,7 @@
 #ifndef PS_SFS_HPP
 #define PS_SFS_HPP
 
-#include <cstdint>
 #include <fstream>
-#include <map>
-#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -32,11 +29,12 @@ typedef struct {
   bool reverse;
   //
   std::string plain_seq;
-  uint8_t *seq; // 1-4encoded sequence
+  uint8_t *seq; // 0-3 encoded sequence
 } sfs_t;
 
-// std::map<std::string, std::vector<sfs_t>> load_sfs(const std::string &fn);
-sfs_t parse_sfs_line(const std::string &line);
+std::string sfs_to_string(const sfs_t &s, const std::string &v1,
+                          const std::string &v2);
+sfs_t read_sfs_line(const std::string &line);
 std::vector<sfs_t> load_sfs(const std::string &fn);
 
 #endif

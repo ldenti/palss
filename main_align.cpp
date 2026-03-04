@@ -17,6 +17,18 @@ extern "C" {
 #include "sfs.hpp"
 #include "usage.hpp"
 
+typedef struct {
+  std::vector<gbwt::size_type> vertices; // with strand
+  std::string sequence;
+  std::vector<uint32_t> kcounts;
+  //
+  uint32_t total_length;
+  uint32_t skipped_prefix;
+  uint32_t skipped_suffix;
+
+} ph_t;
+// bool operator==(const path_t &path1, const path_t &path2);
+
 // TODO: clusters are pair of integers defining intervals in specific_strings
 std::vector<std::vector<sfs_t>>
 cluster_sfs(const std::vector<sfs_t> &specific_strings) {
@@ -55,6 +67,29 @@ float canberra(const std::vector<uint32_t> &v1,
     cd += x1 + x2 != 0 ? std::abs(x1 - x2) / (x1 + x2) : 0;
   }
   return cd;
+}
+
+// 0123-sequence to 0123-kmer counts
+std::vector<uint32_t> count_kmers(const char *seq, int seql, int klen) {
+  std::vector<uint32_t> kcounts((1 << (2 * klen)), 0);
+  int c; // current char
+
+  uint64_t kmer_d = 0;
+  for (uint8_t i = 0; i < klen; ++i) {
+    kmer_d = (kmer_d << 2) | (seq[i] < 4 ? seq[i] : rand() % 4);
+  }
+  // uint64_t rckmer_d = rc(kmer_d, klen);
+  // uint64_t ckmer_d = std::min(kmer_d, rckmer_d);
+
+  ++kcounts[kmer_d];
+  for (int p = klen; p < seql; ++p) {
+    c = seq[p];
+    kmer_d = lsappend(kmer_d, c, klen);
+    // rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
+    // ckmer_d = std::min(kmer_d, rckmer_d);
+    ++kcounts[kmer_d];
+  }
+  return kcounts;
 }
 
 // plain sequence to 0123-kmer counts
@@ -136,6 +171,9 @@ int main_align(int argc, char *argv[]) {
   graph.load();
   graph.load_fl();
 
+  const gbwtgraph::GBZ &gbz = graph.get_gbz();
+  const gbwt::FastLocate &fl = graph.get_fl();
+
   /** Load specific strings *****************************************/
   rt = realtime();
   std::vector<sfs_t> specific_strings = load_sfs(sfs_fn);
@@ -211,8 +249,13 @@ int main_align(int argc, char *argv[]) {
 
     std::vector<sfs_t> &cluster = clusters[cidx];
 
-    // if (cidx != 1600)
+    // if (cidx > 1000)
     //   continue;
+    // if (cidx != 54)
+    //   continue;
+
+    // std::cerr << "=== " << cidx << " ===" << std::endl;
+
     //   if ((cidx + 1) % 10000 == 0) {
     //     fprintf(stderr, "[M::%s] analyzed %ld/%ld clusters in %.3f sec\n",
     //             __func__, cidx + 1, clusters.size(), realtime() - rt);
@@ -226,124 +269,130 @@ int main_align(int argc, char *argv[]) {
     }
 
     const sfs_t &s0 = cluster.front();
+    // std::cerr << s0.sv << " " << s0.ev << std::endl;
+    // std::cerr << s0.skmer << " " << s0.ekmer << std::endl;
+    // std::cerr << graph.get_gfa_name(s0.sv >> 1) << ("+-"[s0.ev & 1]) << " "
+    //           << graph.get_gfa_name(s0.ev >> 1) << ("+-"[s0.ev & 1])
+    //           << std::endl;
 
-    std::map<uint64_t, uint64_t>
-        path_map; // from graph path ID with only strand to palss path ID
-
+    /** Extract paths from first specific string *********************/
     // XXX: is it enough to consider paths from s0 only?
+    std::vector<ph_t> paths;
     for (const uint64_t &p : s0.paths) {
-      path_map[p >> 4] = p;
-    }
 
-    // Get anchor information from first specific string
-    uint32_t sv = s0.sv;
-    uint32_t sv_inv = sv ^ 1;
-    uint32_t soff = s0.soff;
-    uint32_t soff_inv = graph.get_vertex_len(sv >> 1) - soff - 1;
-    uint32_t ev = s0.ev;
-    uint32_t ev_inv = ev ^ 1;
-    uint32_t eoff = s0.eoff;
-    uint32_t eoff_inv = graph.get_vertex_len(ev >> 1) - eoff - 1;
+      // Get anchor information from first specific string
+      uint32_t sv = ((p >> 1) & 1) ? (s0.sv ^ 1) : s0.sv;
+      uint32_t soff = ((p >> 1) & 1)
+                          ? (graph.get_vertex_len(sv >> 1) - s0.soff - 1)
+                          : s0.soff;
 
-    // Use first path as reference path, everything will be compared to its
-    // strand
-    uint64_t p0 = s0.paths.front();
-    bool p0_strand = (p0 >> 2) & 1;
-    bool p0_sinv = (p0 >> 1) & 1;
-    bool p0_einv = p0 & 1;
+      uint32_t ev = (p & 1) ? (s0.ev ^ 1) : s0.ev;
+      uint32_t eoff =
+          (p & 1) ? (graph.get_vertex_len(ev >> 1) - s0.eoff - 1) : s0.eoff;
 
-    // Find paths going through sv and ev (both versions)
-    std::vector<path_t> paths1, paths2;
+      gbwt::size_type seqid = p >> 4;
 
-    if (p0_strand) {
-      paths1 = graph.get_paths(p0_sinv ? sv_inv : sv, p0_einv ? ev_inv : ev, 1,
-                               false);
-      paths2 = graph.get_paths(p0_einv ? ev : ev_inv, p0_sinv ? sv : sv_inv, 1,
-                               false);
-    } else {
-      paths1 = graph.get_paths(p0_einv ? ev_inv : ev, p0_sinv ? sv_inv : sv, 1,
-                               false);
-      paths2 = graph.get_paths(p0_sinv ? sv : sv_inv, p0_einv ? ev : ev_inv, 1,
-                               false);
-    }
-    assert(paths1.size() > 0 || paths2.size() > 0);
+      std::vector<gbwt::size_type> intervals1 = fl.decompressSA(sv);
+      std::vector<gbwt::size_type> intervals2 = fl.decompressSA(ev);
 
-    std::vector<path_t> paths;
-    for (path_t &path : paths1) {
-      if (path_map.find(path.id) == path_map.end())
-        continue;
-      paths.push_back(path);
-      paths.back().strand = p0_strand;
-    }
-    for (path_t &path : paths2) {
-      if (path_map.find(path.id) == path_map.end())
-        continue;
-      paths.push_back(path);
-      paths.back().strand = !p0_strand;
-    }
-    paths1.clear();
-    paths2.clear();
+      for (size_t i = 0; i < intervals1.size(); ++i) {
+        gbwt::FastLocate::size_type int1 = intervals1[i];
+        gbwt::size_type seqid1 = fl.seqId(int1);
+        if (seqid1 != seqid)
+          continue;
 
-    // Keep only unique paths
-    std::sort(paths.begin(), paths.end());
-    paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
+        gbwt::size_type seqoff1 = fl.seqOffset(int1);
+        for (size_t j = 0; j < intervals2.size(); ++j) {
+          gbwt::FastLocate::size_type int2 = intervals2[j];
+          gbwt::size_type seqid2 = fl.seqId(int2);
+          if (seqid1 != seqid2)
+            continue;
 
-    // TODO: keep track of name paths
+          gbwt::size_type seqoff2 = fl.seqOffset(int2);
 
-    std::vector<std::vector<uint32_t>> path_kcounts(paths.size());
-    size_t pid = 0;
-    for (auto &path : paths) {
-      uint64_t p = path_map[path.id];
+          gbwt::edge_type position = std::make_pair(sv, i);
+          gbwt::edge_type position2 = std::make_pair(ev, j);
 
-      /*
-       * If on + strand, path goes from (v1, s1) to (v2, s2), on - strand, it
-       * goes from (v2, ~s2) to (v1, ~s1)
-       */
+          uint32_t local_sv = sv, local_ev = ev;
+          uint32_t local_soff = soff, local_eoff = eoff;
+          if (seqoff2 > seqoff1) {
+            std::swap(position, position2);
+            std::swap(local_sv, local_ev);
+            std::swap(local_soff, local_eoff);
+          } else if (seqoff2 == seqoff1 && local_soff > local_eoff) {
+            std::swap(local_soff, local_eoff);
+          }
 
-      uint32_t v1 = sv;
-      uint32_t off1 = soff;
-      if ((p >> 1) & 1) {
-        // need to invert first anchor
-        v1 = sv_inv;
-        off1 = soff_inv;
+          assert(fl.index->contains(position));
+          assert(fl.index->contains(position2));
+
+          // std::cerr << gbz.index.metadata.fullPath(seqid1 >> 1).sample_name
+          //           << " "
+          //           << gbz.index.metadata.fullPath(seqid1 >> 1).contig_name
+          //           << " " << graph.get_gfa_name(position.first >> 1)
+          //           << "+-"[position.first & 1] << ":" << local_soff << " "
+          //           << graph.get_gfa_name(position2.first >> 1)
+          //           << "+-"[position2.first & 1] << ":" << local_eoff
+          //           << std::endl;
+
+          ph_t path;
+          path.total_length = 0;
+          while (position.first != position2.first) {
+            // assert(position.first != 0);
+
+            // position.first is encoded with strand
+            path.vertices.push_back(position.first);
+            gbwtgraph::handle_t handle =
+                gbwtgraph::GBWTGraph::node_to_handle(position.first);
+            // view_type: in-place view of the sequence: (start, length)
+            gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
+
+            path.total_length += view.second;
+
+            if (position.first == local_sv) {
+              // cut prefix
+              path.skipped_prefix = local_soff;
+              path.sequence.append(view.first + local_soff,
+                                   view.second - local_soff);
+            } else
+              path.sequence.append(view.first, view.second);
+            position = gbz.index.LF(position);
+          }
+
+          assert(position.first == local_ev);
+          path.vertices.push_back(position.first);
+          gbwtgraph::handle_t handle =
+              gbwtgraph::GBWTGraph::node_to_handle(position.first);
+          gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
+          path.total_length += view.second;
+          if (position.first == local_sv) {
+            path.skipped_prefix = local_soff;
+            path.sequence.append(view.first + local_soff,
+                                 local_eoff + 1 - local_soff);
+            path.skipped_suffix = view.second - local_eoff - 1;
+          } else {
+            path.sequence.append(view.first, local_eoff + 1);
+            path.skipped_suffix = view.second - local_eoff - 1;
+          }
+
+          // std::cerr << gbwt::Path::is_reverse(seqid) << " " << path.sequence
+          //           << std::endl;
+
+          for (size_t i = 0; i < path.sequence.size(); ++i) {
+            path.sequence[i] = to_int[(uint8_t)path.sequence[i]] - 1;
+          }
+
+          path.kcounts =
+              count_kmers(path.sequence.c_str(), path.sequence.size(), cklen);
+
+          paths.push_back(path);
+        }
       }
-
-      uint32_t v2 = ev;
-      uint32_t off2 = eoff;
-      if (p & 1) {
-        // need to invert second anchor
-        v2 = ev_inv;
-        off2 = eoff_inv;
-      }
-
-      if (path.strand == 0) {
-        std::swap(v1, v2);
-        std::swap(off1, off2);
-      }
-
-      assert(v1 == path.vertices.front() && v2 == path.vertices.back());
-
-      // path start/end positions (both inclusive)
-      path.ps = off1;
-      path.pe = path.sequence.size() - graph.get_vertex_len(v2 >> 1) + off2;
-      path.l = path.sequence.size();
-      path.sequence = path.sequence.substr(path.ps, path.pe - path.ps + 1);
-
-      // XXX: sequence could be 0123 encoded here
-
-      path.reversed = p0_strand != path.strand;
-
-      // When needed, reverse path, count kmers (since we don't want to use
-      // canonical kmers), then reverse again
-      if (path.reversed)
-        path.sequence = reverseAndComplement(path.sequence);
-      path_kcounts[pid] =
-          count_kmers_plain(path.sequence.c_str(), path.sequence.size(), cklen);
-      if (path.reversed)
-        path.sequence = reverseAndComplement(path.sequence);
-      ++pid;
     }
-    /** *************************************************************/
+
+    // XXX: path sequences should all start/end in the same way (same "strand")
+
+    /** **************************************************************/
 
     // Consensus via abpoa
     int goods = 0;
@@ -365,17 +414,13 @@ int main_align(int argc, char *argv[]) {
       // XXX: seems we need ACGT just to count kmers from plain... we might
       // avoid it and keep the string 0123-encoded
 
-      for (int i = 0; i < cons_l; ++i)
-        cons_seq[i] = "ACGT"[(int)cons_seq[i]];
-      cons_seq[cons_l] = '\0';
-
       // === select best path ===
       std::vector<uint32_t> consensus_kcounts =
-          count_kmers_plain(cons_seq, cons_l, cklen);
+          count_kmers(cons_seq, cons_l, cklen);
       size_t best_p = -1U;
       float cd = 0, best_cd = INT64_MAX;
-      for (size_t i = 0; i < path_kcounts.size(); ++i) {
-        const auto &pkc = path_kcounts[i];
+      for (size_t i = 0; i < paths.size(); ++i) {
+        const auto &pkc = paths[i].kcounts;
         if (pkc.empty())
           continue;
         cd = canberra(consensus_kcounts, pkc);
@@ -386,32 +431,35 @@ int main_align(int argc, char *argv[]) {
       }
       assert(best_p != -1U);
 
-      const path_t &path = paths[best_p];
+      ph_t &path = paths[best_p];
 
-      std::string cseq_plain(cons_seq);
-      if (path.reversed)
-        cseq_plain = reverseAndComplement(cseq_plain);
-      std::string pseq_plain(path.sequence);
-      // go back to 0123
-      for (int i = 0; i < cons_l; ++i)
-        cons_seq[i] = to_int[(uint8_t)cseq_plain[i]] - 1;
-
-      char *path_seq = (char *)malloc(pseq_plain.size() + 1);
-      for (size_t i = 0; i < pseq_plain.size(); ++i)
-        path_seq[i] = to_int[(uint8_t)pseq_plain[i]] - 1;
-      path_seq[pseq_plain.size()] = '\0';
+      //   if (path.reversed)
+      //     cseq_plain = reverseAndComplement(cseq_plain);
 
       ksw_extz_t ez = ksws[tt];
       ksw_extd2_sse(0, cons_l, (uint8_t *)cons_seq, path.sequence.size(),
-                    (uint8_t *)path_seq, 5, mat, gapo, gape, gapo2, gape2, -1,
-                    -1, -1, 0, &ez);
+                    (uint8_t *)path.sequence.c_str(), 5, mat, gapo, gape, gapo2,
+                    gape2, -1, -1, -1, 0, &ez);
 
       /** OUTPUT *****************************************************/
+
+      // go back to ACGT
+      for (int i = 0; i < cons_l; ++i)
+        cons_seq[i] = "ACGT"[(int)cons_seq[i]];
+      cons_seq[cons_l] = '\0';
+
+      for (size_t i = 0; i < path.sequence.size(); ++i)
+        path.sequence[i] = "ACGT"[(int)path.sequence[i]];
+
+      bool clipped = false;
       if ((ez.cigar[0] & 0xf) != 0 || (ez.cigar[ez.n_cigar - 1] & 0xf) != 0) {
-        // clipped = 1;
-        free(path_seq);
+        clipped = true;
+        // free(path_seq);
         continue; // XXX: do we want these?
       }
+
+      // std::cerr << path.sequence << std::endl;
+      // std::cerr << cons_seq << std::endl;
 
       // Build CIGAR and difference string
       int opl;
@@ -435,14 +483,14 @@ int main_align(int argc, char *argv[]) {
           // M
           int l_tmp = 0;
           for (int j = 0; j < opl; ++j) {
-            if (cons_seq[cons_p + j] != path_seq[pseq_p + j]) {
+            if (cons_seq[cons_p + j] != path.sequence[pseq_p + j]) {
               if (l_tmp > 0) {
                 cs += ":" + std::to_string(l_tmp);
                 l_tmp = 0;
               }
               cs += "*";
-              cs += "ACGT"[(uint8_t)path_seq[pseq_p + j]];
-              cs += "ACGT"[(uint8_t)cons_seq[cons_p + j]];
+              cs += path.sequence[pseq_p + j];
+              cs += cons_seq[cons_p + j];
             } else {
               ++l_tmp;
             }
@@ -455,34 +503,18 @@ int main_align(int argc, char *argv[]) {
           pseq_p += opl;
         } else if ((ez.cigar[i] & 0xf) == 1) {
           // I
-          std::string sub(cons_seq + cons_p, opl);
-          for (size_t i = 0; i < sub.size(); ++i)
-            sub[i] = "ACGT"[(uint8_t)sub[i]];
-          cs += "+" + sub;
+          cs += "+" + std::string(cons_seq + cons_p, opl);
           cons_p += opl;
         } else if ((ez.cigar[i] & 0xf) == 2) {
           // D
-          std::string sub(path_seq + pseq_p, opl);
-          for (size_t i = 0; i < sub.size(); ++i)
-            sub[i] = "ACGT"[(uint8_t)sub[i]];
-          cs += "-" + sub;
+          cs += "-" + path.sequence.substr(pseq_p, opl);
           pseq_p += opl;
         } else {
-          fprintf(stderr,
-                  "Cluster %ld --- We shouldn't be here while parsing ksw "
-                  "cigar. Halting.\n",
-                  cidx);
+          std::cerr << "Cluster " << cidx << ": error in ksw2 CIGAR"
+                    << std::endl;
           exit(EXIT_FAILURE);
         }
       }
-
-      // Convert to ACGT
-      for (int i = 0; i < cons_l; ++i)
-        cons_seq[i] = "ACGT"[(uint8_t)cons_seq[i]];
-      cons_seq[cons_l] = '\0';
-      for (size_t i = 0; i < path.sequence.size(); ++i)
-        path_seq[i] = "ACGT"[(uint8_t)path_seq[i]];
-      path_seq[path.sequence.size()] = '\0';
 
       // Get offsets along path
       // since vertices might be split (if longer than 1024), the offset along
@@ -490,8 +522,7 @@ int main_align(int argc, char *argv[]) {
       gbwtgraph::handle_t handle =
           gbwtgraph::GBWTGraph::node_to_handle(path.vertices[0]);
       size_t xx = graph.get_gbz().graph.get_segment_offset(handle);
-      size_t ps = xx + path.ps;
-      size_t pe = ps + path.sequence.size();
+      size_t ps = xx + path.skipped_prefix;
 
       // Build and write GAF record
       GAFREC gr;
@@ -499,7 +530,7 @@ int main_align(int argc, char *argv[]) {
       gr.qlen = cons_l;
       gr.qs = 0;
       gr.qe = cons_l;
-      gr.strand = !path.reversed;
+      gr.strand = true; // TODO
       std::string segment_name = graph.get_gfa_name(path.vertices[0] >> 1);
       gr.path.push_back(((path.vertices[0] & 1) ? "<" : ">") + segment_name);
       std::string last_segment_name = segment_name;
@@ -511,23 +542,22 @@ int main_align(int argc, char *argv[]) {
           last_segment_name = segment_name;
         }
       }
-      gr.plen = path.l;
+      gr.plen = path.total_length;
       gr.ps = ps;
-      gr.pe = pe;
+      gr.pe = ps + path.sequence.size();
       gr.tot_res_matches = tot_res_matches;
       gr.tot_cigar_len = tot_cigar_len;
       gr.mapq = 60;
       gr.as = ez.score;
       gr.cigar = cigar;
       gr.cs = cs;
+      // gr.clipped = clipped;
       for (int x = 0; x < abc->clu_n_seq[sub_cidx]; ++x)
         gr.reads.push_back(cluster[abc->clu_read_ids[sub_cidx][x]].rname);
-      gr.qseq = cseq_plain;
-      gr.pseq = pseq_plain;
+      gr.qseq = cons_seq;
+      gr.pseq = path.sequence;
 
       gr.write();
-
-      free(path_seq);
     }
   }
 
