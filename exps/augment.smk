@@ -177,7 +177,7 @@ rule get_support_original:
         csv=pjoin(WD, "n{n}", "tables", "{t}.support.csv"),
     shell:
         """
-        python3 ./utils/get_support.py single {input.gfa} {input.gaf} {sample} > {output.csv}
+        python3 ./utils/get_support.py {input.gfa} {input.gaf} {sample} > {output.csv}
         """
 
 
@@ -189,7 +189,7 @@ rule get_support_mgc:
         csv=pjoin(WD, "n{n}", "tables", "mgc.support.csv"),
     shell:
         """
-        python3 ./utils/get_support.py single {input.gfa} {input.gaf} {sample} > {output.csv}
+        python3 ./utils/get_support.py {input.gfa} {input.gaf} {sample} > {output.csv}
         """
 
 
@@ -206,5 +206,5 @@ rule get_support_palss:
         csv=pjoin(WD, "n{n}", "tables", "palss-{t}.d{d}.w{w}.id{iden}.support.csv"),
     shell:
         """
-        python3 ./utils/get_support.py single {input.gfa} {input.gaf} {sample} > {output.csv}
+        python3 ./utils/get_support.py {input.gfa} {input.gaf} {sample} > {output.csv}
         """

@@ -2,9 +2,19 @@ import sys
 import os
 import glob
 import re
+from collections import Counter
+
+regex = re.compile("([0-9]+[=XID])")
+
+
+def parse_cigar(cigar):
+    tokens = regex.split(cigar)
+    tokens = [(int(x[:-1]), x[-1]) for x in tokens if x != ""]
+    return tokens
 
 
 def get_novel_vertices(gfa_fn, sample=""):
+    allV = {}
     otherV = set()
     sampleV = set()
     for line in open(gfa_fn):
@@ -36,13 +46,15 @@ def get_novel_vertices(gfa_fn, sample=""):
             _, v, seq, *_ = line.strip("\n").split("\t")
             v = int(v)
 
+            allV[v] = len(seq)
+
             if sample == "":
                 if v not in otherV:
-                    nV[v] = [0, len(seq)]
+                    nV[v] = []
             else:
                 if v in sampleV and v not in otherV:
-                    nV[v] = [0, len(seq)]
-    return nV
+                    nV[v] = []
+    return allV, nV
 
 
 def get_novel_edges(gfa_fn, nV, sample=""):
@@ -87,12 +99,12 @@ def get_novel_edges(gfa_fn, nV, sample=""):
     return nE
 
 
-def main_single():
+def main():
     gfa_fn = sys.argv[1]
     gaf_fn = sys.argv[2]
     sample = sys.argv[3]
 
-    print("graph,augmentation,n,w,d,iden,kind,v,supp,l")
+    print("graph,augmentation,n,w,d,iden,kind,v,l,supp,qual")
 
     n = -1
     run = ""
@@ -102,6 +114,7 @@ def main_single():
     d = -1
 
     fold = gfa_fn.split("/")[-2]
+    vertices, novel_vertices = {}, {}
     if "palss" in fold:
         n = int(gfa_fn.split("/")[-3][1:])
         run = "oneout" if "oneout" in gfa_fn else "full"
@@ -111,7 +124,7 @@ def main_single():
         w = int(fn.split(".")[-4][1:])
         d = float(fn.split(".")[-6][1:] + "." + fn.split(".")[-5])
 
-        novel_vertices = get_novel_vertices(gfa_fn)
+        vertices, novel_vertices = get_novel_vertices(gfa_fn)
         # novel_edges = get_novel_edges(gfa_fn, novel_vertices)
     else:
         n = int(gfa_fn.split("/")[-2][1:])
@@ -119,24 +132,85 @@ def main_single():
         augmentation = gfa_fn.split("/")[-1][:-4].split("-")[-1]
         assert augmentation in ["full", "oneout", "mgcactus"]
 
-        novel_vertices = get_novel_vertices(gfa_fn, sample)
+        vertices, novel_vertices = get_novel_vertices(gfa_fn, sample)
         # novel_edges = get_novel_edges(gfa_fn, sample)
 
     for line in open(gaf_fn):
         line = line.strip("\n").split("\t")
         path = line[5]
         path = [int(x) for x in re.split("[<>]", path[1:])]
+        ps, pe = int(line[7]), int(line[8])
 
-        v1 = path[0]
-        if v1 in novel_vertices:
-            novel_vertices[v1][0] += 1
-        for v1, v2 in zip(path[:-1], path[1:]):
-            if v2 in novel_vertices:
-                novel_vertices[v2][0] += 1
-            # e = (min(v1, v2), max(v1, v2))
-            # if e in novel_edges:
-            #     novel_edges[e] += 1
-    for v, (supp, length) in novel_vertices.items():
+        cigar = line[16].split(":")[-1]
+        cigar = parse_cigar(cigar)
+        ecigar = []
+        for opl, op in cigar:
+            ecigar += [op] * opl
+        # print(ecigar)
+
+        cp = 0  # where we are along the extended cigar
+        plen = 0  # total path length
+
+        v = path[0]
+        plen += vertices[v]
+        l = vertices[v] - ps  # first vertex might be cut
+        if len(path) == 1:
+            l -= vertices[v] - pe  # - 1 + 1, pe is not included
+        local_ecigar = []
+        vbases = 0
+        while vbases < l:
+            local_ecigar.append(ecigar[cp])
+            if ecigar[cp] != "I":
+                vbases += 1
+            cp += 1
+
+        if v in novel_vertices:
+            # novel_vertices[v] += 1
+            op_counts = Counter(local_ecigar)
+            novel_vertices[v].append(
+                (op_counts["="], op_counts["X"] + op_counts["I"] + op_counts["D"])
+            )
+
+        for v in path[1:-1]:
+            l = vertices[v]
+            plen += vertices[v]
+            local_ecigar = []
+            vbases = 0
+            while vbases < l:
+                local_ecigar.append(ecigar[cp])
+                if ecigar[cp] != "I":
+                    vbases += 1
+                cp += 1
+
+            if v in novel_vertices:
+                op_counts = Counter(local_ecigar)
+                novel_vertices[v].append(
+                    (op_counts["="], op_counts["X"] + op_counts["I"] + op_counts["D"])
+                )
+
+        if len(path) > 1:
+            v = path[-1]
+            l = pe - plen  # last vertex might be cut
+
+            local_ecigar = []
+            vbases = 0
+            while vbases < l:
+                local_ecigar.append(ecigar[cp])
+                if ecigar[cp] != "I":
+                    vbases += 1
+                cp += 1
+
+            if v in novel_vertices:
+                op_counts = Counter(local_ecigar)
+                novel_vertices[v].append(
+                    (op_counts["="], op_counts["X"] + op_counts["I"] + op_counts["D"])
+                )
+
+    for v, info in novel_vertices.items():
+        q = -1
+        supp = len(info)
+        if supp > 0:
+            q = sum([x / (x + y) for x, y in info]) / len(info)
         print(
             run,
             augmentation,
@@ -146,8 +220,9 @@ def main_single():
             i,
             "vertex",
             v,
+            vertices[v],
             supp,
-            length,
+            q,
             sep=",",
         )
     # for (v1, v2), supp in novel_edges.items():
@@ -166,143 +241,5 @@ def main_single():
     #     )
 
 
-def main_all():
-    WD = sys.argv[1]
-    sample = sys.argv[2]
-
-    print("graph,augmentation,n,w,d,iden,kind,v,supp,l")
-
-    # PALSS pangenomes
-    # pangenome-augmented.d0.1.w2.1.id1.1.gfa
-    for gfa_fn in glob.glob(
-        os.path.join(WD, "n*", "palss*-*", "pangenome-augmented.d*.*.w*.id*.*.gfa")
-    ):
-        print(gfa_fn, file=sys.stderr)
-        n = int(gfa_fn.split("/")[-3][1:])
-        run = "oneout" if "oneout" in gfa_fn else "full"
-        fn = gfa_fn.split("/")[-1]
-        i = float(fn.split(".")[-3][2:] + "." + fn.split(".")[-2])
-        w = int(fn.split(".")[-4][1:])
-        d = float(fn.split(".")[-6][1:] + "." + fn.split(".")[-5])
-
-        novel_vertices = get_novel_vertices(gfa_fn)
-        # novel_edges = get_novel_edges(gfa_fn, novel_vertices)
-
-        gaf_fn = os.path.join(
-            WD, f"n{n}", "truecontigs-aln", f"palss-{run}.d{d}.w{w}.id{i}.gaf"
-        )
-
-        for line in open(gaf_fn):
-            line = line.strip("\n").split("\t")
-            path = line[5]
-            path = [int(x) for x in re.split("[<>]", path[1:])]
-
-            v1 = path[0]
-            if v1 in novel_vertices:
-                novel_vertices[v1][0] += 1
-            for v1, v2 in zip(path[:-1], path[1:]):
-                if v2 in novel_vertices:
-                    novel_vertices[v2][0] += 1
-                # e = (min(v1, v2), max(v1, v2))
-                # if e in novel_edges:
-                #     novel_edges[e] += 1
-        for v, (supp, length) in novel_vertices.items():
-            print(
-                run,
-                f"palss",
-                n,
-                w,
-                d,
-                i,
-                "vertex",
-                v,
-                supp,
-                length,
-                sep=",",
-                flush=False,
-            )
-        # for (v1, v2), supp in novel_edges.items():
-        #     print(
-        #         run,
-        #         f"palss{pv}",
-        #         n,
-        #         w,
-        #         d,
-        #         i,
-        #         "edge",
-        #         f"{v1}.{v2}",
-        #         supp,
-        #         -1,
-        #         sep=",",
-        #         flush=False,
-        #     )
-        sys.stdout.flush()
-
-    # Other pangenomes
-    for gfa_fn in glob.glob(os.path.join(WD, "n*", "pangenome-*.gfa")):
-        print(gfa_fn, file=sys.stderr)
-        n = int(gfa_fn.split("/")[-2][1:])
-        run = gfa_fn.split("/")[-1][:-4].split("-")[-1]
-        if run not in ["full", "mgcactus"]:
-            continue
-
-        novel_vertices = get_novel_vertices(gfa_fn, sample)
-        # novel_edges = get_novel_edges(gfa_fn, sample)
-
-        fn = f"{run}.gaf"
-        if run != "mgcactus":
-            fn = f"original-{run}.gaf"
-        gaf_fn = os.path.join(WD, f"n{n}", "truecontigs-aln", fn)
-        for line in open(gaf_fn):
-            line = line.strip("\n").split("\t")
-            path = line[5]
-            path = [int(x) for x in re.split("[<>]", path[1:])]
-
-            v1 = path[0]
-            if v1 in novel_vertices:
-                novel_vertices[v1][0] += 1
-            for v1, v2 in zip(path[:-1], path[1:]):
-                if v2 in novel_vertices:
-                    novel_vertices[v2][0] += 1
-                # e = (min(v1, v2), max(v1, v2))
-                # if e in novel_edges:
-                #     novel_edges[e] += 1
-        for v, (supp, length) in novel_vertices.items():
-            print(
-                "oneout",
-                run,
-                n,
-                -1,
-                -1,
-                -1,
-                "vertex",
-                v,
-                supp,
-                length,
-                sep=",",
-                flush=False,
-            )
-        # for (v1, v2), supp in novel_edges.items():
-        #     print(
-        #         "oneout",
-        #         run,
-        #         n,
-        #         -1,
-        #         -1,
-        #         -1,
-        #         "edge",
-        #         f"{v1}.{v2}",
-        #         supp,
-        #         -1,
-        #         sep=",",
-        #         flush=False,
-        #     )
-        sys.stdout.flush()
-
-
 if __name__ == "__main__":
-    mode = sys.argv.pop(1)
-    if mode == "single":
-        main_single()
-    else:
-        main_all()
+    main()
