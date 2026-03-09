@@ -17,10 +17,10 @@ rule align_consensuses_to_haplotypes:
     input:
         hfa=pjoin(WD, sample + "-haps.fa"),
         hsa=pjoin(WD, sample + "-haps.fa.sa"),
-        qfa=pjoin(WD, "n{n}", "palss{pv}-{t}", "resulting-consensus.d{d}.w{w}.fa"),
+        qfa=pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.fa"),
     output:
         bam=pjoin(
-            WD, "n{n}", "palss{pv}-{t}", "resulting-consensus.d{d}.w{w}.to-contigs.bam"
+            WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.to-contigs.bam"
         ),
     conda:
         "../envs/bwa.yaml"

@@ -27,6 +27,7 @@ coverage = config["coverage"] / 2  # coverage per haplotype
 
 Ns = config["ns"]
 Ds = config["ds"]
+Is = config["is"]
 Ws = [2]  # , 3]
 
 
@@ -87,15 +88,14 @@ rule run:
             t=["full", "oneout"],
             d=Ds,
             w=Ws,
-            iden=[0.0, 0.8, 0.9, 0.97, 1.1],
+            iden=Is,
         ),
         #
         # expand(
-        #     pjoin(WD, "n{n}", "palss{pv}-{t}", "specific_strings.d{d}.bam"),
+        #     pjoin(WD, "n{n}", "palss-{t}", "specific_strings.d{d}.bam"),
         #     n=Ns,
         #     d=Ds,
         #     t=["full", "oneout"],
-        #     pv=[0, 1],
         # ),
         #
         # PALSS consensus to real contigs
@@ -103,14 +103,13 @@ rule run:
             pjoin(
                 WD,
                 "n{n}",
-                "palss{pv}-{t}",
+                "palss-{t}",
                 "resulting-consensus.d{d}.w{w}.to-contigs.bam",
             ),
             n=Ns,
             t=["full", "oneout"],
             d=Ds,
             w=Ws,
-            pv=[0, 1],
         ),
         # # PALSS unanchored contigs to both graphs
         # expand(
@@ -137,7 +136,75 @@ rule run:
             t=["full", "oneout"],
             d=Ds,
             w=Ws,
-            iden=[0.0, 0.8, 0.9, 0.97, 1.1],
+            iden=Is,
         ),
         expand(pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.gaf"), n=Ns),
         pjoin(WD, sample + "-haps.50k-overlapping.bam"),
+        #
+        pjoin(WD, "support.csv"),
+
+
+rule get_support:
+    input:
+        expand(
+            pjoin(WD, "n{n}", "tables", "{t}.support.csv"),
+            n=Ns,
+            t=["full", "oneout"],
+        ),
+        expand(pjoin(WD, "n{n}", "tables", "mgc.support.csv"), n=Ns),
+        expand(
+            pjoin(WD, "n{n}", "tables", "palss-{t}.d{d}.w{w}.id{iden}.support.csv"),
+            n=Ns,
+            t=["full", "oneout"],
+            d=Ds,
+            w=Ws,
+            iden=Is,
+        ),
+    output:
+        pjoin(WD, "support.csv"),
+    shell:
+        """
+        head -1 {input[0]} > {output}
+        for i in {input} ; do sed '1d' $i ; done >> {output}
+        """
+
+
+rule get_support_original:
+    input:
+        gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "original-{t}.gaf"),
+    output:
+        csv=pjoin(WD, "n{n}", "tables", "{t}.support.csv"),
+    shell:
+        """
+        python3 ./utils/get_support.py single {input.gfa} {input.gaf} {sample} > {output.csv}
+        """
+
+
+rule get_support_mgc:
+    input:
+        gfa=pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.gaf"),
+    output:
+        csv=pjoin(WD, "n{n}", "tables", "mgc.support.csv"),
+    shell:
+        """
+        python3 ./utils/get_support.py single {input.gfa} {input.gaf} {sample} > {output.csv}
+        """
+
+
+rule get_support_palss:
+    input:
+        gfa=pjoin(
+            WD,
+            "n{n}",
+            "palss-{t}",
+            "pangenome-augmented.d{d}.w{w}.id{iden}.gfa",
+        ),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "palss-{t}.d{d}.w{w}.id{iden}.gaf"),
+    output:
+        csv=pjoin(WD, "n{n}", "tables", "palss-{t}.d{d}.w{w}.id{iden}.support.csv"),
+    shell:
+        """
+        python3 ./utils/get_support.py single {input.gfa} {input.gaf} {sample} > {output.csv}
+        """

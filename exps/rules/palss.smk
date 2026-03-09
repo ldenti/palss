@@ -130,7 +130,7 @@ rule gaf2fa:
     input:
         gaf=rules.palss_augment.output.gaf,
     output:
-        fa=pjoin(WD, "n{n}", "palss{pv}-{t}", "resulting-consensus.d{d}.w{w}.fa"),
+        fa=pjoin(WD, "n{n}", "palss-{t}", "resulting-consensus.d{d}.w{w}.fa"),
     shell:
         """
         cut -f1,17 {input.gaf} | sed "s/^/>/" | sed "s/\\tqs:Z:/\\n/g" > {output.fa}

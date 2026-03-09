@@ -48,20 +48,22 @@ rule install_minigraphcactus:
         pjoin(WD, "mgc-src", "cactus_env", "bin", "activate"),
     params:
         d=pjoin(WD, "mgc-src"),
+    # conda:
+    #     "../envs/mgc.yaml"
     shell:
         """
         rm -rf {params.d}
         git clone --recursive https://github.com/ComparativeGenomicsToolkit/cactus.git {params.d}
         cd {params.d}
         git checkout v3.1.4
-        virtualenv -p python3.9 cactus_env
+        virtualenv -p python3 cactus_env
         echo "export PATH=$(pwd)/bin:\$PATH" >> cactus_env/bin/activate
         echo "export PYTHONPATH=$(pwd)/lib:\$PYTHONPATH" >> cactus_env/bin/activate
         set +u; source cactus_env/bin/activate; set -u
         python3 -m pip install -U setuptools pip wheel
         python3 -m pip install -U .
         python3 -m pip install -U -r ./toil-requirement.txt
-        sed -i "s/base_singularity_call += \['-u', /base_singularity_call += \[/g" {params.d}/cactus_env/lib64/python3.9/site-packages/cactus/shared/common.py
+        sed -i "s/base_singularity_call += \['-u', /base_singularity_call += \[/g" {params.d}/cactus_env/lib/python3.12/site-packages/cactus/shared/common.py
         """
 
 
@@ -77,6 +79,8 @@ rule minigraphcactus:
     params:
         prefix=pjoin(WD, "n{n}", "mgcactus"),
     threads: workflow.cores
+    # conda:
+    #     "../envs/mgc.yaml"
     log:
         time=pjoin(WD, "times", "n{n}", "mgcactus.time"),
     shell:

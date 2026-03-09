@@ -23,6 +23,8 @@ def get_novel_vertices(gfa_fn, sample=""):
             if is_sample:
                 sampleV.add(v)
             else:
+                if fields[1].startswith("new.v"):
+                    continue
                 otherV.add(v)
 
     if sample == "":
@@ -85,31 +87,109 @@ def get_novel_edges(gfa_fn, nV, sample=""):
     return nE
 
 
-def main():
+def main_single():
+    gfa_fn = sys.argv[1]
+    gaf_fn = sys.argv[2]
+    sample = sys.argv[3]
+
+    print("graph,augmentation,n,w,d,iden,kind,v,supp,l")
+
+    n = -1
+    run = ""
+    augmentation = ""
+    i = -1
+    w = -1
+    d = -1
+
+    fold = gfa_fn.split("/")[-2]
+    if "palss" in fold:
+        n = int(gfa_fn.split("/")[-3][1:])
+        run = "oneout" if "oneout" in gfa_fn else "full"
+        augmentation = "palss"
+        fn = gfa_fn.split("/")[-1]
+        i = float(fn.split(".")[-3][2:] + "." + fn.split(".")[-2])
+        w = int(fn.split(".")[-4][1:])
+        d = float(fn.split(".")[-6][1:] + "." + fn.split(".")[-5])
+
+        novel_vertices = get_novel_vertices(gfa_fn)
+        # novel_edges = get_novel_edges(gfa_fn, novel_vertices)
+    else:
+        n = int(gfa_fn.split("/")[-2][1:])
+        run = "oneout"
+        augmentation = gfa_fn.split("/")[-1][:-4].split("-")[-1]
+        assert augmentation in ["full", "oneout", "mgcactus"]
+
+        novel_vertices = get_novel_vertices(gfa_fn, sample)
+        # novel_edges = get_novel_edges(gfa_fn, sample)
+
+    for line in open(gaf_fn):
+        line = line.strip("\n").split("\t")
+        path = line[5]
+        path = [int(x) for x in re.split("[<>]", path[1:])]
+
+        v1 = path[0]
+        if v1 in novel_vertices:
+            novel_vertices[v1][0] += 1
+        for v1, v2 in zip(path[:-1], path[1:]):
+            if v2 in novel_vertices:
+                novel_vertices[v2][0] += 1
+            # e = (min(v1, v2), max(v1, v2))
+            # if e in novel_edges:
+            #     novel_edges[e] += 1
+    for v, (supp, length) in novel_vertices.items():
+        print(
+            run,
+            augmentation,
+            n,
+            w,
+            d,
+            i,
+            "vertex",
+            v,
+            supp,
+            length,
+            sep=",",
+        )
+    # for (v1, v2), supp in novel_edges.items():
+    #     print(
+    #         run,
+    #         f"palss{pv}",
+    #         n,
+    #         w,
+    #         d,
+    #         i,
+    #         "edge",
+    #         f"{v1}.{v2}",
+    #         supp,
+    #         -1,
+    #         sep=",",
+    #     )
+
+
+def main_all():
     WD = sys.argv[1]
     sample = sys.argv[2]
 
-    print("graph,augmentation,n,w,d,kind,v,supp,l")
+    print("graph,augmentation,n,w,d,iden,kind,v,supp,l")
 
     # PALSS pangenomes
     # pangenome-augmented.d0.1.w2.1.id1.1.gfa
     for gfa_fn in glob.glob(
-        os.path.join(WD, "n*", "palss*-*", "pangenome-augmented.d*.*.w*.*.id*.*.gfa")
+        os.path.join(WD, "n*", "palss*-*", "pangenome-augmented.d*.*.w*.id*.*.gfa")
     ):
         print(gfa_fn, file=sys.stderr)
         n = int(gfa_fn.split("/")[-3][1:])
         run = "oneout" if "oneout" in gfa_fn else "full"
         fn = gfa_fn.split("/")[-1]
         i = float(fn.split(".")[-3][2:] + "." + fn.split(".")[-2])
-        cut = fn.split(".")[-4]
-        w = int(fn.split(".")[-5][1:])
-        d = float(fn.split(".")[-7][1:] + "." + fn.split(".")[-6])
+        w = int(fn.split(".")[-4][1:])
+        d = float(fn.split(".")[-6][1:] + "." + fn.split(".")[-5])
 
         novel_vertices = get_novel_vertices(gfa_fn)
         # novel_edges = get_novel_edges(gfa_fn, novel_vertices)
 
         gaf_fn = os.path.join(
-            WD, f"n{n}", "truecontigs-aln", f"palss-{run}.d{d}.w{w}.{cut}.id{i}.gaf"
+            WD, f"n{n}", "truecontigs-aln", f"palss-{run}.d{d}.w{w}.id{i}.gaf"
         )
 
         for line in open(gaf_fn):
@@ -133,7 +213,6 @@ def main():
                 n,
                 w,
                 d,
-                cut,
                 i,
                 "vertex",
                 v,
@@ -149,7 +228,6 @@ def main():
         #         n,
         #         w,
         #         d,
-        #         cut,
         #         i,
         #         "edge",
         #         f"{v1}.{v2}",
@@ -197,7 +275,6 @@ def main():
                 -1,
                 -1,
                 -1,
-                -1,
                 "vertex",
                 v,
                 supp,
@@ -213,7 +290,6 @@ def main():
         #         -1,
         #         -1,
         #         -1,
-        #         -1,
         #         "edge",
         #         f"{v1}.{v2}",
         #         supp,
@@ -225,4 +301,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    mode = sys.argv.pop(1)
+    if mode == "single":
+        main_single()
+    else:
+        main_all()

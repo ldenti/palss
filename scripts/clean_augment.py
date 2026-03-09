@@ -361,6 +361,27 @@ def post():
     )
 
     dump_gfa(gfa_fn, np_reads_support, v_to_remove, e_to_remove)
+    for i, (v, Cs) in enumerate(newv2cons.items()):
+        if v not in v_to_remove:
+            print(
+                "P",
+                f"{PREFIX}.v{i}.{v}",
+                f"{v}+",
+                "*",
+                "CS:Z:" + ",".join([c for c in Cs]),
+                sep="\t",
+            )
+    # for i, (e, Cs) in enumerate(newE.items()):
+    #     if e not in e_to_remove:
+    #         v1, v2 = e
+    #         print(
+    #             "P",
+    #             f"{PREFIX}.e{i}",
+    #             f"{v1}+,{v2}+",
+    #             "*",
+    #             "CS:Z:" + ",".join([c for c in Cs]),
+    #             sep="\t",
+    #         )
 
     # Get vertices information
     vseqs = {}
