@@ -281,14 +281,19 @@ int main_align(int argc, char *argv[]) {
     for (const uint64_t &p : s0.paths) {
 
       // Get anchor information from first specific string
-      uint32_t sv = ((p >> 1) & 1) ? (s0.sv ^ 1) : s0.sv;
-      uint32_t soff = ((p >> 1) & 1)
-                          ? (graph.get_vertex_len(sv >> 1) - s0.soff - 1)
-                          : s0.soff;
+      uint32_t sv = s0.sv;
+      uint32_t soff = s0.soff;
+      if ((p >> 1) & 1) {
+        sv = s0.sv ^ 1;
+        soff = graph.get_vertex_len(sv >> 1) - s0.soff - 1;
+      }
 
-      uint32_t ev = (p & 1) ? (s0.ev ^ 1) : s0.ev;
-      uint32_t eoff =
-          (p & 1) ? (graph.get_vertex_len(ev >> 1) - s0.eoff - 1) : s0.eoff;
+      uint32_t ev = s0.ev;
+      uint32_t eoff = s0.eoff;
+      if (p & 1) {
+        ev = s0.ev ^ 1;
+        eoff = graph.get_vertex_len(ev >> 1) - s0.eoff - 1;
+      }
 
       gbwt::size_type seqid = p >> 4;
 
@@ -312,6 +317,16 @@ int main_align(int argc, char *argv[]) {
 
           gbwt::edge_type position = std::make_pair(sv, i);
           gbwt::edge_type position2 = std::make_pair(ev, j);
+
+          if (sv == ev && seqoff2 != seqoff1) {
+            // if we have cycles (e.g., same vertex more times along the same
+            // path), we might end up with the same vertex but different offset
+            // along the path and this will break everything
+            continue;
+          }
+          // XXX: what about cycles when sv != ev?
+          // We should be able to consider only good pairs using bits in the
+          // path identifier
 
           uint32_t local_sv = sv, local_ev = ev;
           uint32_t local_soff = soff, local_eoff = eoff;
