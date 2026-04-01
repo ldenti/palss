@@ -146,12 +146,16 @@ int main_align(int argc, char *argv[]) {
 
   int cklen = 5;
   int nth = 4;
+  size_t max_plen = 100000;
 
   int _c;
-  while ((_c = getopt(argc, argv, "@:h")) != -1) {
+  while ((_c = getopt(argc, argv, "@:m:h")) != -1) {
     switch (_c) {
     case '@':
       nth = std::stoi(optarg);
+      break;
+    case 'm':
+      max_plen = std::stoi(optarg);
       break;
     case 'h':
       fprintf(stderr, "%s", ALIGN_USAGE_MESSAGE);
@@ -251,7 +255,7 @@ int main_align(int argc, char *argv[]) {
 
     // if (cidx > 1000)
     //   continue;
-    // if (cidx != 54)
+    // if (cidx != 30337)
     //   continue;
 
     // std::cerr << "=== " << cidx << " ===" << std::endl;
@@ -407,7 +411,9 @@ int main_align(int argc, char *argv[]) {
           path.kcounts =
               count_kmers(path.sequence.c_str(), path.sequence.size(), cklen);
 
-          paths.push_back(path);
+          if (path.sequence.size() <= max_plen)
+            // XXX: do we want this?
+            paths.push_back(path);
         }
       }
     }
@@ -461,6 +467,10 @@ int main_align(int argc, char *argv[]) {
       //   if (path.reversed)
       //     cseq_plain = reverseAndComplement(cseq_plain);
 
+      // XXX: path longer are actually filtered out when computing them above
+      // if (path.sequence.size() > max_plen)
+      //   continue;
+
       ksw_extz_t ez = ksws[tt];
       ksw_extd2_sse(0, cons_l, (uint8_t *)cons_seq, path.sequence.size(),
                     (uint8_t *)path.sequence.c_str(), 5, mat, gapo, gape, gapo2,
@@ -476,9 +486,9 @@ int main_align(int argc, char *argv[]) {
       for (size_t i = 0; i < path.sequence.size(); ++i)
         path.sequence[i] = "ACGT"[(int)path.sequence[i]];
 
-      bool clipped = false;
+      // bool clipped = false;
       if ((ez.cigar[0] & 0xf) != 0 || (ez.cigar[ez.n_cigar - 1] & 0xf) != 0) {
-        clipped = true;
+        // clipped = true;
         // free(path_seq);
         continue; // XXX: do we want these?
       }
