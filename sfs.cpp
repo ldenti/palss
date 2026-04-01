@@ -16,10 +16,15 @@ std::string sfs_to_string(const sfs_t &s, const std::string &v1,
       << s.s + s.l << "\t";
   if (s.flag == 0) {
     oss << s.sv << "\t" << s.ev << "\t" << s.soff << "\t" << s.eoff << "\t"
-        << v1 << "\t" << v2 << "\t" << s.skmer << "\t" << s.ekmer << "\t";
-    oss << s.paths[0];
-    for (size_t p = 1; p < s.paths.size(); ++p)
-      oss << "," << s.paths[p];
+        << (v1 == "" ? "." : v1) << "\t" << (v2 == "" ? "." : v2) << "\t"
+        << s.skmer << "\t" << s.ekmer << "\t";
+    if (s.paths.size() == 0) {
+      oss << ".";
+    } else {
+      oss << s.paths[0];
+      for (size_t p = 1; p < s.paths.size(); ++p)
+        oss << "," << s.paths[p];
+    }
     oss << "\t" << s.plain_seq;
   } else {
     oss << "."
