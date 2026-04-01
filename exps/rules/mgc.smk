@@ -86,5 +86,5 @@ rule minigraphcactus:
     shell:
         """
         set +u; source {input.venv}; set -u
-        /usr/bin/time -vo {log.time} bash ./utils/run_mgcactus.sh {input.ref} {input.gbz} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} > {output.gfa}
+        /usr/bin/time -vo {log.time} bash ./utils/run_mgcactus.sh {input.ref} {input.gbz} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} | vg mod --unchop - > {output.gfa}
         """

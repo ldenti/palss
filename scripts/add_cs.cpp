@@ -176,7 +176,11 @@ int main(int argc, char *argv[]) {
     assert(tokens[4] == "+");
     std::string path = tokens[5];
     size_t ps = std::stoi(tokens[7]), pe = std::stoi(tokens[8]);
-    std::string cigar(tokens[16], 5);
+
+    int nf = 16;
+    if (tokens[nf].compare(0, 2, "cg") != 0)
+      nf = 18;
+    std::string cigar(tokens[nf], 5);
 
     std::string cseq = sequences[qname].substr(qs, qe - qs);
 

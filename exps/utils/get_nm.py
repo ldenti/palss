@@ -38,7 +38,7 @@ def parse_bam(bam_fn, Ns=[-1]):
             continue
         nm = aln.get_tag("NM") if aln.has_tag("NM") else -1
         for n in Ns:
-            print(fn, "reference", n, -1, -1, -1, aln.query_name, 1, nm, sep=",")
+            print(fn, n, aln.query_name, 1, nm, sep=",")
 
 
 def main():
@@ -46,33 +46,36 @@ def main():
     sample = sys.argv[2]
 
     Ns = set()
-    print("fn,graph,n,w,d,iden,read,cov,nm")
+    print("fn,n,read,cov,nm")
     for gaf_fn in glob.glob(os.path.join(WD, "n*", "truecontigs-aln", "*.gaf")):
         print(gaf_fn, file=sys.stderr)
         n = int(gaf_fn.split("/")[-3][1:])
         Ns.add(n)
         fn = gaf_fn.split("/")[-1]
-        w, d, i = -1, -1, -1
-        graph = ""
-        if "original" in fn:
-            graph = "original"
-        elif "mgcactus" in fn:
-            graph = "mgcactus"
-        else:
-            graph = "palss-"
-            graph += "full" if "full" in fn else "oneout"
-            # palss-full.d0.1.w2.id0.9.gaf
-            i = float(fn.split(".")[-3][2:] + "." + fn.split(".")[-2])
-            w = int(fn.split(".")[-4][1:])
-            d = float(fn.split(".")[-6][1:] + "." + fn.split(".")[-5])
+        # w, d, i = -1, -1, -1
+        # refine = "."
+        # graph = ""
+        # if "original" in fn:
+        #     graph = "original"
+        # elif "mgcactus" in fn:
+        #     graph = "mgcactus"
+        # else:
+        #     graph = "palss-"
+        #     graph += "full" if "full" in fn else "oneout"
+        #     # palss-full.d0.1.w2.graphaligner.id1.1.gaf
+        #     i = float(fn.split(".")[-3][2:] + "." + fn.split(".")[-2])
+        #     refine = fn.split(".")[-4]
+        #     w = int(fn.split(".")[-5][1:])
+        #     d = float(fn.split(".")[-7][1:] + "." + fn.split(".")[-6])
 
         nms = parse_gaf(gaf_fn)
         for qidx, (c, nm) in nms.items():
-            print(fn, graph, n, w, d, i, qidx, c, nm, sep=",", flush=False)
+            print(fn, n, qidx, c, nm, sep=",", flush=False)
         sys.stdout.flush()
 
-    parse_bam(os.path.join(WD, f"{sample}-haps.50k-overlapping.bam"), Ns)
-    # parse_bam(os.path.join(WD, f"{sample}-reads.tohaps.bam"), Ns)
+    for bam_fn in glob.glob(os.path.join(WD, f"*-haps.*-overlapping.bam")):
+        parse_bam(bam_fn, Ns)
+        # parse_bam(os.path.join(WD, f"{sample}-reads.tohaps.bam"), Ns)
 
 
 if __name__ == "__main__":

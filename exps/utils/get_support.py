@@ -1,4 +1,5 @@
 import sys
+import argparse
 import os
 import glob
 import re
@@ -13,7 +14,7 @@ def parse_cigar(cigar):
     return tokens
 
 
-def get_novel_vertices(gfa_fn, sample=""):
+def get_novel_vertices(gfa_fn, sample):
     allV = {}
     otherV = set()
     sampleV = set()
@@ -100,42 +101,19 @@ def get_novel_edges(gfa_fn, nV, sample=""):
 
 
 def main():
-    gfa_fn = sys.argv[1]
-    gaf_fn = sys.argv[2]
-    sample = sys.argv[3]
+    parser = argparse.ArgumentParser()
 
-    print("graph,augmentation,n,w,d,iden,kind,v,l,supp,qual")
+    parser.add_argument("GFA")
+    parser.add_argument("GAF")
+    parser.add_argument("-n", type=int, required=True)
+    parser.add_argument("-s", type=str, default="")
+    args = parser.parse_args()
 
-    n = -1
-    run = ""
-    augmentation = ""
-    i = -1
-    w = -1
-    d = -1
+    vertices, novel_vertices = get_novel_vertices(args.GFA, args.s)
+    # novel_edges = get_novel_edges(gfa_fn, novel_vertices)
 
-    fold = gfa_fn.split("/")[-2]
-    vertices, novel_vertices = {}, {}
-    if "palss" in fold:
-        n = int(gfa_fn.split("/")[-3][1:])
-        run = "oneout" if "oneout" in gfa_fn else "full"
-        augmentation = "palss"
-        fn = gfa_fn.split("/")[-1]
-        i = float(fn.split(".")[-3][2:] + "." + fn.split(".")[-2])
-        w = int(fn.split(".")[-4][1:])
-        d = float(fn.split(".")[-6][1:] + "." + fn.split(".")[-5])
-
-        vertices, novel_vertices = get_novel_vertices(gfa_fn)
-        # novel_edges = get_novel_edges(gfa_fn, novel_vertices)
-    else:
-        n = int(gfa_fn.split("/")[-2][1:])
-        run = "oneout"
-        augmentation = gfa_fn.split("/")[-1][:-4].split("-")[-1]
-        assert augmentation in ["full", "oneout", "mgcactus"]
-
-        vertices, novel_vertices = get_novel_vertices(gfa_fn, sample)
-        # novel_edges = get_novel_edges(gfa_fn, sample)
-
-    for line in open(gaf_fn):
+    print("fn,n,kind,v,l,supp,qual")
+    for line in open(args.GAF):
         line = line.strip("\n").split("\t")
         path = line[5]
         path = [int(x) for x in re.split("[<>]", path[1:])]
@@ -212,12 +190,8 @@ def main():
         if supp > 0:
             q = sum([x / (x + y) for x, y in info]) / len(info)
         print(
-            run,
-            augmentation,
-            n,
-            w,
-            d,
-            i,
+            args.GAF.split("/")[-1],
+            args.n,
             "vertex",
             v,
             vertices[v],

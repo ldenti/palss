@@ -393,9 +393,16 @@ int main_align(int argc, char *argv[]) {
           // std::cerr << gbwt::Path::is_reverse(seqid) << " " << path.sequence
           //           << std::endl;
 
+          bool has_n = false;
           for (size_t i = 0; i < path.sequence.size(); ++i) {
+            if (path.sequence[i] == 'N') {
+              has_n = true;
+              break;
+            }
             path.sequence[i] = to_int[(uint8_t)path.sequence[i]] - 1;
           }
+          if (has_n)
+            continue;
 
           path.kcounts =
               count_kmers(path.sequence.c_str(), path.sequence.size(), cklen);
@@ -404,6 +411,9 @@ int main_align(int argc, char *argv[]) {
         }
       }
     }
+
+    if (paths.empty())
+      continue;
 
     // XXX: path sequences should all start/end in the same way (same "strand")
 
