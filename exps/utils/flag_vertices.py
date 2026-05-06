@@ -116,10 +116,10 @@ def main():
 
         assert idx not in segments
 
-        rsv = bfs_find_first_flagged(idx, segments, in_links, 2000)  # XXX: hardcoded
+        rsv = bfs_find_first_flagged(idx, segments, in_links, 5000)  # XXX: hardcoded
         if rsv != None:
             rev = bfs_find_first_flagged(
-                idx, segments, out_links, 2000
+                idx, segments, out_links, 5000
             )  # XXX: hardcoded
 
         if rsv == None or rev == None:

@@ -17,7 +17,7 @@ vg augment --include-paths --min-coverage 1 --gaf $ORIGINAL_GFA $CONSENSUS_GAF |
 
 >&2 echo "[$(date)] Cleaning augmentation (1)"
 python3 $SD/clean_augment.py 1 $WD/augmented.gfa $CONSENSUS_GAF $SUPP > $WD/augmented.clean.gfa 2> $WD/cleaning-pass1.log
-
+# we need both unchopped and chopped since in chopped we have paths mapping old to new vertices
 >&2 echo "[$(date)] Unchopping (1)"
 vg mod --unchop $WD/augmented.clean.gfa > $WD/augmented.clean.unchopped.gfa
 
