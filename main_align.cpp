@@ -78,15 +78,10 @@ std::vector<uint32_t> count_kmers(const char *seq, int seql, int klen) {
   for (uint8_t i = 0; i < klen; ++i) {
     kmer_d = (kmer_d << 2) | (seq[i] < 4 ? seq[i] : rand() % 4);
   }
-  // uint64_t rckmer_d = rc(kmer_d, klen);
-  // uint64_t ckmer_d = std::min(kmer_d, rckmer_d);
-
   ++kcounts[kmer_d];
   for (int p = klen; p < seql; ++p) {
     c = seq[p];
     kmer_d = lsappend(kmer_d, c, klen);
-    // rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
-    // ckmer_d = std::min(kmer_d, rckmer_d);
     ++kcounts[kmer_d];
   }
   return kcounts;
@@ -103,6 +98,7 @@ std::vector<uint32_t> count_kmers_plain(const char *seq, int seql, int klen) {
   // uint64_t ckmer_d = std::min(kmer_d, rckmer_d);
   ++kcounts[kmer_d];
   for (int p = klen; p < seql; ++p) {
+    // ACGT -> 0123
     c = to_int[(uint8_t)seq[p]] - 1;
     kmer_d = lsappend(kmer_d, c, klen);
     // rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
@@ -403,6 +399,7 @@ int main_align(int argc, char *argv[]) {
               has_n = true;
               break;
             }
+            // ACGT -> 0123
             path.sequence[i] = to_int[(uint8_t)path.sequence[i]] - 1;
           }
           if (has_n)

@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-static const uint8_t to_int[128] = {0, 0, 1, 2, 3, 0, 0, 0, 0, 0, // 0
+static const uint8_t to_int[128] = {1, 2, 3, 4, 0, 0, 0, 0, 0, 0, // 0
                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 10
                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 20
                                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 30

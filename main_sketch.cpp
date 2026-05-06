@@ -77,6 +77,7 @@ void get_anchors(anchors_t &anchors, const std::string &sequence,
   // all other kmers
   ++pos;
   for (; pos < end; ++pos) {
+    // ACGT -> 0123
     c = to_int[(uint8_t)sequence[pos + klen - 1]] - 1; // A is 1 but we want 0
     kmer_d = lsappend(kmer_d, c, klen);
     rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
