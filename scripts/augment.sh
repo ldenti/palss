@@ -13,7 +13,9 @@ THREADS=$5
 mkdir -p $WD
 
 >&2 echo "[$(date)] Augmenting"
-vg augment --include-paths --min-coverage 1 --gaf $ORIGINAL_GFA $CONSENSUS_GAF | vg view - > $WD/augmented.gfa
+vg augment --include-paths --min-coverage 1 --gaf $ORIGINAL_GFA $CONSENSUS_GAF | vg view - > $WD/augmented.redundant.gfa
+
+python3 $SD/remove_redundant_bubbles.py $WD/augmented.redundant.gfa > $WD/augmented.gfa
 
 >&2 echo "[$(date)] Cleaning augmentation (1)"
 python3 $SD/clean_augment.py 1 $WD/augmented.gfa $CONSENSUS_GAF $SUPP > $WD/augmented.clean.gfa 2> $WD/cleaning-pass1.log

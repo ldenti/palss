@@ -1,24 +1,32 @@
-seed: 42
-fa: /scratch/luca-palss/chr16.fa
-bed: /scratch/luca-palss/chr16.segdups.bed
-gbz: /scratch/luca-palss/chr16.gbz
-samples: /scratch/luca-palss/hprc-v2.0.samples.list
-realfq: /scratch/luca-palss/seqII2.0.real.fq
-wd: /scratch2/luca-palss/chr16-out.15x.42-2
+seed: 23
+fa: /data/hprc-chm13.v2/region.fa
+bed: /data/hprc-chm13.v2/x.bed
+gbz: /data/hprc-chm13.v2/region.gbz
+samples: /data/hprc-chm13.v2/all_samples.list
+realfq: /data/reads-4sampling/PB.SequelII.fq
+wd: /data/hprc-chm13.v2/region-23-OUT
 ref: CHM13
 coverage: 15
 ns:
-  - 1
-  - 8
-  - 32
+  - 0
+  # - 1
+  # - 8
+  # - 32
   # - 64
 ds:
-  - 0.1
-  #- 0.5
+  # - 0.1
+  - 0.33
+  - 0.5
+  - 0.75
   #- 1.0
 cs:
+  - 0.75
   - 0.9
   - 0.95
 ms:
   - 7
   - 11
+  - 15
+tools:
+  cactus: /home/ld/software/cactus/cactus_env/bin/activate
+  hifiasm-custom: /home/ld/code/hifiasm/hifiasm

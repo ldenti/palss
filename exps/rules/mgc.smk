@@ -43,28 +43,28 @@ rule align_mgc_contigs:
         """
 
 
-rule install_minigraphcactus:
-    output:
-        pjoin(WD, "mgc-src", "cactus_env", "bin", "activate"),
-    params:
-        d=pjoin(WD, "mgc-src"),
-    # conda:
-    #     "../envs/mgc.yaml"
-    shell:
-        """
-        rm -rf {params.d}
-        git clone --recursive https://github.com/ComparativeGenomicsToolkit/cactus.git {params.d}
-        cd {params.d}
-        git checkout v3.1.4
-        virtualenv -p python3 cactus_env
-        echo "export PATH=$(pwd)/bin:\$PATH" >> cactus_env/bin/activate
-        echo "export PYTHONPATH=$(pwd)/lib:\$PYTHONPATH" >> cactus_env/bin/activate
-        set +u; source cactus_env/bin/activate; set -u
-        python3 -m pip install -U setuptools pip wheel
-        python3 -m pip install -U .
-        python3 -m pip install -U -r ./toil-requirement.txt
-        sed -i "s/base_singularity_call += \['-u', /base_singularity_call += \[/g" {params.d}/cactus_env/lib/python3.12/site-packages/cactus/shared/common.py
-        """
+# rule install_minigraphcactus:
+#     output:
+#         pjoin(WD, "mgc-src", "cactus_env", "bin", "activate"),
+#     params:
+#         d=pjoin(WD, "mgc-src"),
+#     # conda:
+#     #     "../envs/mgc.yaml"
+#     shell:
+#         """
+#         rm -rf {params.d}
+#         git clone --recursive https://github.com/ComparativeGenomicsToolkit/cactus.git {params.d}
+#         cd {params.d}
+#         git checkout v3.1.4
+#         virtualenv -p python3 cactus_env
+#         echo "export PATH=$(pwd)/bin:\$PATH" >> cactus_env/bin/activate
+#         echo "export PYTHONPATH=$(pwd)/lib:\$PYTHONPATH" >> cactus_env/bin/activate
+#         set +u; source cactus_env/bin/activate; set -u
+#         python3 -m pip install -U setuptools pip wheel
+#         python3 -m pip install -U .
+#         python3 -m pip install -U -r ./toil-requirement.txt
+#         sed -i "s/base_singularity_call += \['-u', /base_singularity_call += \[/g" {params.d}/cactus_env/lib/python3.12/site-packages/cactus/shared/common.py
+#         """
 
 
 rule minigraphcactus:
@@ -73,7 +73,7 @@ rule minigraphcactus:
         gbz=pjoin(WD, "n{n}", "pangenome-oneout.gbz"),
         fa1=rules.hifiasm.output.fa1,
         fa2=rules.hifiasm.output.fa2,
-        venv=pjoin(WD, "mgc-src", "cactus_env", "bin", "activate"),
+        venv=cactus_activate,
     output:
         gfa=pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"),
     params:

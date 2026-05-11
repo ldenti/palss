@@ -46,9 +46,15 @@ rule extract_subgraph:
         txt=pjoin(WD, "n{n}", "samples-{t}.list"),
     output:
         gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
+    params:
+        unchop=lambda wildcards: (
+            ""
+            if wildcards.n == "0" and wildcards.t == "oneout"
+            else "| vg mod --unchop -"
+        ),
     shell:
         """
-        ./utils/extract_subgraph {input.gbz} {input.txt} | vg mod --unchop - > {output.gfa}
+        ./utils/extract_subgraph {input.gbz} {input.txt} {params.unchop} > {output.gfa}
         """
 
 
@@ -127,20 +133,20 @@ rule hifiasm_ec:
         """
 
 
-rule align_hap:
-    input:
-        fa=FA,
-        faq=pjoin(WD, sample + "-hap{h}.fa"),
-    output:
-        bam=pjoin(WD, sample + "-hap{h}.bam"),
-    conda:
-        "../envs/minimap2.yaml"
-    threads: workflow.cores
-    shell:
-        """
-        minimap2 -t{threads} --MD -ax asm5 --eqx {input.fa} {input.faq} | samtools view -bS | samtools sort > {output.bam}
-        samtools index {output.bam}
-        """
+# rule align_hap:
+#     input:
+#         fa=FA,
+#         faq=pjoin(WD, sample + "-hap{h}.fa"),
+#     output:
+#         bam=pjoin(WD, sample + "-hap{h}.bam"),
+#     conda:
+#         "../envs/minimap2.yaml"
+#     threads: workflow.cores
+#     shell:
+#         """
+#         minimap2 -t{threads} --MD -ax asm5 --eqx {input.fa} {input.faq} | samtools view -bS | samtools sort > {output.bam}
+#         samtools index {output.bam}
+#         """
 
 
 rule align_reads:
@@ -175,17 +181,17 @@ rule align_corrected_reads:
         """
 
 
-rule align_reads_to_haplotypes:
-    input:
-        fa=pjoin(WD, sample + "-haps.fa"),
-        fq=rules.combine.output.fq,
-    output:
-        bam=pjoin(WD, sample + "-reads.tohaps.bam"),
-    conda:
-        "../envs/minimap2.yaml"
-    threads: workflow.cores
-    shell:
-        """
-        minimap2 -t{threads} --MD -ax map-hifi --eqx {input.fa} {input.fq} | samtools view -bS | samtools sort > {output.bam}
-        samtools index {output.bam}
-        """
+# rule align_reads_to_haplotypes:
+#     input:
+#         fa=pjoin(WD, sample + "-haps.fa"),
+#         fq=rules.combine.output.fq,
+#     output:
+#         bam=pjoin(WD, sample + "-reads.tohaps.bam"),
+#     conda:
+#         "../envs/minimap2.yaml"
+#     threads: workflow.cores
+#     shell:
+#         """
+#         minimap2 -t{threads} --MD -ax map-hifi --eqx {input.fa} {input.fq} | samtools view -bS | samtools sort > {output.bam}
+#         samtools index {output.bam}
+#         """

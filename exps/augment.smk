@@ -23,6 +23,9 @@ BED = config["bed"]
 
 coverage = config["coverage"] / 2  # coverage per haplotype
 
+# tools
+cactus_activate = config["tools"]["cactus"]
+HIFIASM_BIN = config["tools"]["hifiasm-custom"]
 
 #
 
@@ -31,13 +34,16 @@ Ds = config["ds"]
 Ws = [2]  # , 3]
 Ms = config["ms"]
 Cs = config["cs"]
-palss_mode = ["oneout"]  # ["oneout", "full"]
+
+#
+
+graphs = ["oneout", "full"]
 SIZES = [10000, 50000]
 
 
 wildcard_constraints:
     h=r"1|2",
-    t=r"full|oneout",
+    graph=r"full|oneout",
     w=r"\d+",
     d=r"\d\.\d+",
     m=r"\d+",
@@ -61,79 +67,93 @@ print(sample, kept_samples)
 
 
 include: "./rules/prepare_data.smk"
+include: "./rules/mgc.smk"
 include: "./rules/palss.smk"
 include: "./rules/analyses.smk"
-include: "./rules/mgc.smk"
 
 
 rule run:
     input:
-        # contig alignment to reference
-        pjoin(WD, sample + "-hap1.bam"),
-        pjoin(WD, sample + "-hap2.bam"),
-        # reads alignment to reference
-        pjoin(WD, sample + "-reads.bam"),
-        pjoin(WD, sample + "-reads.ec.bam"),
-        # reads alignment to real contigs
-        pjoin(WD, sample + "-reads.tohaps.bam"),
+        # prepare_data.smk
+        expand(pjoin(WD, "n{n}", "pangenome-{graph}.gbz"), n=Ns, graph=graphs),
+        pjoin(WD, sample + "-reads.fq.gz"),
+        pjoin(WD, sample + "-reads.ec.fa"),
         #
-        # hifiasm contigs aligned to reference
-        pjoin(WD, sample + ".asm.bp.hap1.p_ctg.bam"),
-        pjoin(WD, sample + ".asm.bp.hap2.p_ctg.bam"),
         # minigraph-cactus
         expand(pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"), n=Ns),
         #
-        # PALSS
-        # expand(
-        #     pjoin(WD, "n{n}", "palss-{t}", "specific_strings.d{d}.bam"),
-        #     n=Ns,
-        #     d=Ds,
-        #     t=palss_mode,
-        # ),
         #
-        # PALSS consensus to real contigs
+        #
+        # # contig alignment to reference
+        # pjoin(WD, sample + "-hap1.bam"),
+        # pjoin(WD, sample + "-hap2.bam"),
+        # reads alignment to reference
+        pjoin(WD, sample + "-reads.bam"),
+        pjoin(WD, sample + "-reads.ec.bam"),
+        # # reads alignment to real contigs
+        # pjoin(WD, sample + "-reads.tohaps.bam"),
+        # #
+        # # hifiasm contigs aligned to reference
+        # pjoin(WD, sample + ".asm.bp.hap1.p_ctg.bam"),
+        # pjoin(WD, sample + ".asm.bp.hap2.p_ctg.bam"),
+        # #
+        # PALSS
         expand(
             pjoin(
                 WD,
                 "n{n}",
-                "palss-{t}",
-                "resulting-consensus.d{d}.w{w}.to-contigs.bam",
+                "palss-{graph}",
+                "pangenome-augmented.d{d}.w{w}.c{c}.m{m}.gfa",
             ),
             n=Ns,
-            t=palss_mode,
-            d=Ds,
-            w=Ws,
-        ),
-        expand(
-            pjoin(
-                WD,
-                "n{n}",
-                "palss-{t}",
-                "pangenome-augmented.d{d}.w{w}.c{c}.m{m}.bam",
-            ),
-            n=Ns,
-            t=palss_mode,
+            graph=["oneout"],
             d=Ds,
             w=Ws,
             c=Cs,
             m=Ms,
         ),
-        # PALSS unanchored contigs to both graphs
-        # expand(
-        #     pjoin(
-        #         WD,
-        #         "n{n}",
-        #         "palss-oneout",
-        #         "specific_strings.d{d}.txt.reads_with_unanchored.bp.p_ctg.to-{t}.gaf",
-        #     ),
-        #     n=Ns,
-        #     t=palss_mode,
-        #     d=Ds,
-        # ),
+        expand(
+            pjoin(WD, "n{n}", "palss-{graph}", "pangenome-augmented.d{d}.w{w}.gfa"),
+            n=Ns,
+            graph=["oneout"],
+            d=Ds,
+            w=Ws,
+        ),
         #
-        #
-        pjoin(WD, "support.csv"),
-        pjoin(WD, "nm.csv"),
+        # SFS aligned to reference genome
+        expand(
+            pjoin(WD, "n{n}", "palss-{graph}", "specific_strings.d{d}.bam"),
+            n=Ns,
+            d=Ds,
+            graph=["oneout"],
+        ),
+        # PALSS consensus to real contigs
+        expand(
+            pjoin(
+                WD,
+                "n{n}",
+                "palss-{graph}",
+                "anchored-consensus.d{d}.w{w}.to-contigs.bam",
+            ),
+            n=Ns,
+            graph=["oneout"],
+            d=Ds,
+            w=Ws,
+        ),
+        expand(
+            pjoin(
+                WD,
+                "n{n}",
+                "palss-{graph}",
+                "unanchored-consensus.d{d}.w{w}.c{c}.m{m}.to-contigs.bam",
+            ),
+            n=Ns,
+            graph=["oneout"],
+            d=Ds,
+            w=Ws,
+            c=Cs,
+            m=Ms,
+        ),
 
 
 ### NM (AKA RECALL)
@@ -144,10 +164,10 @@ rule get_nm:
                 WD,
                 "n{n}",
                 "truecontigs-aln",
-                "palss-{t}.d{d}.w{w}.{size}.gaf",
+                "palss-{graph}.d{d}.w{w}.{size}.gaf",
             ),
             n=Ns,
-            t=palss_mode,
+            graph=["oneout"],
             d=Ds,
             w=Ws,
             size=SIZES,
@@ -157,10 +177,10 @@ rule get_nm:
                 WD,
                 "n{n}",
                 "truecontigs-aln",
-                "palss-{t}.d{d}.w{w}.c{c}.m{m}.{size}.gaf",
+                "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.gaf",
             ),
             n=Ns,
-            t=palss_mode,
+            graph=["oneout"],
             d=Ds,
             w=Ws,
             c=Cs,
@@ -168,9 +188,9 @@ rule get_nm:
             size=SIZES,
         ),
         expand(
-            pjoin(WD, "n{n}", "truecontigs-aln", "original-{t}.{size}.gaf"),
+            pjoin(WD, "n{n}", "truecontigs-aln", "original-{graph}.{size}.gaf"),
             n=Ns,
-            t=["full", "oneout"],
+            graph=["full", "oneout"],
             size=SIZES,
         ),
         expand(
@@ -193,9 +213,9 @@ rule get_nm:
 rule get_support:
     input:
         expand(
-            pjoin(WD, "n{n}", "tables", "{t}.{size}.support.csv"),
+            pjoin(WD, "n{n}", "tables", "{graph}.{size}.support.csv"),
             n=Ns,
-            t=["full", "oneout"],
+            graph=["full", "oneout"],
             size=SIZES,
         ),
         expand(
@@ -209,10 +229,10 @@ rule get_support:
                 WD,
                 "n{n}",
                 "tables",
-                "palss-{t}.d{d}.w{w}.{size}.support.csv",
+                "palss-{graph}.d{d}.w{w}.{size}.support.csv",
             ),
             n=Ns,
-            t=palss_mode,
+            graph=["oneout"],
             d=Ds,
             w=Ws,
             size=SIZES,
@@ -222,10 +242,10 @@ rule get_support:
                 WD,
                 "n{n}",
                 "tables",
-                "palss-{t}.d{d}.w{w}.c{c}.m{m}.{size}.support.csv",
+                "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.support.csv",
             ),
             n=Ns,
-            t=palss_mode,
+            graph=["oneout"],
             d=Ds,
             w=Ws,
             c=Cs,
@@ -243,17 +263,18 @@ rule get_support:
 
 rule get_support_original:
     input:
-        gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
-        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "original-{t}.{size}.gaf"),
+        gfa=pjoin(WD, "n{n}", "pangenome-{graph}.gfa"),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "original-{graph}.{size}.gaf"),
+        bed=BED,
     output:
-        csv=pjoin(WD, "n{n}", "tables", "{t}.{size}.support.csv"),
+        csv=pjoin(WD, "n{n}", "tables", "{graph}.{size}.support.csv"),
     conda:
         "./envs/intervaltree.yaml"
     threads: workflow.cores / 4
     shell:
         """
         python3 ./utils/get_support.py -s {sample} -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
-        python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {BED} > {output.csv}
+        python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {input.bed} > {output.csv}
         """
 
 
@@ -261,6 +282,7 @@ rule get_support_mgc:
     input:
         gfa=pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"),
         gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.{size}.gaf"),
+        bed=BED,
     output:
         csv=pjoin(WD, "n{n}", "tables", "mgc.{size}.support.csv"),
     conda:
@@ -269,7 +291,7 @@ rule get_support_mgc:
     shell:
         """
         python3 ./utils/get_support.py -s {sample} -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
-        python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {BED} > {output.csv}
+        python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {input.bed} > {output.csv}
         """
 
 
@@ -278,21 +300,22 @@ rule get_support_palss:
         gfa=pjoin(
             WD,
             "n{n}",
-            "palss-{t}",
+            "palss-{graph}",
             "pangenome-augmented.d{d}.w{w}.gfa",
         ),
         gaf=pjoin(
             WD,
             "n{n}",
             "truecontigs-aln",
-            "palss-{t}.d{d}.w{w}.{size}.gaf",
+            "palss-{graph}.d{d}.w{w}.{size}.gaf",
         ),
+        bed=BED,
     output:
         csv=pjoin(
             WD,
             "n{n}",
             "tables",
-            "palss-{t}.d{d}.w{w}.{size}.support.csv",
+            "palss-{graph}.d{d}.w{w}.{size}.support.csv",
         ),
     conda:
         "./envs/intervaltree.yaml"
@@ -300,7 +323,7 @@ rule get_support_palss:
     shell:
         """
         python3 ./utils/get_support.py -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
-        python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {BED} > {output.csv}
+        python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {input.bed} > {output.csv}
         """
 
 
@@ -309,21 +332,22 @@ rule get_support_palss_refine:
         gfa=pjoin(
             WD,
             "n{n}",
-            "palss-{t}",
+            "palss-{graph}",
             "pangenome-augmented.d{d}.w{w}.c{c}.m{m}.gfa",
         ),
         gaf=pjoin(
             WD,
             "n{n}",
             "truecontigs-aln",
-            "palss-{t}.d{d}.w{w}.c{c}.m{m}.{size}.gaf",
+            "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.gaf",
         ),
+        bed=BED,
     output:
         csv=pjoin(
             WD,
             "n{n}",
             "tables",
-            "palss-{t}.d{d}.w{w}.c{c}.m{m}.{size}.support.csv",
+            "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.support.csv",
         ),
     conda:
         "./envs/intervaltree.yaml"
@@ -331,5 +355,5 @@ rule get_support_palss_refine:
     shell:
         """
         python3 ./utils/get_support.py -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
-        python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {BED} > {output.csv}
+        python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {input.bed} > {output.csv}
         """
