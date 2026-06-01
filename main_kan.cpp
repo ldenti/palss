@@ -13,49 +13,51 @@ KSEQ_INIT(gzFile, gzread)
 
 int main_kan(int argc, char *argv[]) {
   // int print = 0; // print kmers
-  bool in_reads = true;
-  bool reference_only = true;
+  bool in_fa = true;
+  bool reference_only = false;
 
   int _c;
-  while ((_c = getopt(argc, argv, "arh")) != -1) {
+  while ((_c = getopt(argc, argv, "qh")) != -1) {
     switch (_c) {
-    case 'a':
-      reference_only = false;
-      break;
-    case 'r':
-      in_reads = false;
+    // case 'r':
+    //   reference_only = true;
+    //   break;
+    case 'q':
+      in_fa = false;
       break;
     case 'h':
-      // fprintf(stderr, "%s", KAN_USAGE_MESSAGE);
+      fprintf(stderr, "%s", KAN_USAGE_MESSAGE);
       return 0;
     }
   }
   if (argc - optind != 2) {
-    // fprintf(stderr, "%s", KAN_USAGE_MESSAGE);
+    fprintf(stderr, "%s", KAN_USAGE_MESSAGE);
     return 1;
   }
   char *skt_fn = argv[optind++];
   char *fx_fn = argv[optind++];
 
-  double rt0, rt;
-  rt0 = realtime();
-  rt = rt0;
-
-  // Graph sketching
-  sketch_t *sketch = sk_load(skt_fn);
-  fprintf(stderr, "[M::%s] loaded %lu sketches in %.3f sec\n", __func__,
-          sketch->n, realtime() - rt);
+  double rt;
   rt = realtime();
-  int klen = sketch->k; // kmer size
+
+  // Sketch
+  rt = realtime();
+  sketch_t *sketch = sk_load(skt_fn);
+  size_t klen = sketch->k;
+  fprintf(stderr, "[M::%s] Restored sketch in %.3f sec\n", __func__,
+          realtime() - rt);
 
   // ---
+
+  rt = realtime();
 
   gzFile fp = gzopen(fx_fn, "r");
   kseq_t *seq = kseq_init(fp);
   int l;
   char kmer[klen + 1];
   kmer[klen] = '\0';
-  hit_t hit;
+
+  hit_t hit; // hit from sketch
   uint64_t kmer_d = 0, rckmer_d = 0, ckmer_d = 0;
   uint8_t c; // new character to append
   uint p;    // current position on sequence
@@ -84,10 +86,10 @@ int main_kan(int argc, char *argv[]) {
       if (hit.value == -1UL) {
         if (last_uncovered_p == -1)
           last_uncovered_p = p - klen + 1;
-        ++tot;
       } else {
+        ++tot;
         if (last_uncovered_p != -1) {
-          if (in_reads) {
+          if (in_fa) {
             // half-open interval, [)
             printf("%s\t%d\t%d\n", seq->name.s, last_uncovered_p, p - klen + 1);
           }
@@ -95,17 +97,22 @@ int main_kan(int argc, char *argv[]) {
         last_uncovered_p = -1;
       }
 
-      if (in_reads && p % 10000000 == 0)
-        fprintf(stderr, "Read %d bases from %s\r", p, seq->name.s);
+      if (in_fa && p % 10000000 == 0) {
+        fprintf(stderr, "Read %d bases from %s in %.3f sec\r", p, seq->name.s,
+                realtime() - rt);
+        rt = realtime();
+      }
     }
-    if (in_reads)
-      fprintf(stderr, "Read %ld bases from %s\n", seq->seq.l, seq->name.s);
-    else {
+    if (in_fa) {
+      fprintf(stderr, "Read %d bases from %s in %.3f sec\n", p, seq->name.s,
+              realtime() - rt);
+      rt = realtime();
+    } else {
       printf("%s\t%d\t%d\n", seq->name.s, tot, l - klen + 1);
       tot = 0;
       ++qidx;
       if (qidx % 10000 == 0) {
-        fprintf(stderr, "[M::%s] parsed 10000 reads %.3f sec\n", __func__,
+        fprintf(stderr, "[M::%s] parsed 10000 reads in %.3f sec\n", __func__,
                 realtime() - rt);
         rt = realtime();
       }
@@ -115,9 +122,6 @@ int main_kan(int argc, char *argv[]) {
   kseq_destroy(seq);
   gzclose(fp);
   sk_destroy(sketch);
-
-  fprintf(stderr, "[M::%s] completed in %.3f sec\n", __func__,
-          realtime() - rt0);
 
   return 0;
 }

@@ -34,12 +34,13 @@ static const char *const ALIGN_USAGE_MESSAGE =
     "        -h         display this help and exit\n"
     "\n";
 
-// static const char *const KAN_USAGE_MESSAGE =
-//     "Usage: palss kan [options] <graph.gfa.skt> <file.fx>\n"
-//     "Options:\n"
-//     "        -r         use this if input is FASTQ, so that we won't output a
-//     " "BED file (default: " "FASTA, BED output)\n" "        -h display this
-//     help and exit\n"
-//     "\n";
+static const char *const KAN_USAGE_MESSAGE =
+    "Usage: palss kan [options] <graph.gfa.skt> <file.fx>\n"
+    "Options:\n"
+    "        -q         use this if input is FASTQ, so that we won't output a "
+    "BED file (default: FASTA, BED output)\n"
+    // "        -r         use anchors from reference only\n"
+    "        -h         display this help and exit\n "
+    "\n";
 
 #endif

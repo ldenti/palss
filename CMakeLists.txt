@@ -10,7 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project(PALSS VERSION 0.0.1)
 
 # pmap.cpp main_kan.cpp main_test.cpp
-add_executable(palss reads.cpp sfs.cpp misc.cpp kmer.cpp graph.cpp gaf.cpp sketch.cpp main_sketch.cpp main_dump.cpp main_sfs.cpp main_sam.cpp main_align.cpp main.cpp)
+add_executable(palss reads.cpp sfs.cpp misc.cpp kmer.cpp graph.cpp gaf.cpp sketch.cpp main_sketch.cpp main_dump.cpp main_sfs.cpp main_sam.cpp main_align.cpp main_kan.cpp main.cpp)
 # main_test.cpp main_kan.cpp main_search.cpp main_anchor.cpp  main_extract.cpp main.cpp 
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(palss PRIVATE -Wall) # -Wno-char-subscripts -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
@@ -124,7 +124,7 @@ add_dependencies(RB3 rb3)
 SET(PATCH_CMD "")
 ExternalProject_Add(abpoa
   GIT_REPOSITORY https://github.com/yangao07/abPOA.git
-  GIT_TAG 6f681ff5370eb9cf05c403eb90756b4e12bd1cad # v1.5.5
+  GIT_TAG 7acdac77208f9182a845292898244111c1af6beb # v1.5.6
   BUILD_IN_SOURCE 1
   UPDATE_COMMAND ""
   CONFIGURE_COMMAND ""

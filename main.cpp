@@ -10,7 +10,7 @@ int main_sfs(int argc, char *argv[]);
 int main_sam(int argc, char *argv[]);
 int main_align(int argc, char *argv[]);
 // int main_test(int argc, char *argv[]);
-// int main_kan(int argc, char *argv[]);
+int main_kan(int argc, char *argv[]);
 
 int main(int argc, char *argv[]) {
   double rt = realtime();
@@ -30,6 +30,8 @@ int main(int argc, char *argv[]) {
     ret = main_sam(argc - 1, argv + 1);
   else if (strcmp(argv[1], "align") == 0)
     ret = main_align(argc - 1, argv + 1);
+  else if (strcmp(argv[1], "kan") == 0)
+    ret = main_kan(argc - 1, argv + 1);
   // else if (strcmp(argv[1], "test") == 0)
   //   ret = main_test(argc - 1, argv + 1);
   else {
