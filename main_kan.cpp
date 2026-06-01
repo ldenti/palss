@@ -62,7 +62,7 @@ int main_kan(int argc, char *argv[]) {
   uint8_t c; // new character to append
   uint p;    // current position on sequence
   int last_uncovered_p = -1;
-  int tot = 0;
+  int missed = 0;
   int qidx = 0;
   while ((l = kseq_read(seq)) >= 0) {
     last_uncovered_p = -1;
@@ -75,7 +75,7 @@ int main_kan(int argc, char *argv[]) {
     hit = sk_get(sketch, ckmer_d, reference_only);
     if (hit.value == -1UL) {
       last_uncovered_p = 0;
-      ++tot;
+      ++missed;
     }
     for (p = klen; p < seq->seq.l; ++p) {
       c = to_int[(uint8_t)seq->seq.s[p]] - 1; // A is 1 but it should be 0
@@ -86,8 +86,8 @@ int main_kan(int argc, char *argv[]) {
       if (hit.value == -1UL) {
         if (last_uncovered_p == -1)
           last_uncovered_p = p - klen + 1;
+        ++missed;
       } else {
-        ++tot;
         if (last_uncovered_p != -1) {
           if (in_fa) {
             // half-open interval, [)
@@ -108,8 +108,8 @@ int main_kan(int argc, char *argv[]) {
               realtime() - rt);
       rt = realtime();
     } else {
-      printf("%s\t%d\t%d\n", seq->name.s, tot, l - klen + 1);
-      tot = 0;
+      printf("%s\t%d\t%d\n", seq->name.s, missed, l - klen + 1);
+      missed = 0;
       ++qidx;
       if (qidx % 10000 == 0) {
         fprintf(stderr, "[M::%s] parsed 10000 reads in %.3f sec\n", __func__,
