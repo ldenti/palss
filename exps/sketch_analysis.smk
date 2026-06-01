@@ -6,7 +6,7 @@ FQ = config["fq"]
 GBZ = config["gbz"]
 WD = config["wd"]
 
-Ds = [0.1, 0.25, 0.33, 0.5]
+Ds = [0.1] # , 0.25, 0.33, 0.5]
 
 
 rule run:
@@ -35,7 +35,7 @@ rule palss_kan_reference:
         fa=FA,
     output:
         bed=pjoin(WD, "d{d}", "missed_regions.bed"),
-    threads: workflow.cores / 2
+    threads: workflow.cores
     shell:
         """
         ../palss kan {input.skt} {input.fa} > {output.bed}
@@ -48,7 +48,7 @@ rule palss_kan_reads:
         fq=FQ,
     output:
         txt=pjoin(WD, "d{d}", "reads.txt"),
-    threads: workflow.cores / 2
+    threads: workflow.cores
     shell:
         """
         ../palss kan -q {input.skt} {input.fq} > {output.txt}

@@ -91,7 +91,7 @@ int main_kan(int argc, char *argv[]) {
         if (last_uncovered_p != -1) {
           if (in_fa) {
             // half-open interval, [)
-            printf("%s\t%d\t%d\n", seq->name.s, last_uncovered_p, p - klen + 1);
+            printf("%s\t%d\t%ld\n", seq->name.s, last_uncovered_p, p - klen + 1);
           }
         }
         last_uncovered_p = -1;
@@ -108,7 +108,7 @@ int main_kan(int argc, char *argv[]) {
               realtime() - rt);
       rt = realtime();
     } else {
-      printf("%s\t%d\t%d\n", seq->name.s, missed, l - klen + 1);
+      printf("%s\t%d\t%ld\n", seq->name.s, missed, l - klen + 1);
       missed = 0;
       ++qidx;
       if (qidx % 10000 == 0) {
