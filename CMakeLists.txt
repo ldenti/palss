@@ -124,7 +124,7 @@ add_dependencies(RB3 rb3)
 SET(PATCH_CMD "")
 ExternalProject_Add(abpoa
   GIT_REPOSITORY https://github.com/yangao07/abPOA.git
-  GIT_TAG 7acdac77208f9182a845292898244111c1af6beb # v1.5.6
+  GIT_TAG 6f681ff5370eb9cf05c403eb90756b4e12bd1cad # 7acdac77208f9182a845292898244111c1af6beb # v1.5.6
   BUILD_IN_SOURCE 1
   UPDATE_COMMAND ""
   CONFIGURE_COMMAND ""

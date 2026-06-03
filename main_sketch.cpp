@@ -251,14 +251,19 @@ int main_sketch(int argc, char *argv[]) {
   uint64_t density = -1;          // max hash (based on density [0,1])
   std::string ref_path = "CHM13"; // reference paths
   int nThreads = 4;               // number of threads
-  bool use_edges = true;          // store kmers over edges (still used to
-                                  // flag duplicates)
+  bool use_edges =
+      true; // store kmers over edges (still used to flag duplicates)
+  bool only_ref =
+      false; // use only anchors from reference vertices longer than k
 
   int _c;
-  while ((_c = getopt(argc, argv, "k:d:r:e@:h")) != -1) {
+  while ((_c = getopt(argc, argv, "k:d:r:e1@:h")) != -1) {
     switch (_c) {
     case 'k':
       klen = std::stoi(optarg);
+      break;
+    case '1':
+      only_ref = true;
       break;
     case 'd':
       density =
@@ -376,21 +381,25 @@ int main_sketch(int argc, char *argv[]) {
         if (path_sequence.size() < klen)
           continue;
 
-        get_anchors(local_anchors, path_sequence, vinfo, vlengths, klen,
-                    source_length < klen ? 0 : source_length - klen + 1,
-                    path_sequence.size() - source_length >= klen - 1
-                        ? source_length
-                        : path_sequence.size() - klen + 1,
-                    is_ref, density);
+        if (!only_ref) {
+          get_anchors(local_anchors, path_sequence, vinfo, vlengths, klen,
+                      source_length < klen ? 0 : source_length - klen + 1,
+                      path_sequence.size() - source_length >= klen - 1
+                          ? source_length
+                          : path_sequence.size() - klen + 1,
+                      is_ref, density);
+        }
       }
 
       // add anchors from source vertex (tagging as reference if vertex is on
       // reference path)
       if (source_length >= klen && strand == 0) {
-        std::map<gbwt::node_type, size_t> vlengths;
-        vlengths[source] = source_length;
-        get_anchors(local_anchors, source_sequence, source_info, vlengths, klen,
-                    0, source_length - klen + 1, source_isref, density);
+        if (!only_ref || source_isref) {
+          std::map<gbwt::node_type, size_t> vlengths;
+          vlengths[source] = source_length;
+          get_anchors(local_anchors, source_sequence, source_info, vlengths,
+                      klen, 0, source_length - klen + 1, source_isref, density);
+        }
       }
 
       for (const anchor_t &a : local_anchors) {

@@ -480,8 +480,11 @@ int main_align(int argc, char *argv[]) {
         cons_seq[i] = "ACGT"[(int)cons_seq[i]];
       cons_seq[cons_l] = '\0';
 
+      // std::cerr << "\n" << cons_seq << std::endl;
+
+      std::string pseq(path.sequence);
       for (size_t i = 0; i < path.sequence.size(); ++i)
-        path.sequence[i] = "ACGT"[(int)path.sequence[i]];
+        pseq[i] = "ACGT"[(int)pseq[i]];
 
       // bool clipped = false;
       if ((ez.cigar[0] & 0xf) != 0 || (ez.cigar[ez.n_cigar - 1] & 0xf) != 0) {
@@ -515,13 +518,13 @@ int main_align(int argc, char *argv[]) {
           // M
           int l_tmp = 0;
           for (int j = 0; j < opl; ++j) {
-            if (cons_seq[cons_p + j] != path.sequence[pseq_p + j]) {
+            if (cons_seq[cons_p + j] != pseq[pseq_p + j]) {
               if (l_tmp > 0) {
                 cs += ":" + std::to_string(l_tmp);
                 l_tmp = 0;
               }
               cs += "*";
-              cs += path.sequence[pseq_p + j];
+              cs += pseq[pseq_p + j];
               cs += cons_seq[cons_p + j];
             } else {
               ++l_tmp;
@@ -539,7 +542,7 @@ int main_align(int argc, char *argv[]) {
           cons_p += opl;
         } else if ((ez.cigar[i] & 0xf) == 2) {
           // D
-          cs += "-" + path.sequence.substr(pseq_p, opl);
+          cs += "-" + pseq.substr(pseq_p, opl);
           pseq_p += opl;
         } else {
           std::cerr << "Cluster " << cidx << ": error in ksw2 CIGAR"
@@ -576,7 +579,7 @@ int main_align(int argc, char *argv[]) {
       }
       gr.plen = path.total_length;
       gr.ps = ps;
-      gr.pe = ps + path.sequence.size();
+      gr.pe = ps + pseq.size();
       gr.tot_res_matches = tot_res_matches;
       gr.tot_cigar_len = tot_cigar_len;
       gr.mapq = 60;
@@ -587,7 +590,7 @@ int main_align(int argc, char *argv[]) {
       for (int x = 0; x < abc->clu_n_seq[sub_cidx]; ++x)
         gr.reads.push_back(cluster[abc->clu_read_ids[sub_cidx][x]].rname);
       gr.qseq = cons_seq;
-      gr.pseq = path.sequence;
+      gr.pseq = pseq;
 
       gr.write();
     }
