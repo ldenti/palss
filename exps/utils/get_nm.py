@@ -1,4 +1,5 @@
 import sys
+import argparse
 import os
 import glob
 import pysam
@@ -31,51 +32,67 @@ def parse_gaf(gaf_fn):
     return nms
 
 
-def parse_bam(bam_fn, Ns=[-1]):
-    fn = bam_fn.split("/")[-1]
-    for aln in pysam.AlignmentFile(bam_fn, "rb"):
-        if aln.is_secondary or aln.is_supplementary or aln.is_unmapped:
-            continue
-        nm = aln.get_tag("NM") if aln.has_tag("NM") else -1
-        for n in Ns:
-            print(fn, n, aln.query_name, 1, nm, sep=",")
-
-
 def main():
-    WD = sys.argv[1]
-    sample = sys.argv[2]
+    parser = argparse.ArgumentParser()
 
-    Ns = set()
-    print("fn,n,read,cov,nm")
-    for gaf_fn in glob.glob(os.path.join(WD, "n*", "truecontigs-aln", "*.gaf")):
-        print(gaf_fn, file=sys.stderr)
-        n = int(gaf_fn.split("/")[-3][1:])
-        Ns.add(n)
-        fn = gaf_fn.split("/")[-1]
-        # w, d, i = -1, -1, -1
-        # refine = "."
-        # graph = ""
-        # if "original" in fn:
-        #     graph = "original"
-        # elif "mgcactus" in fn:
-        #     graph = "mgcactus"
-        # else:
-        #     graph = "palss-"
-        #     graph += "full" if "full" in fn else "oneout"
-        #     # palss-full.d0.1.w2.graphaligner.id1.1.gaf
-        #     i = float(fn.split(".")[-3][2:] + "." + fn.split(".")[-2])
-        #     refine = fn.split(".")[-4]
-        #     w = int(fn.split(".")[-5][1:])
-        #     d = float(fn.split(".")[-7][1:] + "." + fn.split(".")[-6])
+    parser.add_argument("FN")  # "contigs" alignments to graph/reference
+    parser.add_argument("TXT")  # "contigs" overlapping complex regions
 
-        nms = parse_gaf(gaf_fn)
+    parser.add_argument("-t", type=str, required=True)
+    parser.add_argument("-n", type=str, required=True)
+    parser.add_argument("-c", type=str, required=True)
+    parser.add_argument("-l", type=str, required=True)
+
+    args = parser.parse_args()
+
+    Cs = [int(c) for c in args.c.split(",")]
+
+    mode = args.FN[-3:]
+    assert mode in ["gaf", "bam"]
+
+    Ns = [args.n]
+
+    cpx_contigs = []
+    for line in open(args.TXT):
+        cpx_contigs.append(line.strip("\n"))
+
+    labels = ["Simple", "Complex"]
+    print("tool,n,coverage,clen,read,cov,nm,type")
+    if mode == "bam":
+        for aln in pysam.AlignmentFile(args.FN, "rb"):
+            if aln.is_secondary or aln.is_supplementary or aln.is_unmapped:
+                continue
+            nm = aln.get_tag("NM") if aln.has_tag("NM") else -1
+            for n in Ns:
+                for cov in Cs:
+                    print(
+                        args.t,
+                        n,
+                        cov,
+                        args.l,
+                        aln.query_name,
+                        1,
+                        nm,
+                        labels[int(aln.query_name in cpx_contigs)],
+                        sep=",",
+                    )
+    else:
+        nms = parse_gaf(args.FN)
         for qidx, (c, nm) in nms.items():
-            print(fn, n, qidx, c, nm, sep=",", flush=False)
+            for cov in Cs:
+                print(
+                    args.t,
+                    args.n,
+                    cov,
+                    args.l,
+                    qidx,
+                    c,
+                    nm,
+                    labels[int(qidx in cpx_contigs)],
+                    sep=",",
+                    flush=False,
+                )
         sys.stdout.flush()
-
-    for bam_fn in glob.glob(os.path.join(WD, f"*-haps.*-overlapping.bam")):
-        parse_bam(bam_fn, Ns)
-        # parse_bam(os.path.join(WD, f"{sample}-reads.tohaps.bam"), Ns)
 
 
 if __name__ == "__main__":

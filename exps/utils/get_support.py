@@ -4,6 +4,7 @@ import os
 import glob
 import re
 from collections import Counter
+from collections import defaultdict
 
 regex = re.compile("([0-9]+[=XID])")
 
@@ -14,90 +15,67 @@ def parse_cigar(cigar):
     return tokens
 
 
-def get_novel_vertices(gfa_fn, sample):
-    allV = {}
-    otherV = set()
-    sampleV = set()
-    for line in open(gfa_fn):
-        fields = line.strip("\n").split("\t")
+"""
+Ss: {v : (seq, seq_len, is_known)}
+Ls: {(v,strand) : {(v, strand} : is_known}
+"""
 
-        path = []
-        if line.startswith("P"):
-            path = [int(x[:-1]) for x in fields[2].split(",")]
-        elif line.startswith("W"):
-            path = [int(x) for x in re.split("[<>]", fields[6][1:])]
-        else:
-            continue
 
-        is_sample = sample != "" and sample in fields[1]
-        for v in path:
-            if is_sample:
-                sampleV.add(v)
-            else:
-                if fields[1].startswith("new.v"):
-                    continue
-                otherV.add(v)
+def load_graph(gfa_fn, sample=""):
+    print("Parsing GFA...", file=sys.stderr)
+    Ss, Ls = {}, {}
 
-    if sample == "":
-        assert len(sampleV) == 0
-
-    nV = {}
     for line in open(gfa_fn):
         if line.startswith("S"):
-            _, v, seq, *_ = line.strip("\n").split("\t")
-            v = int(v)
+            _, idx, seq, *_ = line.strip("\n").split("\t")
+            idx = int(idx)
+            Ss[idx] = [seq, len(seq), False]
+        elif line.startswith("L"):
+            _, idx1, s1, idx2, s2, *_ = line.strip("\n").split("\t")
+            idx1, idx2 = int(idx1), int(idx2)
+            # L direction
+            k = (idx1, s1 == "+")
+            v = (idx2, s2 == "+")
+            if k not in Ls:
+                Ls[k] = {}
+            Ls[k][v] = False
+            # add also bidirection
+            k = (idx2, s2 != "+")
+            v = (idx1, s1 != "+")
+            if k not in Ls:
+                Ls[k] = {}
+            Ls[k][v] = False
+        elif line[0] in ["P", "W"]:
+            # XXX: assuming P and W are after S and L lines
+            fields = line.strip("\n").split("\t")
+            is_novel = sample != "" and sample in fields[1]
 
-            allV[v] = len(seq)
+            if is_novel:
+                continue
 
-            if sample == "":
-                if v not in otherV:
-                    nV[v] = []
-            else:
-                if v in sampleV and v not in otherV:
-                    nV[v] = []
-    return allV, nV
+            path = []
+            if line.startswith("P"):
+                path = [(int(x[:-1]), x[-1] == "+") for x in fields[2].split(",")]
+            elif line.startswith("W"):
+                path = list(re.findall(r"[<>]\d+|[^<>]+", fields[6]))
+                path = [(int(x[1:]), x[0] == ">") for x in path]
 
+            Ss[path[0][0]][2] = True
+            for t1, t2 in zip(path[:-1], path[1:]):
+                Ss[t2[0]][2] = True
 
-def get_novel_edges(gfa_fn, nV, sample=""):
-    otherE = set()
-    sampleE = set()
-    for line in open(gfa_fn):
-        fields = line.strip("\n").split("\t")
+                assert t1 in Ls
+                Ls[t1][t2] = True
+                # flag bidirection
 
-        path = []
-        if line.startswith("P"):
-            path = [int(x[:-1]) for x in fields[2].split(",")]
-        elif line.startswith("W"):
-            path = [int(x) for x in re.split("[<>]", fields[6][1:])]
-        else:
-            continue
+                t1 = (t1[0], not t1[1])
+                t2 = (t2[0], not t2[1])
+                assert t2 in Ls
+                Ls[t2][t1] = True
 
-        is_sample = sample != "" and sample in fields[1]
-        for v1, v2 in zip(path[:-1], path[1:]):
-            e = (min(v1, v2), max(v1, v2))
-            if is_sample:
-                sampleE.add(e)
-            else:
-                otherE.add(e)
-
-    if sample == "":
-        assert len(sampleE) == 0
-
-    nE = {}
-    for line in open(gfa_fn):
-        if line.startswith("L"):
-            _, v1, _, v2, _, *_ = line.strip("\n").split("\t")
-            v1, v2 = int(v1), int(v2)
-            e = (min(v1, v2), max(v1, v2))
-            if sample == "":
-                if e not in otherE:  # and v1 not in nV and v2 not in nV:
-                    nE[e] = 0
-            else:
-                if (
-                    e in sampleE and e not in otherE
-                ):  # and v1 not in nV and v2 not in nV:
-                    nE[e] = 0
-    return nE
+    print("Total vertices:", len(Ss), file=sys.stderr)
+    print("Novel vertices:", sum([not Ss[x][2] for x in Ss]), file=sys.stderr)
+    return Ss, Ls
 
 
 def main():
@@ -105,18 +83,36 @@ def main():
 
     parser.add_argument("GFA")
     parser.add_argument("GAF")
-    parser.add_argument("-n", type=int, required=True)
     parser.add_argument("-s", type=str, default="")
+
+    parser.add_argument("-t", type=str, required=True)
+    parser.add_argument("-n", type=str, required=True)
+    parser.add_argument("-c", type=str, required=True)
+    parser.add_argument("-l", type=str, required=True)
+
     args = parser.parse_args()
 
-    vertices, novel_vertices = get_novel_vertices(args.GFA, args.s)
-    # novel_edges = get_novel_edges(gfa_fn, novel_vertices)
+    vertices, edges = load_graph(args.GFA, args.s)
 
-    print("fn,n,kind,v,l,supp,qual")
+    Cs = [int(c) for c in args.c.split(",")]
+
+    novel_vertices = {}
+    for v, info in vertices.items():
+        if not info[2]:
+            novel_vertices[v] = []
+    novel_edges = {}
+    for v1 in edges:
+        for v2 in edges[v1]:
+            if not edges[v1][v2]:
+                novel_edges[(v1, v2)] = 0
+
+    print("tool,n,coverage,clen,kind,v,l,supp,qual")
     for line in open(args.GAF):
         line = line.strip("\n").split("\t")
         path = line[5]
-        path = [int(x) for x in re.split("[<>]", path[1:])]
+        path = list(re.findall(r"[<>]\d+|[^<>]+", path))
+        path = [(int(x[1:]), x[0] == ">") for x in path]
+
         ps, pe = int(line[7]), int(line[8])
 
         cigar = line[16].split(":")[-1]
@@ -129,11 +125,12 @@ def main():
         cp = 0  # where we are along the extended cigar
         plen = 0  # total path length
 
-        v = path[0]
-        plen += vertices[v]
-        l = vertices[v] - ps  # first vertex might be cut
+        # do first vertex since it might be cut
+        v = path[0][0]
+        plen += vertices[v][1]
+        l = vertices[v][1] - ps
         if len(path) == 1:
-            l -= vertices[v] - pe  # - 1 + 1, pe is not included
+            l -= vertices[v][1] - pe  # - 1 + 1, pe is not included
         local_ecigar = []
         vbases = 0
         while vbases < l:
@@ -142,16 +139,17 @@ def main():
                 vbases += 1
             cp += 1
 
-        if v in novel_vertices:
-            # novel_vertices[v] += 1
+        if vertices[v][2] == False:
+            # novel vertez
             op_counts = Counter(local_ecigar)
             novel_vertices[v].append(
                 (op_counts["="], op_counts["X"] + op_counts["I"] + op_counts["D"])
             )
 
-        for v in path[1:-1]:
-            l = vertices[v]
-            plen += vertices[v]
+        # do internal vertices
+        for v, _ in path[1:-1]:
+            l = vertices[v][1]
+            plen += l
             local_ecigar = []
             vbases = 0
             while vbases < l:
@@ -160,15 +158,16 @@ def main():
                     vbases += 1
                 cp += 1
 
-            if v in novel_vertices:
+            if vertices[v][2] == False:
                 op_counts = Counter(local_ecigar)
                 novel_vertices[v].append(
                     (op_counts["="], op_counts["X"] + op_counts["I"] + op_counts["D"])
                 )
 
+        # do last vertex if path has more then 1 vertex. Last vertex might be cut
         if len(path) > 1:
-            v = path[-1]
-            l = pe - plen  # last vertex might be cut
+            v = path[-1][0]
+            l = pe - plen
 
             local_ecigar = []
             vbases = 0
@@ -178,41 +177,58 @@ def main():
                     vbases += 1
                 cp += 1
 
-            if v in novel_vertices:
+            if vertices[v][2] == False:
                 op_counts = Counter(local_ecigar)
                 novel_vertices[v].append(
                     (op_counts["="], op_counts["X"] + op_counts["I"] + op_counts["D"])
                 )
+
+        # do edges separately
+        for (v1, strand1), (v2, strand2) in zip(path[:-1], path[1:]):
+            if edges[(v1, strand1)][(v2, strand2)] == False:
+                novel_edges[((v1, strand1), (v2, strand2))] += 1
 
     for v, info in novel_vertices.items():
         q = -1
         supp = len(info)
         if supp > 0:
             q = sum([x / (x + y) for x, y in info]) / len(info)
-        print(
-            args.GAF.split("/")[-1],
-            args.n,
-            "vertex",
-            v,
-            vertices[v],
-            supp,
-            q,
-            sep=",",
-        )
-    # for (v1, v2), supp in novel_edges.items():
-    #     print(
-    #         run,
-    #         f"palss{pv}",
-    #         n,
-    #         w,
-    #         d,
-    #         i,
-    #         "edge",
-    #         f"{v1}.{v2}",
-    #         supp,
-    #         -1,
-    #         sep=",",
-    #     )
+        for c in Cs:
+            print(
+                args.t,
+                args.n,
+                c,
+                args.l,
+                "vertex",
+                v,
+                vertices[v][1],
+                supp,
+                q,
+                sep=",",
+            )
+
+    already_printed = set()
+    for ((v1, s1), (v2, s2)), supp in novel_edges.items():
+        if ((v1, s1), (v2, s2)) in already_printed:
+            continue
+
+        real_supp = supp + novel_edges[((v2, not s2), (v1, not s1))]
+        already_printed.add(((v1, s1), (v2, s2)))
+        already_printed.add(((v2, not s2), (v1, not s1)))
+
+        for c in Cs:
+            print(
+                args.t,
+                args.n,
+                c,
+                args.l,
+                "edge",
+                f"{v1}{'-+'[s1]}>{v2}{'-+'[s2]}",
+                ".",
+                real_supp,
+                "1",
+                sep=",",
+            )
 
 
 if __name__ == "__main__":

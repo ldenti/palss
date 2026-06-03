@@ -74,10 +74,10 @@ rule pbsim3:
         fa=rules.extract_haplotype.output.fa,
         fq=REALFQ,
     output:
-        fq=pjoin(WD, "pbsim3", "hap{h}_0001.fq.gz"),
+        fq=pjoin(WD, "cov{cov}", "pbsim3", "hap{h}_0001.fq.gz"),
     params:
-        oprefix=pjoin(WD, "pbsim3", "hap{h}"),
-        cov=coverage,
+        oprefix=pjoin(WD, "cov{cov}", "pbsim3", "hap{h}"),
+        cov=lambda wildcards: int(wildcards.cov) / 2,
     threads: workflow.cores / 2
     conda:
         "../envs/pbsim3.yaml"
@@ -89,12 +89,12 @@ rule pbsim3:
 
 rule combine:
     input:
-        pjoin(WD, "pbsim3", "hap1_0001.fq.gz"),
-        pjoin(WD, "pbsim3", "hap2_0001.fq.gz"),
+        pjoin(WD, "cov{cov}", "pbsim3", "hap1_0001.fq.gz"),
+        pjoin(WD, "cov{cov}", "pbsim3", "hap2_0001.fq.gz"),
     output:
-        fq=pjoin(WD, sample + "-reads.fq.gz"),
+        fq=pjoin(WD, "cov{cov}", sample + "-reads.fq.gz"),
     params:
-        oprefix=pjoin(WD, "pbsim3"),
+        oprefix=pjoin(WD, "cov{cov}", "pbsim3"),
     threads: workflow.cores
     shell:
         """
@@ -116,37 +116,37 @@ rule combine:
 
 rule hifiasm_ec:
     input:
-        fq=pjoin(WD, sample + "-reads.fq.gz"),
+        fq=pjoin(WD, "cov{cov}", sample + "-reads.fq.gz"),
     output:
-        fa=pjoin(WD, sample + "-reads.ec.fa"),
+        fa=pjoin(WD, "cov{cov}", sample + "-reads.ec.fa"),
     params:
-        prefix=pjoin(WD, sample + "-reads"),
+        prefix=pjoin(WD, "cov{cov}", sample + "-reads"),
     threads: workflow.cores
     conda:
         "../envs/hifiasm.yaml"
     log:
-        time=pjoin(WD, "times", "hifiasm-ec.time"),
-        log=pjoin(WD, "logs", "hifiasm-ec.log"),
+        time=pjoin(WD, "times", "cov{cov}", "hifiasm-ec.time"),
+        log=pjoin(WD, "logs", "cov{cov}", "hifiasm-ec.log"),
     shell:
         """
         /usr/bin/time -vo {log.time} hifiasm -t{threads} --write-ec --bin-only {input.fq} -o {params.prefix} 2> {log.log}
         """
 
 
-# rule align_hap:
-#     input:
-#         fa=FA,
-#         faq=pjoin(WD, sample + "-hap{h}.fa"),
-#     output:
-#         bam=pjoin(WD, sample + "-hap{h}.bam"),
-#     conda:
-#         "../envs/minimap2.yaml"
-#     threads: workflow.cores
-#     shell:
-#         """
-#         minimap2 -t{threads} --MD -ax asm5 --eqx {input.fa} {input.faq} | samtools view -bS | samtools sort > {output.bam}
-#         samtools index {output.bam}
-#         """
+rule align_hap:
+    input:
+        fa=FA,
+        faq=pjoin(WD, sample + "-hap{h}.fa"),
+    output:
+        bam=pjoin(WD, sample + "-hap{h}.bam"),
+    conda:
+        "../envs/minimap2.yaml"
+    threads: workflow.cores
+    shell:
+        """
+        minimap2 -t{threads} --MD -ax asm5 --eqx {input.fa} {input.faq} | samtools view -bS | samtools sort > {output.bam}
+        samtools index {output.bam}
+        """
 
 
 rule align_reads:
@@ -154,7 +154,7 @@ rule align_reads:
         fa=FA,
         fq=rules.combine.output.fq,
     output:
-        bam=pjoin(WD, sample + "-reads.bam"),
+        bam=pjoin(WD,"cov{cov}",  sample + "-reads.bam"),
     conda:
         "../envs/minimap2.yaml"
     threads: workflow.cores
@@ -170,7 +170,7 @@ rule align_corrected_reads:
         fa=FA,
         fq=rules.hifiasm_ec.output.fa,
     output:
-        bam=pjoin(WD, sample + "-reads.ec.bam"),
+        bam=pjoin(WD, "cov{cov}",  sample + "-reads.ec.bam"),
     conda:
         "../envs/minimap2.yaml"
     threads: workflow.cores
@@ -179,19 +179,3 @@ rule align_corrected_reads:
         minimap2 -t{threads} --MD -ax map-hifi --eqx {input.fa} {input.fq} | samtools view -bS | samtools sort > {output.bam}
         samtools index {output.bam}
         """
-
-
-# rule align_reads_to_haplotypes:
-#     input:
-#         fa=pjoin(WD, sample + "-haps.fa"),
-#         fq=rules.combine.output.fq,
-#     output:
-#         bam=pjoin(WD, sample + "-reads.tohaps.bam"),
-#     conda:
-#         "../envs/minimap2.yaml"
-#     threads: workflow.cores
-#     shell:
-#         """
-#         minimap2 -t{threads} --MD -ax map-hifi --eqx {input.fa} {input.fq} | samtools view -bS | samtools sort > {output.bam}
-#         samtools index {output.bam}
-#         """

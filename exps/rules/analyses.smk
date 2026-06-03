@@ -17,10 +17,10 @@ rule align_consensuses_to_haplotypes:
     input:
         hfa=pjoin(WD, sample + "-haps.fa"),
         hsa=pjoin(WD, sample + "-haps.fa.sa"),
-        qfa=pjoin(WD, "n{n}", "palss-{graph}", "anchored-consensus.d{d}.w{w}.fa"),
+        qfa=pjoin(WD, "n{n}", "palss-{graph}",  "cov{cov}", "anchored-consensus.d{d}.w{w}.fa"),
     output:
         bam=pjoin(
-            WD, "n{n}", "palss-{graph}", "anchored-consensus.d{d}.w{w}.to-contigs.bam"
+            WD, "n{n}", "palss-{graph}",  "cov{cov}", "anchored-consensus.d{d}.w{w}.to-contigs.bam"
         ),
     conda:
         "../envs/bwa.yaml"
@@ -32,31 +32,31 @@ rule align_consensuses_to_haplotypes:
         """
 
 
-rule align_consensuses_to_haplotypes_refine:
-    input:
-        hfa=pjoin(WD, sample + "-haps.fa"),
-        hsa=pjoin(WD, sample + "-haps.fa.sa"),
-        qfa=pjoin(
-            WD,
-            "n{n}",
-            "palss-{graph}",
-            "unanchored-consensus.d{d}.w{w}.c{c}.m{m}.fa",
-        ),
-    output:
-        bam=pjoin(
-            WD,
-            "n{n}",
-            "palss-{graph}",
-            "unanchored-consensus.d{d}.w{w}.c{c}.m{m}.to-contigs.bam",
-        ),
-    conda:
-        "../envs/bwa.yaml"
-    threads: workflow.cores
-    shell:
-        """
-        bwa mem -t{threads} {input.hfa} {input.qfa} | samtools view -bS | samtools sort > {output.bam}
-        samtools index {output.bam}
-        """
+# rule align_consensuses_to_haplotypes_refine:
+#     input:
+#         hfa=pjoin(WD, sample + "-haps.fa"),
+#         hsa=pjoin(WD, sample + "-haps.fa.sa"),
+#         qfa=pjoin(
+#             WD,
+#             "n{n}",
+#             "palss-{graph}",
+#             "unanchored-consensus.d{d}.w{w}.c{c}.m{m}.fa",
+#         ),
+#     output:
+#         bam=pjoin(
+#             WD,
+#             "n{n}",
+#             "palss-{graph}",
+#             "unanchored-consensus.d{d}.w{w}.c{c}.m{m}.to-contigs.bam",
+#         ),
+#     conda:
+#         "../envs/bwa.yaml"
+#     threads: workflow.cores
+#     shell:
+#         """
+#         bwa mem -t{threads} {input.hfa} {input.qfa} | samtools view -bS | samtools sort > {output.bam}
+#         samtools index {output.bam}
+#         """
 
 
 # # # align unanchored contigs to both graphs
@@ -122,11 +122,12 @@ rule hapsegs_to_palss:
             WD,
             "n{n}",
             "palss-{graph}",
+            "cov{cov}",
             "pangenome-augmented.d{d}.w{w}.gfa",
         ),
         fa=rules.split_haplotypes.output.fa,
     output:
-        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "palss-{graph}.d{d}.w{w}.{size}.gaf"),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "palss-{graph}.d{d}.w{w}.cov{cov}.{size}.gaf"),
     conda:
         "../envs/graphaligner.yaml"
     threads: workflow.cores / 2
@@ -136,37 +137,37 @@ rule hapsegs_to_palss:
         """
 
 
-rule hapsegs_to_palss_refine:
-    input:
-        gfa=pjoin(
-            WD,
-            "n{n}",
-            "palss-{graph}",
-            "pangenome-augmented.d{d}.w{w}.c{c}.m{m}.gfa",
-        ),
-        fa=rules.split_haplotypes.output.fa,
-    output:
-        gaf=pjoin(
-            WD,
-            "n{n}",
-            "truecontigs-aln",
-            "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.gaf",
-        ),
-    conda:
-        "../envs/graphaligner.yaml"
-    threads: workflow.cores / 2
-    shell:
-        """
-        GraphAligner --graph {input.gfa} --reads {input.fa} --alignments-out {output.gaf} --preset vg --threads {threads}
-        """
+# rule hapsegs_to_palss_refine:
+#     input:
+#         gfa=pjoin(
+#             WD,
+#             "n{n}",
+#             "palss-{graph}",
+#             "pangenome-augmented.d{d}.w{w}.c{c}.m{m}.gfa",
+#         ),
+#         fa=rules.split_haplotypes.output.fa,
+#     output:
+#         gaf=pjoin(
+#             WD,
+#             "n{n}",
+#             "truecontigs-aln",
+#             "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.gaf",
+#         ),
+#     conda:
+#         "../envs/graphaligner.yaml"
+#     threads: workflow.cores / 2
+#     shell:
+#         """
+#         GraphAligner --graph {input.gfa} --reads {input.fa} --alignments-out {output.gaf} --preset vg --threads {threads}
+#         """
 
 
 rule hapsegs_to_mgc:
     input:
-        gfa=pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"),
+        gfa=pjoin(WD, "n{n}",  "cov{cov}", "pangenome-mgcactus.gfa"),
         fa=rules.split_haplotypes.output.fa,
     output:
-        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.{size}.gaf"),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.cov{cov}.{size}.gaf"),
     conda:
         "../envs/graphaligner.yaml"
     threads: workflow.cores / 2

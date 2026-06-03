@@ -6,18 +6,18 @@
 
 rule hifiasm:
     input:
-        fq=pjoin(WD, sample + "-reads.fq.gz"),
+        fq=pjoin(WD, "cov{cov}", sample + "-reads.fq.gz"),
     output:
-        fa1=pjoin(WD, sample + ".asm.bp.hap1.p_ctg.fa"),
-        fa2=pjoin(WD, sample + ".asm.bp.hap2.p_ctg.fa"),
-        fa=pjoin(WD, sample + ".asm.bp.haps.p_ctg.fa"),
+        fa1=pjoin(WD, "cov{cov}", sample + ".asm.bp.hap1.p_ctg.fa"),
+        fa2=pjoin(WD, "cov{cov}", sample + ".asm.bp.hap2.p_ctg.fa"),
+        fa=pjoin(WD, "cov{cov}", sample + ".asm.bp.haps.p_ctg.fa"),
     params:
-        prefix=pjoin(WD, sample + ".asm"),
+        prefix=pjoin(WD, "cov{cov}", sample + ".asm"),
     threads: workflow.cores
     conda:
         "../envs/hifiasm.yaml"
     log:
-        time=pjoin(WD, "times", "hifiasm.time"),
+        time=pjoin(WD, "times", "cov{cov}", "hifiasm.time"),
     shell:
         """
         /usr/bin/time -vo {log.time} hifiasm -o {params.prefix} -t{threads} {input.fq}
@@ -27,20 +27,20 @@ rule hifiasm:
         """
 
 
-rule align_mgc_contigs:
-    input:
-        fa=FA,
-        faq=pjoin(WD, sample + ".asm.bp.hap{h}.p_ctg.fa"),
-    output:
-        bam=pjoin(WD, sample + ".asm.bp.hap{h}.p_ctg.bam"),
-    conda:
-        "../envs/minimap2.yaml"
-    threads: workflow.cores
-    shell:
-        """
-        minimap2 -t{threads} --MD -ax asm5 --eqx {input.fa} {input.faq} | samtools view -bS | samtools sort > {output.bam}
-        samtools index {output.bam}
-        """
+# rule align_mgc_contigs:
+#     input:
+#         fa=FA,
+#         faq=pjoin(WD, "cov{cov}",sample + ".asm.bp.hap{h}.p_ctg.fa"),
+#     output:
+#         bam=pjoin(WD,"cov{cov}", sample + ".asm.bp.hap{h}.p_ctg.bam"),
+#     conda:
+#         "../envs/minimap2.yaml"
+#     threads: workflow.cores
+#     shell:
+#         """
+#         minimap2 -t{threads} --MD -ax asm5 --eqx {input.fa} {input.faq} | samtools view -bS | samtools sort > {output.bam}
+#         samtools index {output.bam}
+#         """
 
 
 # rule install_minigraphcactus:
@@ -75,14 +75,14 @@ rule minigraphcactus:
         fa2=rules.hifiasm.output.fa2,
         venv=cactus_activate,
     output:
-        gfa=pjoin(WD, "n{n}", "pangenome-mgcactus.gfa"),
+        gfa=pjoin(WD, "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
     params:
-        prefix=pjoin(WD, "n{n}", "mgcactus"),
+        prefix=pjoin("/scratch2", "luca-palss", WD[1:], "n{n}", "cov{cov}", "mgcactus"),
     threads: workflow.cores
     # conda:
     #     "../envs/mgc.yaml"
     log:
-        time=pjoin(WD, "times", "n{n}", "mgcactus.time"),
+        time=pjoin(WD, "times", "cov{cov}", "n{n}", "mgcactus.time"),
     shell:
         """
         set +u; source {input.venv}; set -u

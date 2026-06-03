@@ -87,6 +87,36 @@ def bfs_find_first_flagged(v0, segments, links, max_v=500):
     return None
 
 
+def get_region(segments, in_links, out_links, ref_offsets, idx, size=5000):
+    contig, start, end = "", -1, -1
+    rsv, rev = None, None
+
+    rsv = bfs_find_first_flagged(idx, segments, in_links, size)
+    if rsv != None:
+        rev = bfs_find_first_flagged(idx, segments, out_links, size)
+
+    if rsv != None and rev != None:
+        for c, offsets in ref_offsets.items():
+            if rsv in offsets and rev in offsets:
+                contig = c
+                start = offsets[rsv]
+                end = offsets[rev]
+                break
+        assert contig != ""
+    return contig, start, end
+
+
+def flag(tree, start, end):
+    label = ""
+    if tree.overlaps(start, end):
+        return "Complex"
+    else:
+        return "Simple"
+    #     print(
+    #         line, f"{contig}:{start}-{end}", end - start, f"{rsv}>{rev}", t, sep=","
+    #     )
+
+
 def main():
     gfa_fn = sys.argv[1]
     support_table = sys.argv[2]
@@ -103,46 +133,92 @@ def main():
     print("Graph loaded!", file=sys.stderr)
 
     print("Iterating over novel vertices..", file=sys.stderr)
-    print("fn,n,kind,v,l,supp,qual,region,refspan,refvertices,type")
+
+    regions_memoization = {}
     for line in open(support_table):
-        if line.startswith("fn"):
+        if line.startswith("tool"):
+            print(line.strip("\n"), "region", "type", sep=",")
             continue
+
         line = line.strip("\n")
         fields = line.split(",")
-        idx = int(fields[3])
-
         contig, start, end = "", -1, -1
-        rsv, rev = None, None
+        label, region = "", ""
 
-        assert idx not in segments
-
-        rsv = bfs_find_first_flagged(idx, segments, in_links, 5000)  # XXX: hardcoded
-        if rsv != None:
-            rev = bfs_find_first_flagged(
-                idx, segments, out_links, 5000
-            )  # XXX: hardcoded
-
-        if rsv == None or rev == None:
-            print(line, ".", ".", ".", "Unkwnow", sep=",")
-        else:
-            contig, start, end = "", -1, -1
-            for c, offsets in ref_offsets.items():
-                if rsv in offsets and rev in offsets:
-                    contig = c
-                    start = offsets[rsv]
-                    end = offsets[rev]
-                    break
-
-            assert contig != ""
-
-            t = ""
-            if trees[contig].overlaps(start, end):
-                t = "Complex"
+        if fields[4] == "vertex":
+            idx = int(fields[5])
+            if idx in regions_memoization:
+                label, region = regions_memoization[idx]
             else:
-                t = "Simple"
-            print(
-                line, f"{contig}:{start}-{end}", end - start, f"{rsv}>{rev}", t, sep=","
-            )
+                assert idx not in segments
+                contig, start, end = get_region(
+                    segments, in_links, out_links, ref_offsets, idx
+                )
+                if contig != "":
+                    label = flag(trees[contig], start, end)
+                    region = f"{contig}:{start}-{end}"
+                else:
+                    label = "Unknown"
+                    region = "."
+                regions_memoization[idx] = (label, region)
+        else:
+            v1, v2 = fields[5].split(">")
+            v1, v2 = int(v1[:-1]), int(v2[:-1])
+
+            contig1, start1, end1 = "", -1, -1
+            contig2, start2, end2 = "", -1, -1
+            label1, label2 = "", ""
+            region1, region2 = "", ""
+
+            # Source
+            if v1 in regions_memoization:
+                label1, region1 = regions_memoization[v1]
+            else:
+                contig1, start1, end1 = get_region(
+                    segments, in_links, out_links, ref_offsets, v1
+                )
+                if contig1 != "":
+                    label1 = flag(trees[contig1], start1, end1)
+                    region1 = f"{contig1}:{start1}-{end1}"
+                else:
+                    label1 = "Unknown"
+                    region1 = "."
+                regions_memoization[v1] = (label1, region1)
+
+            # Sink
+            if v2 in regions_memoization:
+                label2, region2 = regions_memoization[v2]
+            else:
+                contig2, start2, end2 = get_region(
+                    segments, in_links, out_links, ref_offsets, v2
+                )
+                if contig2 != "":
+                    label2 = flag(trees[contig2], start2, end2)
+                    region2 = f"{contig2}:{start2}-{end2}"
+                else:
+                    label2 = "Unknown"
+                    region2 = "."
+                regions_memoization[v2] = (label2, region2)
+
+            if region1.split(":")[0] != region2.split(":")[0]:
+                label = "TRA"
+                region = region1 + ">" + region2
+            else:
+                if label1 == "Unknown" or label2 == "Unknown":
+                    label = "Unknown"
+                    region = "."
+                else:
+                    if label1 != label2:
+                        label = "Mixed"
+                    else:
+                        label = label1
+                    region = (
+                        region1.split(":")[0]
+                        + region1.split(":")[1].split("-")[0]
+                        + ":"
+                        + region2.split(":")[1].split("-")[1]
+                    )
+        print(line, region, label, sep=",")
 
 
 if __name__ == "__main__":

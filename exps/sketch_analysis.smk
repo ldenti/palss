@@ -35,7 +35,7 @@ rule palss_kan_reference:
         fa=FA,
     output:
         bed=pjoin(WD, "d{d}", "missed_regions.bed"),
-    threads: workflow.cores
+    threads: workflow.cores / 4
     shell:
         """
         ../palss kan {input.skt} {input.fa} > {output.bed}
@@ -48,7 +48,7 @@ rule palss_kan_reads:
         fq=FQ,
     output:
         txt=pjoin(WD, "d{d}", "reads.txt"),
-    threads: workflow.cores
+    threads: workflow.cores / 4
     shell:
         """
         ../palss kan -q {input.skt} {input.fq} > {output.txt}
