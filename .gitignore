@@ -1,8 +1,9 @@
-build/
-.vscode/
-palss
-.snakemake/
-.cache/
-example/
-*.o
+.vscode
 *~
+palss
+build/
+include/
+lib/
+example/
+exps/.snakemake
+exps/utils/extract_subgraph
