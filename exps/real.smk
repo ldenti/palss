@@ -4,7 +4,7 @@ from os.path import join as pjoin
 FA = config["fa"]
 FQ = config["fq"]
 #
-GFA = config["gfa"]
+PG = config["pg"]
 GBZ = config["gbz"]
 #
 WD = config["wd"]
@@ -99,23 +99,23 @@ rule palss_align:
 
 rule palss_augment:
     input:
-        gfa=GFA,
+        pg=PG,
         gaf=rules.palss_align.output.gaf,
     output:
         gfa=pjoin(WD, "pangenome-augmented.gfa"),
         gaf=pjoin(WD, "anchored-consensus.gaf"),
     params:
         wd=pjoin(WD, "augment.wd"),
-        log=pjoin(WD, "augment.log"),
     conda:
         "./envs/graphaligner.yaml"
     log:
+        log=pjoin(WD, "augment.log"),
         time=pjoin(WD, "times", "palss-augment.time"),
-    threads: workflow.cores
+    threads: workflow.cores / 2
     shell:
         """
-        /usr/bin/time -vo {log.time} bash ../scripts/augment.sh {input.gfa} {input.gaf} 2 {params.wd} {threads} > {output.gfa} 2> {params.log}
-        mv {params.wd}/resulting_consensus.gaf {output.gaf}
+        /usr/bin/time -vo {log.time} ../palss augment -s 2 -w {params.wd} -g {output.gaf} {input.pg} {input.gaf} > {output.gfa}.unchop 2> {log.log}
+        vg mod --unchop {output.gfa}.unchop > {output.gfa}
         """
 
 

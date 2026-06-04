@@ -79,21 +79,31 @@ rule palss_align:
 
 rule palss_augment:
     input:
-        gfa=pjoin(WD, "n{n}", "pangenome-{graph}.gfa"),
+        pg=pjoin(WD, "n{n}", "pangenome-{graph}.pg"),
         gaf=rules.palss_align.output.gaf,
     output:
-        gfa=pjoin(WD, "n{n}", "palss-{graph}", "cov{cov}", "pangenome-augmented.d{d}.w{w}.gfa"),
-        gaf=pjoin(WD, "n{n}", "palss-{graph}", "cov{cov}", "anchored-consensus.d{d}.w{w}.gaf"),
-        
-    conda:
-        "../envs/graphaligner.yaml"
+        gfa=pjoin(
+            WD,
+            "n{n}",
+            "palss-{graph}",
+            "cov{cov}",
+            "pangenome-augmented.d{d}.w{w}.gfa",
+        ),
+        gaf=pjoin(
+            WD, "n{n}", "palss-{graph}", "cov{cov}", "anchored-consensus.d{d}.w{w}.gaf"
+        ),
+    params:
+        wd=pjoin(WD, "n{n}", "palss-{graph}", "cov{cov}", "augment.wd"),
     log:
         log=pjoin(WD, "n{n}", "palss-{graph}", "cov{cov}", "augment.d{d}.w{w}.log"),
-        time=pjoin(WD, "times", "n{n}", "palss-{graph}", "cov{cov}", "augment.d{d}.w{w}.time"),
+        time=pjoin(
+            WD, "times", "n{n}", "palss-{graph}", "cov{cov}", "augment.d{d}.w{w}.time"
+        ),
     threads: workflow.cores
     shell:
         """
-         /usr/bin/time -vo {log.time} bash ../scripts/augment.sh {input.gfa} {input.gaf} {wildcards.w} {output.gfa} {output.gaf} 2> {log.log}
+        /usr/bin/time -vo {log.time} ../palss augment -s 2 -w {params.wd} -g {output.gaf} {input.pg} {input.gaf} > {output.gfa}.unchop 2> {log.log}
+        vg mod --unchop {output.gfa}.unchop > {output.gfa}
         """
 
 
@@ -227,7 +237,9 @@ rule gaf2fa:
     input:
         gaf=rules.palss_augment.output.gaf,
     output:
-        fa=pjoin(WD, "n{n}", "palss-{graph}", "cov{cov}", "anchored-consensus.d{d}.w{w}.fa"),
+        fa=pjoin(
+            WD, "n{n}", "palss-{graph}", "cov{cov}", "anchored-consensus.d{d}.w{w}.fa"
+        ),
     shell:
         """
         cut -f1,17 {input.gaf} | sed "s/^/>/" | sed "s/\\tqs:Z:/\\n/g" > {output.fa}

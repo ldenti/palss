@@ -69,6 +69,17 @@ rule gfa2gbz:
         """
 
 
+rule gfa2pg:
+    input:
+        gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
+    output:
+        gbz=pjoin(WD, "n{n}", "pangenome-{t}.pg"),
+    shell:
+        """
+        vg convert --packed-out {input.gfa} > {output.pg}
+        """
+
+
 rule pbsim3:
     input:
         fa=rules.extract_haplotype.output.fa,
@@ -154,7 +165,7 @@ rule align_reads:
         fa=FA,
         fq=rules.combine.output.fq,
     output:
-        bam=pjoin(WD,"cov{cov}",  sample + "-reads.bam"),
+        bam=pjoin(WD, "cov{cov}", sample + "-reads.bam"),
     conda:
         "../envs/minimap2.yaml"
     threads: workflow.cores
@@ -170,7 +181,7 @@ rule align_corrected_reads:
         fa=FA,
         fq=rules.hifiasm_ec.output.fa,
     output:
-        bam=pjoin(WD, "cov{cov}",  sample + "-reads.ec.bam"),
+        bam=pjoin(WD, "cov{cov}", sample + "-reads.ec.bam"),
     conda:
         "../envs/minimap2.yaml"
     threads: workflow.cores
