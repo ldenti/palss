@@ -10,7 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project(PALSS VERSION 0.0.1)
 
 # pmap.cpp main_kan.cpp main_test.cpp
-add_executable(palss reads.cpp sfs.cpp misc.cpp kmer.cpp graph.cpp gaf.cpp sketch.cpp main_sketch.cpp main_dump.cpp main_sfs.cpp main_sam.cpp main_align.cpp main_kan.cpp main.cpp)
+add_executable(palss reads.cpp sfs.cpp misc.cpp kmer.cpp graph.cpp gaf.cpp sketch.cpp main_sketch.cpp main_dump.cpp main_sfs.cpp main_sam.cpp main_align.cpp main_kan.cpp main_augment.cpp main.cpp)
 # main_test.cpp main_kan.cpp main_search.cpp main_anchor.cpp  main_extract.cpp main.cpp 
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(palss PRIVATE -Wall) # -Wno-char-subscripts -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
@@ -68,6 +68,14 @@ ExternalProject_Add(gbwtgraph
     BUILD_COMMAND make SDSL_DIR=${SDSL_SRC_DIR}
     INSTALL_COMMAND cp -r include/gbwtgraph ${INCLUDE_DIR}
     COMMAND cp lib/libgbwtgraph.a ${LIB_DIR}
+  )
+
+# libbdsg
+message(STATUS "libbdsg will be built from source")
+ExternalProject_Add(bdsg
+    GIT_REPOSITORY https://github.com/vgteam/libbdsg.git
+    GIT_TAG c10ca5b08fb2abf738bfae55c8d141340dca1adf
+    CMAKE_ARGS -DRUN_DOXYGEN=OFF -DBUILD_PYTHON_BINDINGS=OFF -DCMAKE_INSTALL_PREFIX=${CMAKE_SOURCE_DIR} -DCMAKE_INSTALL_LIBDIR=${LIB_DIR}
 )
 
 # xxhash
@@ -145,7 +153,7 @@ SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
 
 add_dependencies(gbwt sdsl)
 add_dependencies(gbwtgraph gbwt lhg)
-add_dependencies(palss RB3 gbwtgraph abpoa ksw2 XXH) # KMC
+add_dependencies(palss RB3 gbwtgraph bdsg abpoa ksw2 XXH) # KMC
 
 target_include_directories(palss
   PUBLIC ${CMAKE_SOURCE_DIR}/include
@@ -161,6 +169,7 @@ target_link_libraries(palss
     PUBLIC ${ABPOA_SOURCE_DIR}/lib/libabpoa.a
     PUBLIC ${XXH_SOURCE_DIR}/libxxhash.a
 
+    PUBLIC ${CMAKE_SOURCE_DIR}/lib/libbdsg.so
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libgbwtgraph.a
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libgbwt.a
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libsdsl.a

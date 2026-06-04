@@ -3,7 +3,8 @@
 
 static const char *const VERSION = "PALSS, v0.0.1";
 
-static const char *const MAIN_USAGE = "Usage: palss [sketch|sfs|align] -h\n";
+static const char *const MAIN_USAGE =
+    "Usage: palss [sketch|sfs|align|augment] -h\n";
 
 static const char *const SKETCH_USAGE_MESSAGE =
     "Usage: palss sketch [options] <graph.gfa> <paths.fa.fmd>\n"
@@ -39,6 +40,24 @@ static const char *const KAN_USAGE_MESSAGE =
     "Options:\n"
     "        -q         use this if input is FASTQ, so that we won't output a "
     "BED file (default: FASTA, BED output)\n"
+    // "        -r         use anchors from reference only\n"
+    "        -h         display this help and exit\n "
+    "\n";
+
+static const char *const AUGMENT_USAGE_MESSAGE =
+    "Usage: palss augment [options] <graph.pg> <consensus.gaf>\n"
+    "Options:\n"
+    "        -s <INT>   minimum support to retain a novel vertex/edge "
+    "(default: 2)\n"
+    "        -n <INT>   build and evalute this number of paths while "
+    "backtracking (default: 1024)\n"
+    "        -w <PATH>  use this directory for temporary files (must exist, "
+    "default: /tmp)\n"
+    "        -g <PATH>  store retained consensus to this file (default: '', do "
+    "not store)\n"
+    "        -z         input graph is GBZ (so we will convert it to packed "
+    "graph)\n"
+    "        -a         do not perform augmentation\n"
     // "        -r         use anchors from reference only\n"
     "        -h         display this help and exit\n "
     "\n";

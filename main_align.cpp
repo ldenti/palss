@@ -561,7 +561,8 @@ int main_align(int argc, char *argv[]) {
 
       // Build and write GAF record
       GAFREC gr;
-      gr.qname = std::to_string(cidx) + "." + std::to_string(sub_cidx);
+      gr.qname =
+          "palss-" + std::to_string(cidx) + "." + std::to_string(sub_cidx);
       gr.qlen = cons_l;
       gr.qs = 0;
       gr.qe = cons_l;

@@ -68,6 +68,10 @@ def load_graph(gfa_fn):
                 assert t2 in Ls
                 Ls[t2][t1] = True
 
+    for k, x in Ss.items():
+        if x[2]:
+            print("NOVEL", k, file=sys.stderr)
+    print("Known vertices:", sum([x[2] for k, x in Ss.items()]), file=sys.stderr)
     print("New paths:", len(new_paths), file=sys.stderr)
 
     return Ss, Ls, new_paths
@@ -105,12 +109,29 @@ def dp(Ss, Ls, P, source, source_strand, sink, sink_strand):
     if (sink, sink_strand) not in DP[m]:
         yield []
 
+    # for i, dp in enumerate(DP):
+    #     print(f"DP[{i}] ({len(dp)}) [ ", end="")
+    #     for x in dp:
+    #         print(x[0], end=" ")
+    #     print("]")
+
+    for k in predecessors:
+        predecessors[k].sort(key=lambda x: x[0], reverse=True)
+
+    # for k, Vs in predecessors.items():
+    #     print(f"PRED[({k[0]},{k[2]})] ({len(Vs)}) [ ", end="", file=sys.stderr)
+    #     for v in Vs:
+    #         print(f"({v[0]},{v[2]})", end=" ", file=sys.stderr)
+    #     print("]", file=sys.stderr)
+
     start_pos = Ss[source][1]
     assert len(DP[start_pos]) == 1
 
     stack = [(sink, sink_strand, m, [(sink, sink_strand)])]
 
     while stack:
+        # print("STACK:", len(stack), " ".join([f"{x[0]},{x[1]}" for x in stack]))
+        # print(len(stack), "paths in the queue")
         vertex, vertex_strand, pos, path = stack.pop()
         if pos == start_pos:
             path.reverse()
@@ -119,6 +140,7 @@ def dp(Ss, Ls, P, source, source_strand, sink, sink_strand):
             for new_vertex, new_vertex_strand, new_pos in predecessors[
                 (vertex, vertex_strand, pos)
             ]:
+                # print(vertex, pos, ":", new_vertex, new_pos)
                 stack.append(
                     (
                         new_vertex,
@@ -127,6 +149,7 @@ def dp(Ss, Ls, P, source, source_strand, sink, sink_strand):
                         path + [(new_vertex, new_vertex_strand)],
                     )
                 )
+            # print("")
     # elapsed_time = time.perf_counter() - start_time
     # print(f'BT: {elapsed_time}s', file=sys.stderr)
 
@@ -156,7 +179,7 @@ def main():
         for v, s in path:
             seq += Ss[v][0] if s else revcomp(Ss[v][0])
 
-        # if cname != "18083.0":
+        # if cname != "palss-100.0":
         #     continue
 
         if len(path) == 1:
@@ -173,11 +196,12 @@ def main():
             #     print(f'"L\\t{v1[0]}\\t\\{'-+'[v1[1]]}\\t{v2[0]}\\t\\{'-+'[v2[1]]}"')
             # print(v1, v2, Ss[v1[0]][2], Ss[v2[0]][2], Ls[v1][v2])
             if all([Ls[v1][v2] for v1, v2 in zip(path[:-1], path[1:])]):
-                print(
-                    f"Skipping path {cname}: all known. Seq: {len(seq)}",
-                    file=sys.stderr,
-                )
+                # print(
+                #     f"Skipping path {cname}: all known. Seq: {len(seq)}",
+                #     file=sys.stderr,
+                # )
                 continue
+
         # real_novel[cname] = 1
         # continue
         # assert len(path) > 1
@@ -213,8 +237,18 @@ def main():
             # print(rseq)
             assert seq == rseq, f"{cname} : wrong path from dp"
 
+            # print([x[0] for x in p], file=sys.stderr)
+            # print(
+            #     cname,
+            #     sum([not Ss[v][2] for v, _ in p]),
+            #     sum([not Ls[v1][v2] for v1, v2 in zip(p[:-1], p[1:])]),
+            #     file=sys.stderr,
+            # )
+            # for v1, v2 in zip(p[:-1], p[1:]):
+            #     print(v1[0], v2[0], not Ls[v1][v2], file=sys.stderr)
+
             if all([Ss[v][2] for v, _ in p]) and all(
-                [Ls[v1][v2] for v1, v2 in zip(path[:-1], path[1:])]
+                [Ls[v1][v2] for v1, v2 in zip(p[:-1], p[1:])]
             ):
                 best_novel_path = []  # to force skipping this consensus
                 # print(
@@ -238,6 +272,7 @@ def main():
             #     file=sys.stderr,
             # )
         if best_novel_path != []:
+            print(cname, best_novel_path_count, len(best_novel_path), file=sys.stderr)
             real_novel[cname] = best_novel_path
             # print(
             #     "X",
@@ -267,12 +302,14 @@ def main():
     newV = {}
     newL = {}
     for cname, path in real_novel.items():
+        print(cname, ">", end="", file=sys.stderr)
         for v, strand in path:
+            print("", v, end="", file=sys.stderr)
             if not Ss[v][2]:
                 if v not in newV:
                     newV[v] = set()
                 newV[v].add(cname)
-
+        print("", file=sys.stderr)
         for (v1, strand1), (v2, strand2) in zip(path[:-1], path[1:]):
             if not Ls[(v1, strand1)][(v2, strand2)]:
                 if (v1, strand1) not in newL:
@@ -280,6 +317,8 @@ def main():
                 if (v2, strand2) not in newL[(v1, strand1)]:
                     newL[(v1, strand1)][(v2, strand2)] = set()
                 newL[(v1, strand1)][(v2, strand2)].add(cname)
+
+    # print(len(newV), len(newL), file=sys.stderr)
 
     v_to_remove = set()
     for cname, path in new_paths.items():
