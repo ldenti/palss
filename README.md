@@ -32,17 +32,12 @@ LD_LIBRARY_PATH="$PWD/lib" ./build/gbwtgraph-prefix/src/gbwtgraph/bin/gbz_extrac
 # cluster specific strings and analyze clusters
 ./palss align ./example/graph.gbz ./example/reads.sfs > ./example/consensus.gaf
 
-# augment the graph and keeps novel vertices/edges supported by at least 2 reads
-# (this requires graph in GFA format + vg and GraphAligner must be in your $PATH)
-bash ./scripts/augment.sh ./example/graph.gfa ./example/consensus.gaf 2 ./example/augment.wd 4 > ./example/graph.augmented.gfa
+# augment the graph (in GBZ format, so -z) and keeps novel vertices/edges supported by at least 2 reads
+# (this requires vg to be in your $PATH)
+./palss augment -z -s 2./example/graph.gbz ./example/consensus.gaf > ./example/graph.augmented.gfa
 ```
 
 ### Experiments
-Instructions and code to reproduce the experiments described in the [preprint](https://www.biorxiv.org/content/10.1101/2025.02.07.637057v2) can be found [in the main branch](https://github.com/ldenti/palss/tree/main/exps).
-
-### Planned future improvements
-- [ ] refactor/improve code
-- [ X ] parallelize
-- [ ] improve scalability
+Instructions and code to reproduce the experiments described in the [preprint](https://www.biorxiv.org/content/10.1101/2025.02.07.637057v2) can be found [here](https://github.com/ldenti/palss/tree/v0.1/exps) ([v0.1 tag](https://github.com/ldenti/palss/tree/v0.1)).
 
 For any question/doubt, please [open an issue](https://github.com/ldenti/palss/issues/new).
