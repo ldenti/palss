@@ -1,0 +1,8 @@
+name: refine
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - graphaligner=1.0.20
+  - minigraph
+  - minimap2

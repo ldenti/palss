@@ -1,75 +1,185 @@
 #include "sketch.hpp"
 
-uint64_t sk_encode(int v, int off, int unique) {
-  uint64_t e = ((uint64_t)v << 17) | (off & 0xFFFF) << 1 | (unique & 1);
-  return e;
+sketch_t *sk_init(int64_t n, int k, int m) {
+  fprintf(stderr, "[M::%s] Allocating ~%ldGB (size: %ld)\n", __func__,
+          n * 128 / 8 / 1024 / 1024 / 1024, n);
+
+  sketch_t *sk = (sketch_t *)malloc(sizeof(sketch_t));
+  sk->k = k;
+  sk->m = m;
+  sk->n = 0;
+  sk->size = n;
+  sk->np = (int64_t)1 << (2 * m);
+
+  sk->pxs = (uint64_t *)malloc(sk->np * sizeof(uint64_t));
+  if (sk->pxs == nullptr)
+    return nullptr;
+  for (int i = 0; i < sk->np; ++i)
+    sk->pxs[i] = -1;
+  sk->sxs = (uint64_t *)malloc(sk->size * sizeof(uint64_t));
+  if (sk->sxs == nullptr)
+    return nullptr;
+  sk->vls = (uint64_t *)calloc(sk->size, sizeof(uint64_t));
+  if (sk->vls == nullptr)
+    return nullptr;
+  sk->info = (uint32_t *)calloc(sk->size, sizeof(uint32_t));
+  if (sk->info == nullptr)
+    return nullptr;
+
+  return sk;
 }
 
-void sk_add(sketch_t &sketch, uint64_t kmer_d, uint64_t v, uint16_t offset,
-            int good) {
-  auto x = sketch.find(kmer_d);
-  sketch[kmer_d] = sk_encode(v, offset, good && x == sketch.end());
+void sk_destroy(sketch_t *sk) {
+  free(sk->info);
+  free(sk->vls);
+  free(sk->sxs);
+  free(sk->pxs);
+  free(sk);
 }
 
-hit_t sk_get(const sketch_t &sketch, uint64_t &kmer_d) {
-  auto x = sketch.find(kmer_d);
-  pair<int64_t, int16_t> hit = make_pair((int64_t)-1, (int16_t)-1);
-  if (x != sketch.end() && sk_decode_unique(x->second))
-    hit = make_pair(sk_decode_v(x->second), sk_decode_off(x->second));
-  return hit;
+// Binary search sx in arr[l:r+1]
+int64_t binary_search(uint64_t *arr, int64_t l, int64_t r, uint64_t sx) {
+  int64_t mid;
+  while (l <= r) {
+    mid = l + (r - l) / 2;
+    if (arr[mid] == sx)
+      return mid;
+    if (arr[mid] < sx)
+      l = mid + 1;
+    else
+      r = mid - 1;
+  }
+  return -1;
 }
 
-int sk_store(const sketch_t &sketch, char *fn) {
-  double rt = realtime();
+int64_t sk_get_p(sketch_t *sk, uint64_t kmer_d) {
+  uint64_t px = (kmer_d >> (2 * (sk->k - sk->m))) & (sk->np - 1);
+  if (sk->pxs[px] == -1UL)
+    return -1;
+
+  int64_t npx = px + 1;
+  // find next prefix
+  while (npx < sk->np && sk->pxs[npx] == -1UL)
+    ++npx;
+  int64_t end;
+  if (npx == sk->np)
+    end = sk->n - 1;
+  else
+    end = sk->pxs[npx];
+  return binary_search(sk->sxs, sk->pxs[px], end, kmer_d);
+}
+
+void sk_insert(sketch_t *sk, uint64_t kmer_d, uint32_t v1, uint32_t v2,
+               uint32_t p1, uint32_t p2, uint8_t has_both,
+               uint8_t is_reference) {
+  assert(sk->n < sk->size);
+  uint64_t px = (kmer_d >> (2 * (sk->k - sk->m))) & (sk->np - 1);
+  if (sk->pxs[px] == -1UL) {
+    // first kmer with this prefix will be at this position
+    sk->pxs[px] = sk->n;
+  }
+  sk->sxs[sk->n] = kmer_d;
+  //
+  sk->vls[sk->n] = ((uint64_t)v1 << 32) | (v2);
+  sk->info[sk->n] = ((p1 & 0x7FFF) << 17) | ((p2 & 0x7FFF) << 2) |
+                    ((has_both & 1) << 1) | (is_reference & 1);
+  ++sk->n;
+}
+
+hit_t sk_get(sketch_t *sk, uint64_t kmer_d, uint8_t ref_only) {
+  int64_t p = sk_get_p(sk, kmer_d);
+  if (p == -1)
+    return {-1UL, -1U};
+  // if ((sk->vls[p] & 1) == 0)
+  //   return -1UL;
+  return {sk->vls[p], sk->info[p]};
+}
+
+int sk_store(sketch_t *sk, const char *fn) {
   FILE *fp = strcmp(fn, "-") ? fopen(fn, "wb") : fdopen(fileno(stdout), "wb");
   if (fp == 0)
     return -1;
-  uint64_t total = 0;
-  uint64_t skipped = 0;
-  for (auto &it : sketch) {
-    ++total;
-    if (!sk_decode_unique(it.second)) {
-      ++skipped;
-      continue;
-    }
-    // fprintf(stderr, "%lu -> %lu (%d %d:%d)\n", (uint64_t)it.first,
-    // (uint64_t)it.second, (int)decode_unique(it.second),
-    // (int)decode_v(it.second), (int)decode_off(it.second));
-    if (fwrite(&it.first, 8, 1, fp) != 1) {
-      fprintf(stderr, "[M::%s] failed to write sketch (1). Aborting...\n",
-              __func__);
-      exit(1);
-    }
-    if (fwrite(&it.second, 8, 1, fp) != 1) {
-      fprintf(stderr, "[M::%s] failed to write sketch (2). Aborting...\n",
-              __func__);
-      exit(1);
-    }
+
+  if (fwrite(&sk->k, sizeof(int), 1, fp) != 1) {
+    fprintf(stderr, "[M::%s] failed to store sketch (k)\n", __func__);
+    exit(1);
   }
+  if (fwrite(&sk->m, sizeof(int), 1, fp) != 1) {
+    fprintf(stderr, "[M::%s] failed to store sketch (m)\n", __func__);
+    exit(1);
+  }
+  if (fwrite(&sk->n, sizeof(int64_t), 1, fp) != 1) {
+    fprintf(stderr, "[M::%s] failed to store sketch (n)\n", __func__);
+    exit(1);
+  }
+  if ((int64_t)fwrite(sk->pxs, sizeof(uint64_t), sk->np, fp) != sk->np) {
+    fprintf(stderr, "[M::%s] failed to store sketch (pxs)\n", __func__);
+    exit(1);
+  }
+  if ((int64_t)fwrite(sk->sxs, sizeof(uint64_t), sk->n, fp) != sk->n) {
+    fprintf(stderr, "[M::%s] failed to store sketch (sxs)\n", __func__);
+    exit(1);
+  }
+  if ((int64_t)fwrite(sk->vls, sizeof(uint64_t), sk->n, fp) != sk->n) {
+    fprintf(stderr, "[M::%s] failed to store sketch (vls)\n", __func__);
+    exit(1);
+  }
+  if ((int64_t)fwrite(sk->info, sizeof(uint32_t), sk->n, fp) != sk->n) {
+    fprintf(stderr, "[M::%s] failed to store sketch (info)\n", __func__);
+    exit(1);
+  }
+
   fclose(fp);
-  fprintf(
-      stderr,
-      "[M::%s] dumped sketch (%ld kmers out of %ld, %ld skipped) in %.3f sec\n",
-      __func__, total - skipped, total, skipped, realtime() - rt);
 
   return 0;
 }
 
-int sk_load(sketch_t &sketch, char *fn) {
-  FILE *fp = fopen(fn, "rb");
-  uint64_t x, y;
-  while (!feof(fp)) {
-    if (fread(&x, sizeof(uint64_t), 1, fp) != 1) {
-      break;
-      // fprintf(stderr, "[M::%s] failed to read sketch (1). Aborting...\n",
-      // __func__); exit(1);
-    }
-    if (fread(&y, sizeof(uint64_t), 1, fp) != 1) {
-      fprintf(stderr, "[M::%s] failed to read sketch. Aborting...\n", __func__);
-      exit(1);
-    }
-    sketch[x] = y;
+sketch_t *sk_load(const std::string &fn) {
+  sketch_t *sk = (sketch_t *)malloc(sizeof(sketch_t));
+
+  FILE *fp = fopen(fn.c_str(), "rb");
+
+  if (fread(&sk->k, sizeof(int), 1, fp) != 1) {
+    fprintf(stderr, "[M::%s] failed to read sketch (k)\n", __func__);
+    exit(1);
   }
+
+  if (fread(&sk->m, sizeof(int), 1, fp) != 1) {
+    fprintf(stderr, "[M::%s] failed to read sketch (m)\n", __func__);
+    exit(1);
+  }
+  if (fread(&sk->n, sizeof(int64_t), 1, fp) != 1) {
+    fprintf(stderr, "[M::%s] failed to read sketch (n)\n", __func__);
+    exit(1);
+  }
+  sk->np = 1 << (2 * sk->m);
+  sk->size = sk->n;
+
+  sk->pxs = (uint64_t *)malloc(sk->np * sizeof(uint64_t));
+  if ((int64_t)fread(sk->pxs, sizeof(uint64_t), sk->np, fp) != sk->np) {
+    fprintf(stderr, "[M::%s] failed to read sketch (pxs)\n", __func__);
+    exit(1);
+  }
+
+  sk->sxs = (uint64_t *)malloc(sk->n * sizeof(uint64_t));
+  if ((int64_t)fread(sk->sxs, sizeof(uint64_t), sk->n, fp) != sk->n) {
+    fprintf(stderr, "[M::%s] failed to read sketch (sxs)\n", __func__);
+    exit(1);
+  }
+
+  sk->vls = (uint64_t *)malloc(sk->n * sizeof(uint64_t));
+  if ((int64_t)fread(sk->vls, sizeof(uint64_t), sk->n, fp) != sk->n) {
+    fprintf(stderr, "[M::%s] failed to read sketch (vls)\n", __func__);
+    exit(1);
+  }
+
+  sk->info = (uint32_t *)malloc(sk->n * sizeof(uint32_t));
+  if ((int64_t)fread(sk->info, sizeof(uint32_t), sk->n, fp) != sk->n) {
+    fprintf(stderr, "[M::%s] failed to read sketch (info)\n", __func__);
+    exit(1);
+  }
+
   fclose(fp);
-  return 0;
+
+  return sk;
 }
