@@ -178,6 +178,7 @@ size_t compute_distance_bp(const Graph &graph, const gbwt::node_type &v1,
   //           << ((v2 & 1) ? "-" : "+") << std::endl;
   if (v1 == v2)
     return 0;
+
   const gbwt::FastLocate &fl = graph.get_fl();
 
   std::vector<gbwt::size_type> intervals1 = fl.decompressSA(v1);
@@ -287,7 +288,10 @@ typedef struct {
 } anchoring_t;
 
 std::map<gbwt::size_type, anchoring_t> chaining(const Graph &graph,
-                                                anchors_t &anchors, int klen) {
+                                                anchors_t &anchors,
+                                                size_t selected_path,
+                                                int klen) {
+
   std::map<gbwt::size_type, anchoring_t> result;
 
   std::map<gbwt::size_type, std::map<uint64_t, size_t>> dmemo;
@@ -313,6 +317,9 @@ std::map<gbwt::size_type, anchoring_t> chaining(const Graph &graph,
 
   // Iterate over paths and chain
   for (const auto &[na, p] : sorted_pcounts) {
+    if (p != selected_path)
+      continue;
+
     // p is path id (w/ strand bit) plus two additional bits (we moved the
     // inverted bit to values)
     std::vector<size_t> path_anchors; // indices along anchors
@@ -485,14 +492,62 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       continue;
     }
 
+    // Get how many anchors we have on "each" path
+    std::map<uint32_t, size_t> spcounts;
+    for (size_t a = 0; a < sanchors.size(); ++a) {
+      const anchor_t &aa = sanchors[a];
+      for (const auto &[pid, p] : aa.paths)
+        ++spcounts[pid >>
+                   1]; // We need to remove the inverted bit before hashing
+    }
+
+    std::map<uint32_t, size_t> epcounts;
+    for (size_t a = 0; a < eanchors.size(); ++a) {
+      const anchor_t &aa = eanchors[a];
+      for (const auto &[pid, p] : aa.paths)
+        ++epcounts[pid >> 1];
+    }
+
+    // Sum anchors and sort paths by decreasing number of anchors
+    std::vector<uint32_t> paths;
+    for (const auto &[k, v] : spcounts) {
+      if (epcounts.find(k) != epcounts.end()) {
+        paths.push_back(k);
+      }
+    }
+
+    if (paths.empty()) {
+      s.flag |= 2; // flag as invalid
+      continue;
+    }
+
+    std::sort(
+        paths.begin(), paths.end(),
+        [&spcounts, &epcounts](auto const &a, auto const &b) {
+          double ha =
+              2.0 * spcounts[a] * epcounts[a] / (spcounts[a] + epcounts[a]);
+          double hb =
+              2.0 * spcounts[b] * epcounts[b] / (spcounts[b] + epcounts[b]);
+          if (ha != hb)
+            return ha > hb; // prefer higher harmonic mean (balanced+large)
+          else if ((spcounts[a] + epcounts[a]) != (spcounts[b] + epcounts[b]))
+            return (spcounts[a] + epcounts[a]) >
+                   (spcounts[b] +
+                    epcounts[b]); // tie-breaker #1: prefer larger sum
+          else
+            return a < b; // tie-breaker #2: prefer lower ID (reference
+                          // path is the lowest)
+        });
+
     // reverse start anchors so that they follow read order
     // XXX: this might create problems with our greedy strategy since we start
     // from farthest anchor
     std::reverse(sanchors.begin(), sanchors.end());
+
     std::map<gbwt::size_type, anchoring_t> schains =
-        chaining(graph, sanchors, klen);
+        chaining(graph, sanchors, paths.front(), klen);
     std::map<gbwt::size_type, anchoring_t> echains =
-        chaining(graph, eanchors, klen);
+        chaining(graph, eanchors, paths.front(), klen);
 
     // chains are reported following original read positions
 
@@ -506,14 +561,6 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       // We could use anchor in between the chain (.anchor)
       anchor_t a1 = sanchoring.anchor2;
       anchor_t a2 = x->second.anchor1;
-
-      // std::cerr << a1.v1 << ":" << a1.pos1 << ">" << a1.v2 << ":" << a1.pos2
-      //           << " " << a2.v1 << ":" << a2.pos1 << ">" << a2.v2 << ":"
-      //           << a2.pos2 << std::endl;
-      // std::cerr << graph.get_gfa_name(a1.v1 >> 1) << ">"
-      //           << graph.get_gfa_name(a1.v2 >> 1) << " "
-      //           << graph.get_gfa_name(a2.v1 >> 1) << ">"
-      //           << graph.get_gfa_name(a2.v2 >> 1) << std::endl;
 
       // qp are still on read direction
       uint32_t qp = a1.qp;
@@ -557,8 +604,8 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       }
 
       // the new path id will be: path identifier with strand bit + reference
-      // bit + consistency/strand bit (1 is +, 0 is -) + inverted anchor1 +
-      // inverted anchor2
+      // bit + consistency/strand bit (1 is +, 0 is -) + inverted anchor1
+      // + inverted anchor2
       int pp = (p << 2) | (a1.inverted << 1) | a2.inverted;
 
       anchoring[key].paths.push_back(pp);
@@ -568,7 +615,7 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     }
 
     if (anchoring.empty()) {
-      s.flag |= 2; // flag as invalid
+      s.flag |= 3; // flag as invalid
       continue;
     }
 
@@ -626,11 +673,11 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       } else {
         dist = compute_distance_bp(graph, sv, ev, pt >> 4);
       }
-      if (dist <= 20000)
+      if (dist <= 20000) // XXX: hardcoded
         path_ids_to_keep.push_back(pt);
     }
     if (path_ids_to_keep.empty()) {
-      s.flag |= 3; // flag as invalid
+      s.flag |= 4; // flag as invalid
       continue;
     }
     s.paths = path_ids_to_keep;
