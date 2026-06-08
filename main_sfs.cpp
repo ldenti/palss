@@ -207,44 +207,47 @@ size_t compute_distance_bp(const Graph &graph, const gbwt::node_type &v1,
 }
 
 // Chaining heuristic (both strands)
-anchors_t chain(const anchors_t &anchors, const Graph &graph,
-                const gbwt::size_type &pid, int klen, bool use_reverse,
-                std::map<gbwt::size_type, std::map<uint64_t, size_t>> &dmemo) {
-  anchors_t best_chain;
-  anchors_t chain;
+std::vector<size_t>
+chain(const anchors_t &anchors, const std::vector<size_t> &anchor_paths,
+      const Graph &graph, const gbwt::size_type &pid, int klen,
+      bool use_reverse,
+      std::map<gbwt::size_type, std::map<uint64_t, size_t>> &dmemo) {
+  std::vector<size_t> best_chain;
+  std::vector<size_t> chain;
 
   uint64_t xy;
-  for (size_t x = 0; x < anchors.size(); ++x) {
-    chain.push_back(anchors.at(x));
-    for (size_t y = x + 1; y < anchors.size(); ++y) {
-      const anchor_t &yy = anchors.at(y);
+  for (size_t x = 0; x < anchor_paths.size(); ++x) {
+    chain.push_back(anchor_paths[x]);
+    for (size_t y = x + 1; y < anchor_paths.size(); ++y) {
+      const anchor_t &yy = anchors.at(anchor_paths[y]);
 
-      int qd = yy.qp - chain.back().qp;
+      const anchor_t &back = anchors[chain.back()];
+      int qd = yy.qp - back.qp;
       if (use_reverse)
-        qd = yy.qp_rev - chain.back().qp_rev;
+        qd = yy.qp_rev - back.qp_rev;
       assert(qd > 0);
       int rd = 0;
-      if (chain.back().v1 == yy.v1) {
+      if (back.v1 == yy.v1) {
         // same vertex, so check positions
-        rd = yy.pos1 - chain.back().pos1;
+        rd = yy.pos1 - back.pos1;
       } else {
         // different vertex, so check offset along path
-        int vl = graph.get_vertex_len(chain.back().v1 >> 1);
+        int vl = graph.get_vertex_len(back.v1 >> 1);
         if (dmemo.find(pid) == dmemo.end()) {
           dmemo[pid] = std::map<uint64_t, size_t>();
         }
-        xy = ((uint64_t)chain.back().v1 << 32) | (uint32_t)yy.v1;
+        xy = ((uint64_t)back.v1 << 32) | (uint32_t)yy.v1;
         size_t dist;
         if (dmemo[pid].find(xy) != dmemo[pid].end()) {
           dist = dmemo[pid][xy];
         } else {
-          dist = compute_distance_bp(graph, chain.back().v1, yy.v1, pid);
+          dist = compute_distance_bp(graph, back.v1, yy.v1, pid);
           dmemo[pid][xy] = dist;
         }
         if (dist == -1UL)
           rd = 0;
         else
-          rd = dist + vl - chain.back().pos1 + yy.pos1;
+          rd = dist + vl - back.pos1 + yy.pos1;
         assert(rd >= 0);
       }
 
@@ -258,7 +261,7 @@ anchors_t chain(const anchors_t &anchors, const Graph &graph,
 
       if (std::max(rd, qd) == 0 || std::min(rd, qd) / (float)std::max(rd, qd) >
                                        0.9) { // FIXME: hardcoded
-        chain.push_back(yy);
+        chain.push_back(anchor_paths[y]);
       }
     }
     if (chain.size() / (float)anchors.size() > 0.5) {
@@ -283,8 +286,8 @@ typedef struct {
   // bool strand;
 } anchoring_t;
 
-std::map<gbwt::size_type, anchoring_t>
-chaining(const Graph &graph, const anchors_t &anchors, int klen) {
+std::map<gbwt::size_type, anchoring_t> chaining(const Graph &graph,
+                                                anchors_t &anchors, int klen) {
   std::map<gbwt::size_type, anchoring_t> result;
 
   std::map<gbwt::size_type, std::map<uint64_t, size_t>> dmemo;
@@ -312,23 +315,34 @@ chaining(const Graph &graph, const anchors_t &anchors, int klen) {
   for (const auto &[na, p] : sorted_pcounts) {
     // p is path id (w/ strand bit) plus two additional bits (we moved the
     // inverted bit to values)
-    anchors_t path_anchors;
+    std::vector<size_t> path_anchors; // indices along anchors
+    std::map<size_t, std::pair<uint64_t, uint64_t>>
+        original_data; // we store "original" values for anchors since we have
+                       // to update it wrt considered path. XXX: alternatively,
+                       // we could save v1, v2, pos1, pos2 for both strands and
+                       // then take the one we need
+
     for (const size_t aa : pcounts[p]) {
-      path_anchors.push_back(anchors[aa >> 1]); // remove inverted bit
-      path_anchors.back().inverted = false;
+      anchor_t &a = anchors[aa >> 1];
+      path_anchors.push_back(aa >> 1); // remove inverted bit
+
+      original_data[aa >> 1] = std::make_pair(
+          ((uint64_t)a.v1 << 32) | a.v2, ((uint64_t)a.pos1 << 32) | a.pos2);
+
+      a.inverted = false;
       if (aa & 1) {
         // invert if inverted bit is set
-        path_anchors.back().inverted = true;
+        a.inverted = true;
 
-        std::swap(path_anchors.back().v1, path_anchors.back().v2);
-        path_anchors.back().v1 = flip(path_anchors.back().v1);
-        path_anchors.back().v2 = flip(path_anchors.back().v2);
+        std::swap(a.v1, a.v2);
+        a.v1 = flip(a.v1);
+        a.v2 = flip(a.v2);
 
-        std::swap(path_anchors.back().pos1, path_anchors.back().pos2);
-        size_t vl1 = graph.get_vertex_len(path_anchors.back().v1 >> 1);
-        size_t vl2 = graph.get_vertex_len(path_anchors.back().v2 >> 1);
-        path_anchors.back().pos1 = vl1 - path_anchors.back().pos1 - 1;
-        path_anchors.back().pos2 = vl2 - path_anchors.back().pos2 - 1;
+        std::swap(a.pos1, a.pos2);
+        size_t vl1 = graph.get_vertex_len(a.v1 >> 1);
+        size_t vl2 = graph.get_vertex_len(a.v2 >> 1);
+        a.pos1 = vl1 - a.pos1 - 1;
+        a.pos2 = vl2 - a.pos2 - 1;
       }
     }
 
@@ -339,18 +353,30 @@ chaining(const Graph &graph, const anchors_t &anchors, int klen) {
 
     // regardless of strand, anchors are now sorted wrt path. If strand is
     // reverse, we will use the reverse read positions
-    anchors_t bc =
-        chain(path_anchors, graph, p >> 2, klen, reverse_strand, dmemo);
+    std::vector<size_t> bc = chain(anchors, path_anchors, graph, p >> 2, klen,
+                                   reverse_strand, dmemo);
 
     // we want to report first and last anchors along the chain, sorted by
     // original read position
     if (reverse_strand)
       // read on reverse strand, so we need to reverse the chain
-      result[p] = {bc.back(), bc[bc.size() / 2], bc.front(), (int)bc.size(),
+      result[p] = {anchors[bc.back()], anchors[bc[bc.size() / 2]],
+                   anchors[bc.front()], (int)bc.size(),
                    (int)path_anchors.size()};
     else
-      result[p] = {bc.front(), bc[bc.size() / 2], bc.back(), (int)bc.size(),
+      result[p] = {anchors[bc.front()], anchors[bc[bc.size() / 2]],
+                   anchors[bc.back()], (int)bc.size(),
                    (int)path_anchors.size()};
+
+    for (const auto &d : original_data) {
+      anchor_t &a = anchors[d.first];
+      const std::pair<uint64_t, uint64_t> &data = d.second;
+      a.inverted = false;
+      a.v1 = (uint32_t)(data.first >> 32);
+      a.v2 = (uint32_t)data.first;
+      a.pos1 = (uint32_t)(data.second >> 32);
+      a.pos2 = (uint32_t)data.second;
+    }
   }
   return result;
 }
@@ -717,7 +743,8 @@ int main_sfs(int argc, char *argv[]) {
   rbatch_t *rb = rbx_init(fx_fn.c_str(), bsize);
   std::vector<std::vector<sfs_t>> output(bsize);
 
-  int total = 0, nreads = 0;
+  // int total = 0;
+  int nreads = 0;
   int x;
   rt = realtime();
   while ((x = rbx_load(rb)) > 0) {
