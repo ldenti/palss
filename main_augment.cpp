@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <filesystem>
 #include <getopt.h>
 #include <iostream>
 #include <sstream>
@@ -205,6 +206,8 @@ int main_augment(int argc, char *argv[]) {
 
   std::string graph_fn = argv[optind++];
   std::string gaf_fn = argv[optind++];
+
+  std::filesystem::create_directories(wd);
 
   // convert graph to packed graph (if needed)
   std::string pg_fn = graph_fn;
@@ -567,8 +570,7 @@ int main_augment(int argc, char *argv[]) {
       }
       // =============================================================
 
-      std::cout << "W"
-                << "\t" << pg->get_sample_name(path) << "\t"
+      std::cout << "W" << "\t" << pg->get_sample_name(path) << "\t"
                 << pg->get_haplotype(path) << "\t" << pg->get_locus_name(path)
                 << "\t" << start_offset << "\t" << start_offset + path_length
                 << "\t";
