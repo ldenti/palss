@@ -777,7 +777,7 @@ int main_sfs(int argc, char *argv[]) {
 
         if (anchoring & (s.flag == 0)) {
           std::cout << sfs_to_string(s, graph.get_gfa_name(s.sv >> 1),
-                                     graph.get_gfa_name(s.sv >> 1));
+                                     graph.get_gfa_name(s.ev >> 1));
         } else {
           std::cout << sfs_to_string(s, "", "");
         }
