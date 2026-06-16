@@ -70,7 +70,7 @@ rule hapsegs_to_original:
 
 rule hapsegs_to_palss:
     input:
-        gfa=pjoin(WD, "palss", "n{n}", "cov{cov}", "augmented.{graph}.d{d}.w{w}.gfa"),
+        gfa=pjoin(WD, "palss", "n{n}", "cov{cov}", "augmented-{graph}.d{d}.w{w}.gfa"),
         fa=rules.split_haplotypes.output.fa,
     output:
         gaf=pjoin(
@@ -90,7 +90,7 @@ rule hapsegs_to_palss:
 
 rule hapsegs_to_mgc:
     input:
-        gfa=pjoin(WD, "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
+        gfa=pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
         fa=rules.split_haplotypes.output.fa,
     output:
         gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.cov{cov}.{size}.gaf"),

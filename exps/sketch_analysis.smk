@@ -6,7 +6,7 @@ FQ = config["fq"]
 GBZ = config["gbz"]
 WD = config["wd"]
 
-Ds = [0.1]  # , 0.25, 0.33, 0.5]
+Ds = [0.1, 0.25, 0.33, 0.5]
 
 
 rule run:
@@ -25,7 +25,7 @@ rule palss_sketch:
     threads: workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../palss sketch -@{threads} -d{wildcards.d} {input.gbz} > {output.skt}
+        /usr/bin/time -vo {log.time} ../palss sketch -@{threads} -d{wildcards.d} -w{output.skt}.wd {input.gbz} > {output.skt}
         """
 
 

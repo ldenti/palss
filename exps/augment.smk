@@ -1,11 +1,5 @@
-# from snakemake.utils import min_version
-# min_version("6.4.1")
 from os.path import join as pjoin
 import random
-
-
-##### config file #####
-# configfile: "config/config.yaml"
 
 
 seed = config["seed"]
@@ -27,13 +21,12 @@ coverages = config["coverage"]  # coverage per haplotype
 cactus_activate = config["tools"]["cactus"]
 HIFIASM_BIN = config["tools"]["hifiasm-custom"]
 
+Ns = config["ns"]
+
 #
 
-Ns = config["ns"]
 Ds = config["ds"]
 Ws = config["ws"]
-Ms = config["ms"]
-Cs = config["cs"]
 
 #
 
@@ -79,12 +72,12 @@ rule run:
     input:
         # prepare_data.smk
         expand(pjoin(WD, "n{n}", "pangenome-{graph}.gbz"), n=Ns, graph=graphs),
-        expand(pjoin(WD, "cov{cov}", sample + "-reads.fq.gz"), cov=coverages),
-        expand(pjoin(WD, "cov{cov}", sample + "-reads.ec.fa"), cov=coverages),
+        expand(pjoin(WD, sample + "-cov{cov}.fq.gz"), cov=coverages),
+        expand(pjoin(WD, sample + "-cov{cov}.ec.fa"), cov=coverages),
         #
         # minigraph-cactus
         expand(
-            pjoin(WD, "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
+            pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
             n=Ns,
             cov=coverages,
         ),
@@ -93,8 +86,8 @@ rule run:
         pjoin(WD, sample + "-hap1.bam"),
         pjoin(WD, sample + "-hap2.bam"),
         # reads alignment to reference
-        expand(pjoin(WD, "cov{cov}", sample + "-reads.bam"), cov=coverages),
-        expand(pjoin(WD, "cov{cov}", sample + "-reads.ec.bam"), cov=coverages),
+        expand(pjoin(WD, sample + "-cov{cov}.bam"), cov=coverages),
+        expand(pjoin(WD, sample + "-cov{cov}.ec.bam"), cov=coverages),
         # reads alignment to real contigs
         # pjoin(WD, sample + "-reads.tohaps.bam"),
         #
@@ -104,13 +97,7 @@ rule run:
         #
         # PALSS
         expand(
-            pjoin(
-                WD,
-                "n{n}",
-                "palss-{graph}",
-                "cov{cov}",
-                "pangenome-augmented.d{d}.w{w}.gfa",
-            ),
+            pjoin(WD, "palss", "n{n}", "cov{cov}", "augmented-{graph}.d{d}.w{w}.gfa"),
             n=Ns,
             cov=coverages,
             graph=["oneout"],
@@ -130,10 +117,10 @@ rule run:
         expand(
             pjoin(
                 WD,
+                "palss",
                 "n{n}",
-                "palss-{graph}",
                 "cov{cov}",
-                "anchored-consensus.d{d}.w{w}.to-contigs.bam",
+                "anchoredconsensus-{graph}.d{d}.w{w}.to-contigs.bam",
             ),
             n=Ns,
             cov=coverages,

@@ -1,13 +1,16 @@
 from os.path import join as pjoin
 
-
+WD = config["wd"]
+#
 FA = config["fa"]
 FQ = config["fq"]
 #
 PG = config["pg"]
+GFA = config["gfa"]
 GBZ = config["gbz"]
 #
-WD = config["wd"]
+SKT = config["skt"] if "skt" in config else pjoin(WD, "pangenome.skt")
+FMD = config["fmd"] if "fmd" in config else pjoin(WD, "pangenome.fmd")
 
 
 rule run:
@@ -41,13 +44,13 @@ rule palss_sketch:
     input:
         gbz=GBZ,
     output:
-        skt=pjoin(WD, "pangenome.skt"),
+        skt=SKT,
     log:
         time=pjoin(WD, "times", "palss-sketch.time"),
     threads: workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../palss sketch -@{threads} -d0.1 {input.gbz} > {output.skt}
+        /usr/bin/time -vo {log.time} ../palss sketch -@{threads} -w {output.skt}.wd -d0.25 {input.gbz} > {output.skt}
         """
 
 
@@ -55,7 +58,7 @@ rule palss_fmd:
     input:
         gbz=GBZ,
     output:
-        fmd=pjoin(WD, "pangenome.fmd"),
+        fmd=FMD,
     log:
         time=pjoin(WD, "times", "palss-fmd.time"),
     threads: workflow.cores
@@ -68,8 +71,8 @@ rule palss_fmd:
 rule palss_search:
     input:
         gbz=GBZ,
-        skt=rules.palss_sketch.output.skt,
-        fmd=rules.palss_fmd.output.fmd,
+        skt=SKT,
+        fmd=FMD,
         reads=rules.hifiasm_ec.output.fa,
     output:
         sfs=pjoin(WD, "specific_strings.txt"),

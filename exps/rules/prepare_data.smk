@@ -73,7 +73,7 @@ rule gfa2pg:
     input:
         gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
     output:
-        gbz=pjoin(WD, "n{n}", "pangenome-{t}.pg"),
+        pg=pjoin(WD, "n{n}", "pangenome-{t}.pg"),
     shell:
         """
         vg convert --packed-out {input.gfa} > {output.pg}

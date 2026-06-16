@@ -58,7 +58,7 @@ rule get_support_original:
 
 rule get_support_mgc:
     input:
-        gfa=pjoin(WD, "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
+        gfa=pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
         gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.cov{cov}.{size}.gaf"),
         bed=BED,
     output:
@@ -75,13 +75,7 @@ rule get_support_mgc:
 
 rule get_support_palss:
     input:
-        gfa=pjoin(
-            WD,
-            "n{n}",
-            "palss-{graph}",
-            "cov{cov}",
-            "pangenome-augmented.d{d}.w{w}.gfa",
-        ),
+        gfa=pjoin(WD, "palss", "n{n}", "cov{cov}", "augmented-{graph}.d{d}.w{w}.gfa"),
         gaf=pjoin(
             WD,
             "n{n}",

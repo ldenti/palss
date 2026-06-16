@@ -90,7 +90,7 @@ rule palss_augment:
         wd=pjoin(WD, "palss", "n{n}", "cov{cov}", "augment-wd.{graph}.d{d}.w{w}"),
     log:
         log=pjoin(WD, "palss", "n{n}", "cov{cov}", "augment-wd.{graph}.d{d}.w{w}.log"),
-        time=pjoin(WD, "times", "palss", "augment-{graph}.n{n}.cov{cov}.d{d}.time"),
+        time=pjoin(WD, "times", "palss", "augment-{graph}.n{n}.cov{cov}.d{d}.w{w}.time"),
     threads: workflow.cores
     shell:
         """
