@@ -168,6 +168,8 @@ rule ga_palss:
         fq=FQ,
     output:
         gaf=pjoin(WD, "graphaligner-palss.gaf"),
+    conda:
+        "./envs/graphaligner.yaml"
     threads: workflow.cores
     shell:
         """
