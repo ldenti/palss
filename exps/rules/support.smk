@@ -28,21 +28,6 @@ rule get_support:
             w=Ws,
             size=SIZES,
         ),
-        # expand(
-        #     pjoin(
-        #         WD,
-        #         "n{n}",
-        #         "tables-supp",
-        #         "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.support.csv",
-        #     ),
-        #     n=Ns,
-        #     graph=["oneout"],
-        #     d=Ds,
-        #     w=Ws,
-        #     c=Cs,
-        #     m=Ms,
-        #     size=SIZES,
-        # ),
     output:
         pjoin(WD, "support.csv"),
     shell:
@@ -119,35 +104,3 @@ rule get_support_palss:
         python3 ./utils/get_support.py -t palss-d{wildcards.d} -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
         python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {input.bed} > {output.csv}
         """
-
-
-# rule get_support_palss_refine:
-#     input:
-#         gfa=pjoin(
-#             WD,
-#             "n{n}",
-#             "palss-{graph}",
-#             "pangenome-augmented.d{d}.w{w}.c{c}.m{m}.gfa",
-#         ),
-#         gaf=pjoin(
-#             WD,
-#             "n{n}",
-#             "truecontigs-aln",
-#             "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.gaf",
-#         ),
-#         bed=BED,
-#     output:
-#         csv=pjoin(
-#             WD,
-#             "n{n}",
-#             "tables-supp",
-#             "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.support.csv",
-#         ),
-#     conda:
-#         "../envs/intervaltree.yaml"
-#     threads: workflow.cores / 4
-#     shell:
-#         """
-#         python3 ./utils/get_support.py -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
-#         python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {input.bed} > {output.csv}
-#         """

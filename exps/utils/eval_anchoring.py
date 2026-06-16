@@ -76,99 +76,71 @@ def process_alignment(segments, alignment):
 
 
 def main():
-    wd = sys.argv[1]
+    gfa_fn = sys.argv[1]
+    gaf_fn = sys.argv[2]
+    txt_fn = sys.argv[3]
 
-    alignments = {}
+    alignments = parse_gaf(gaf_fn)
+
     segments = {}
-    last_n = 0
-    last_run = ""
-    print(
-        "n", "graph", "d", "rname", "s", "l", "v1", "v2", "tv1", "tv2", "class", sep=","
-    )
-    for txt_fn in glob.glob(
-        os.path.join(wd, "n*", "palss-*", "specific_strings.d*.txt")
-    ):
-        print(txt_fn, file=sys.stderr)
+    for line in open(gfa_fn):
+        if not line.startswith("S"):
+            continue
+        _, s, seq, *_ = line.strip("\n").split("\t")
+        segments[s] = len(seq)
 
-        fields = txt_fn.split("/")
-        n = int(fields[-3][1:])
-        run = "oneout" if "oneout" in fields[-2] else "full"
-        d = float(fields[-1].split(".")[-3][1:] + "." + fields[-1].split(".")[-2])
+    last_qname = ""
+    alignment = None
+    for line in open(txt_fn):
+        if not line.startswith("0"):
+            continue
+        _, qname, s, l, e, _, _, _, _, v1, v2, _, _, _, _ = line.strip("\n").split("\t")
 
-        if last_n != n or last_run != run:
-            gaf_fn = os.path.join(wd, f"n{n}", "graphaligner.ec", f"original-{run}.gaf")
-            alignments = parse_gaf(gaf_fn)
+        s, e = int(s), int(e)
+        if qname != last_qname:
+            alignment = process_alignment(segments, alignments[qname])
 
-            gfa_fn = os.path.join(wd, f"n{n}", f"pangenome-{run}.gfa")
-            segments = {}
-            for line in open(gfa_fn):
-                if not line.startswith("S"):
-                    continue
-                _, s, seq, *_ = line.strip("\n").split("\t")
-                segments[s] = len(seq)
-
-        last_qname = ""
-        alignment = None
-        for line in open(txt_fn):
-            if not line.startswith("0"):
-                continue
-            _, qname, s, l, e, _, _, _, _, v1, v2, _, _, _, _ = line.strip("\n").split(
-                "\t"
-            )
-
-            s, e = int(s), int(e)
-            if qname != last_qname:
-                alignment = process_alignment(segments, alignments[qname])
-
-            cat = ""
-            if s not in alignment or e - 1 not in alignment:
-                print(
-                    n,
-                    run,
-                    d,
-                    qname,
-                    s,
-                    s in alignment,
-                    e - 1,
-                    e - 1 in alignment,
-                    file=sys.stderr,
-                )
-                return 1
-            true_vertices = [alignment[s][0], alignment[e - 1][0]]
-            if set([v1, v2]) == set(true_vertices):
-                cat = "GOOD"
-            else:
-                if "~" in true_vertices:
-                    # CLIP
-                    if len(set(true_vertices)) == 1:
-                        cat = "FULL_CLIP"
-                    elif len(set([v1, v2]) & set(true_vertices)) == 1:
-                        cat = "HALF_CLIP"
-                    else:
-                        cat = "BAD_CLIP"
-                else:
-                    if len(set([v1, v2]) & set(true_vertices)) == 1:
-                        cat = "HALF_BAD"
-                    else:
-                        cat = "BAD"
+        cat = ""
+        if s not in alignment or e - 1 not in alignment:
             print(
-                n,
-                run,
-                d,
                 qname,
                 s,
-                e,
-                v1,
-                v2,
-                true_vertices[0] if true_vertices[0] != "~" else -1,
-                true_vertices[1] if true_vertices[1] != "~" else -1,
-                cat,
-                sep=",",
+                s in alignment,
+                e - 1,
+                e - 1 in alignment,
+                file=sys.stderr,
             )
+            # return 1
+        true_vertices = [alignment[s][0], alignment[e - 1][0]]
+        if set([v1, v2]) == set(true_vertices):
+            cat = "GOOD"
+        else:
+            if "~" in true_vertices:
+                # CLIP
+                if len(set(true_vertices)) == 1:
+                    cat = "FULL_CLIP"
+                elif len(set([v1, v2]) & set(true_vertices)) == 1:
+                    cat = "HALF_CLIP"
+                else:
+                    cat = "BAD_CLIP"
+            else:
+                if len(set([v1, v2]) & set(true_vertices)) == 1:
+                    cat = "HALF_BAD"
+                else:
+                    cat = "BAD"
+        print(
+            qname,
+            s,
+            e,
+            v1,
+            v2,
+            true_vertices[0] if true_vertices[0] != "~" else -1,
+            true_vertices[1] if true_vertices[1] != "~" else -1,
+            cat,
+            sep=",",
+        )
 
-            last_qname = qname
-        last_n = n
-        last_run = run
+        last_qname = qname
 
 
 if __name__ == "__main__":

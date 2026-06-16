@@ -48,9 +48,8 @@ wildcard_constraints:
     n=r"\d+",
     w=r"\d+",
     d=r"\d\.\d+",
-    m=r"\d+",
-    c=r"\d\.\d+",
     size=r"\d+",
+
 
 #
 
@@ -80,62 +79,53 @@ rule run:
     input:
         # prepare_data.smk
         expand(pjoin(WD, "n{n}", "pangenome-{graph}.gbz"), n=Ns, graph=graphs),
-        expand(pjoin(WD, "cov{cov}", sample + "-reads.fq.gz"),
-               cov=coverages),
-        expand(pjoin(WD, "cov{cov}", sample + "-reads.ec.fa"),
-               cov=coverages),
+        expand(pjoin(WD, "cov{cov}", sample + "-reads.fq.gz"), cov=coverages),
+        expand(pjoin(WD, "cov{cov}", sample + "-reads.ec.fa"), cov=coverages),
         #
         # minigraph-cactus
-        expand(pjoin(WD, "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"), n=Ns, cov=coverages),
+        expand(
+            pjoin(WD, "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
+            n=Ns,
+            cov=coverages,
+        ),
         # 
         # contig alignment to reference
         pjoin(WD, sample + "-hap1.bam"),
         pjoin(WD, sample + "-hap2.bam"),
         # reads alignment to reference
-        expand(pjoin(WD, "cov{cov}", sample + "-reads.bam"),
-               cov=coverages),
-        expand(pjoin(WD, "cov{cov}", sample + "-reads.ec.bam"),
-               cov=coverages),
-        # # # reads alignment to real contigs
-        # # pjoin(WD, sample + "-reads.tohaps.bam"),
-        # #
-        # # # hifiasm contigs aligned to reference
-        # # pjoin(WD, sample + ".asm.bp.hap1.p_ctg.bam"),
-        # # pjoin(WD, sample + ".asm.bp.hap2.p_ctg.bam"),
-        # #
+        expand(pjoin(WD, "cov{cov}", sample + "-reads.bam"), cov=coverages),
+        expand(pjoin(WD, "cov{cov}", sample + "-reads.ec.bam"), cov=coverages),
+        # reads alignment to real contigs
+        # pjoin(WD, sample + "-reads.tohaps.bam"),
+        #
+        # # hifiasm contigs aligned to reference
+        # pjoin(WD, sample + ".asm.bp.hap1.p_ctg.bam"),
+        # pjoin(WD, sample + ".asm.bp.hap2.p_ctg.bam"),
+        #
         # PALSS
-        # expand(
-        #     pjoin(
-        #         WD,
-        #         "n{n}",
-        #         "palss-{graph}",
-        #         "cov{cov}",
-        #         "pangenome-augmented.d{d}.w{w}.c{c}.m{m}.gfa",
-        #     ),
-        #     n=Ns,
-        #     cov=coverages,
-        #     graph=["oneout"],
-        #     d=Ds,
-        #     w=Ws,
-        #     c=Cs,
-        #     m=Ms,
-        # ),
         expand(
-            pjoin(WD, "n{n}", "palss-{graph}", "cov{cov}", "pangenome-augmented.d{d}.w{w}.gfa"),
+            pjoin(
+                WD,
+                "n{n}",
+                "palss-{graph}",
+                "cov{cov}",
+                "pangenome-augmented.d{d}.w{w}.gfa",
+            ),
             n=Ns,
             cov=coverages,
             graph=["oneout"],
             d=Ds,
             w=Ws,
         ),
-        # # #
-        # # # SFS aligned to reference genome
-        # # # expand(
-        # # #     pjoin(WD, "n{n}", "palss-{graph}", "specific_strings.d{d}.bam"),
-        # # #     n=Ns,
-        # # #     d=Ds,
-        # # #     graph=["oneout"],
-        # # # ),
+        #
+        # SFS aligned to reference genome
+        # expand(
+        #     pjoin(WD, "n{n}", "palss-{graph}", "specific_strings.d{d}.bam"),
+        #     n=Ns,
+        #     d=Ds,
+        #     graph=["oneout"],
+        # ),
+        #
         # PALSS consensus to real contigs
         expand(
             pjoin(
@@ -151,19 +141,6 @@ rule run:
             d=Ds,
             w=Ws,
         ),
-        # expand(
-        #     pjoin(
-        #         WD,
-        #         "n{n}",
-        #         "palss-{graph}",
-        #         "unanchored-consensus.d{d}.w{w}.c{c}.m{m}.to-contigs.bam",
-        #     ),
-        #     n=Ns,
-        #     graph=["oneout"],
-        #     d=Ds,
-        #     w=Ws,
-        #     c=Cs,
-        #     m=Ms,
-        # ),
+        #
         pjoin(WD, "nm.csv"),
         pjoin(WD, "support.csv"),

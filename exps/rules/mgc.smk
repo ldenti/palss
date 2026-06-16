@@ -1,23 +1,23 @@
 """
-  * pangenome: pjoin(WD, "n{n}", "pangenome-{t}.gbz")
-  * reads: pjoin(WD, sample + "-reads.ec.fa"),
+  * pangenome: pjoin(WD, "n{n}", "pangenome-{graph}.gbz")
+  * reads: pjoin(WD, sample + "-cov{cov}.fq.gz"),
 """
 
 
 rule hifiasm:
     input:
-        fq=pjoin(WD, "cov{cov}", sample + "-reads.fq.gz"),
+        fq=pjoin(WD, sample + "-cov{cov}.fq.gz"),
     output:
-        fa1=pjoin(WD, "cov{cov}", sample + ".asm.bp.hap1.p_ctg.fa"),
-        fa2=pjoin(WD, "cov{cov}", sample + ".asm.bp.hap2.p_ctg.fa"),
-        fa=pjoin(WD, "cov{cov}", sample + ".asm.bp.haps.p_ctg.fa"),
+        fa1=pjoin(WD, "mgcactus", sample + "-cov{cov}.asm.bp.hap1.p_ctg.fa"),
+        fa2=pjoin(WD, "mgcactus", sample + "-cov{cov}.asm.bp.hap2.p_ctg.fa"),
+        fa=pjoin(WD, "mgcactus", sample + "-cov{cov}.asm.bp.haps.p_ctg.fa"),
     params:
-        prefix=pjoin(WD, "cov{cov}", sample + ".asm"),
+        prefix=pjoin(WD, "mgcactus", sample + "-cov{cov}.asm"),
     threads: workflow.cores
     conda:
         "../envs/hifiasm.yaml"
     log:
-        time=pjoin(WD, "times", "cov{cov}", "hifiasm.time"),
+        time=pjoin(WD, "times", "mgcactus", "hifiasm-cov{cov}.time"),
     shell:
         """
         /usr/bin/time -vo {log.time} hifiasm -o {params.prefix} -t{threads} {input.fq}
@@ -70,21 +70,24 @@ rule hifiasm:
 rule minigraphcactus:
     input:
         ref=FA,
-        gbz=pjoin(WD, "n{n}", "pangenome-oneout.gbz"),
+        gbz=pjoin(WD, "n{n}", "pangenome-oneout.gbz"),  # we take known contigs from the pangenome
         fa1=rules.hifiasm.output.fa1,
         fa2=rules.hifiasm.output.fa2,
         venv=cactus_activate,
     output:
-        gfa=pjoin(WD, "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
+        gfa=pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
+        ugfa=pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus.unchop.gfa"),
     params:
         prefix=pjoin("/scratch2", "luca-palss", WD[1:], "n{n}", "cov{cov}", "mgcactus"),
     threads: workflow.cores
     # conda:
     #     "../envs/mgc.yaml"
     log:
-        time=pjoin(WD, "times", "cov{cov}", "n{n}", "mgcactus.time"),
+        time=pjoin(WD, "times", "mgcactus", "full-cov{cov}.n{n}.time"),
+        time2=pjoin(WD, "times", "mgcactus", "mgc-cov{cov}.n{n}.time"),
     shell:
         """
         set +u; source {input.venv}; set -u
-        /usr/bin/time -vo {log.time} bash ./utils/run_mgcactus.sh {input.ref} {input.gbz} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} | vg mod --unchop - > {output.gfa}
+        /usr/bin/time -vo {log.time} bash ./utils/run_mgcactus.sh {input.ref} {input.gbz} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} {log.time2} > {output.gfa}
+        vg mod --unchop {output.gfa} > {output.ugfa}
         """

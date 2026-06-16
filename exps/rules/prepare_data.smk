@@ -85,9 +85,9 @@ rule pbsim3:
         fa=rules.extract_haplotype.output.fa,
         fq=REALFQ,
     output:
-        fq=pjoin(WD, "cov{cov}", "pbsim3", "hap{h}_0001.fq.gz"),
+        fq=pjoin(WD, "reads-cov{cov}", "pbsim3", "hap{h}_0001.fq.gz"),
     params:
-        oprefix=pjoin(WD, "cov{cov}", "pbsim3", "hap{h}"),
+        oprefix=pjoin(WD, "reads-cov{cov}", "pbsim3", "hap{h}"),
         cov=lambda wildcards: int(wildcards.cov) / 2,
     threads: workflow.cores / 2
     conda:
@@ -100,12 +100,12 @@ rule pbsim3:
 
 rule combine:
     input:
-        pjoin(WD, "cov{cov}", "pbsim3", "hap1_0001.fq.gz"),
-        pjoin(WD, "cov{cov}", "pbsim3", "hap2_0001.fq.gz"),
+        pjoin(WD, "reads-cov{cov}", "pbsim3", "hap1_0001.fq.gz"),
+        pjoin(WD, "reads-cov{cov}", "pbsim3", "hap2_0001.fq.gz"),
     output:
-        fq=pjoin(WD, "cov{cov}", sample + "-reads.fq.gz"),
+        fq=pjoin(WD, sample + "-cov{cov}.fq.gz"),
     params:
-        oprefix=pjoin(WD, "cov{cov}", "pbsim3"),
+        oprefix=pjoin(WD, "reads-cov{cov}", "pbsim3"),
     threads: workflow.cores
     shell:
         """
@@ -127,17 +127,17 @@ rule combine:
 
 rule hifiasm_ec:
     input:
-        fq=pjoin(WD, "cov{cov}", sample + "-reads.fq.gz"),
+        fq=pjoin(WD, sample + "-cov{cov}.fq.gz"),
     output:
-        fa=pjoin(WD, "cov{cov}", sample + "-reads.ec.fa"),
+        fa=pjoin(WD, sample + "-cov{cov}.ec.fa"),
     params:
-        prefix=pjoin(WD, "cov{cov}", sample + "-reads"),
+        prefix=pjoin(WD, sample + "-cov{cov}"),
     threads: workflow.cores
     conda:
         "../envs/hifiasm.yaml"
     log:
-        time=pjoin(WD, "times", "cov{cov}", "hifiasm-ec.time"),
-        log=pjoin(WD, "logs", "cov{cov}", "hifiasm-ec.log"),
+        time=pjoin(WD, "times", "palss", "hifiasm-ec.cov{cov}.time"),
+        log=pjoin(WD, "logs", "palss", "hifiasm-ec.cov{cov}.log"),
     shell:
         """
         /usr/bin/time -vo {log.time} hifiasm -t{threads} --write-ec --bin-only {input.fq} -o {params.prefix} 2> {log.log}
@@ -165,7 +165,7 @@ rule align_reads:
         fa=FA,
         fq=rules.combine.output.fq,
     output:
-        bam=pjoin(WD, "cov{cov}", sample + "-reads.bam"),
+        bam=pjoin(WD, sample + "-cov{cov}.bam"),
     conda:
         "../envs/minimap2.yaml"
     threads: workflow.cores
@@ -181,7 +181,7 @@ rule align_corrected_reads:
         fa=FA,
         fq=rules.hifiasm_ec.output.fa,
     output:
-        bam=pjoin(WD, "cov{cov}", sample + "-reads.ec.bam"),
+        bam=pjoin(WD, sample + "-cov{cov}.ec.bam"),
     conda:
         "../envs/minimap2.yaml"
     threads: workflow.cores

@@ -42,21 +42,6 @@ rule get_nm:
             w=Ws,
             size=SIZES,
         ),
-        # expand(
-        #     pjoin(
-        #         WD,
-        #         "n{n}",
-        #         "tables-nm",
-        #         "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.csv",
-        #     ),
-        #     n=Ns,
-        #     graph=["oneout"],
-        #     d=Ds,
-        #     w=Ws,
-        #     c=Cs,
-        #     m=Ms,
-        #     size=SIZES,
-        # ),
         # XXX: this is useless, we could do this just once
         expand(
             pjoin(WD, "n{n}", "tables-nm", "reference.{size}.csv"),
@@ -145,28 +130,3 @@ rule get_nm_palss:
         """
         python3 ./utils/get_nm.py -t palss-d{wildcards.d} -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
         """
-
-
-# rule get_nm_palss_refine:
-#     input:
-#         gaf=pjoin(
-#             WD,
-#             "n{n}",
-#             "truecontigs-aln",
-#             "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.gaf",
-#         ),
-#         txt=pjoin(WD, sample + "-haps.{size}-overlapping.complex.list"),
-#     output:
-#         csv=pjoin(
-#             WD,
-#             "n{n}",
-#             "tables-nm",
-#             "palss-{graph}.d{d}.w{w}.c{c}.m{m}.{size}.csv",
-#         ),
-#     conda:
-#         "../envs/pysam.yaml"
-#     threads: workflow.cores / 4
-#     shell:
-#         """
-#         python3 ./utils/get_nm.py {input.gaf} {input.txt} {wildcards.n} > {output.csv}
-#         """

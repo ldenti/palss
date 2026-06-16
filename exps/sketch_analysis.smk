@@ -6,7 +6,7 @@ FQ = config["fq"]
 GBZ = config["gbz"]
 WD = config["wd"]
 
-Ds = [0.1] # , 0.25, 0.33, 0.5]
+Ds = [0.1]  # , 0.25, 0.33, 0.5]
 
 
 rule run:
