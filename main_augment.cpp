@@ -548,13 +548,17 @@ int main_augment(int argc, char *argv[]) {
 
       // XXX: this is copied from
       // https://github.com/vgteam/vg/blob/cee90d25878c71cdfb733d801e55548db4828a65/src/gfa.cpp#L190
+      // FIXME: however, it seems to not work... With P-lines I get only 0,0 and
+      // then vg mod complains
       size_t start_offset = 0;
       size_t end_offset = 0;
       auto subrange = pg->get_subrange(path);
+      bool w_line = false;
       if (subrange != handlegraph::PathMetadata::NO_SUBRANGE) {
         start_offset = subrange.first;
         if (subrange.second != handlegraph::PathMetadata::NO_END_POSITION) {
           end_offset = subrange.second;
+          w_line = true;
         }
       }
       size_t path_length = 0;
@@ -570,15 +574,28 @@ int main_augment(int argc, char *argv[]) {
       }
       // =============================================================
 
-      std::cout << "W" << "\t" << pg->get_sample_name(path) << "\t"
-                << pg->get_haplotype(path) << "\t" << pg->get_locus_name(path)
-                << "\t" << start_offset << "\t" << start_offset + path_length
-                << "\t";
-      for (const handlegraph::handle_t &handle : pg->scan_path(path)) {
-        std::cout << (pg->get_is_reverse(handle) ? '<' : '>')
-                  << pg->get_id(handle);
+      if (w_line) {
+        std::cout << "W" << "\t" << pg->get_sample_name(path) << "\t"
+                  << pg->get_haplotype(path) << "\t" << pg->get_locus_name(path)
+                  << "\t" << start_offset << "\t" << start_offset + path_length
+                  << "\t";
+        for (const handlegraph::handle_t &handle : pg->scan_path(path)) {
+          std::cout << (pg->get_is_reverse(handle) ? '<' : '>')
+                    << pg->get_id(handle);
+        }
+        std::cout << std::endl;
+      } else {
+        std::cout << "P" << "\t" << pname << "\t";
+
+        std::stringstream sp;
+        for (const handlegraph::handle_t &handle : pg->scan_path(path)) {
+          sp << pg->get_id(handle) << (pg->get_is_reverse(handle) ? "-" : "+")
+             << ",";
+        }
+        std::string p = sp.str();
+        p.pop_back();
+        std::cout << p << "\t" << "*" << std::endl;
       }
-      std::cout << std::endl;
     }
   });
 
