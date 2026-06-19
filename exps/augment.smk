@@ -66,6 +66,8 @@ include: "./rules/analyses.smk"
 #
 include: "./rules/support.smk"
 include: "./rules/nm.smk"
+#
+include: "./rules/downstream.smk"
 
 
 rule run:
@@ -131,3 +133,17 @@ rule run:
         #
         pjoin(WD, "nm.csv"),
         pjoin(WD, "support.csv"),
+        #
+        expand(
+            pjoin(WD, "n{n}", "downstream", "palss-{graph}.d{d}.w{w}.cov{cov}.gaf"),
+            n=Ns,
+            cov=coverages,
+            graph=["oneout"],
+            d=Ds,
+            w=Ws,
+        ),
+        expand(
+            pjoin(WD, "n{n}", "downstream", "mgcactus.cov{cov}.gaf"),
+            n=Ns,
+            cov=coverages,
+        ),

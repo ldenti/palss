@@ -11,7 +11,9 @@ Ds = [0.1, 0.25, 0.33, 0.5]
 
 rule run:
     input:
-        expand(pjoin(WD, "d{d}", "missed_regions.bed"), d=Ds),
+        expand(
+            pjoin(WD, "d{d}", "missed_regions.g{l}.bed"), d=Ds, l=[5000, 10000, 15000]
+        ),
         expand(pjoin(WD, "d{d}", "reads.txt"), d=Ds),
 
 
@@ -39,6 +41,17 @@ rule palss_kan_reference:
     shell:
         """
         ../palss kan {input.skt} {input.fa} > {output.bed}
+        """
+
+
+rule subset:
+    input:
+        bed=pjoin(WD, "d{d}", "missed_regions.bed"),
+    output:
+        bed=pjoin(WD, "d{d}", "missed_regions.g{l}.bed"),
+    shell:
+        """
+        awk -v L={wildcards.l} '$3-$2 > L' {input.bed} > {output.bed}
         """
 
 

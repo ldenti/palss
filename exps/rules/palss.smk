@@ -1,6 +1,7 @@
 """
   * pangenome: pjoin(WD, "n{n}", "pangenome-{graph}.gbz")
   * reads: pjoin(WD, sample + "-cov{cov}.fq.gz"),
+  * corrected reads: pjoin(WD, sample + "-cov{cov}.ec.fa"),
 """
 
 
@@ -37,7 +38,7 @@ rule palss_search:
         gbz=pjoin(WD, "n{n}", "pangenome-{graph}.gbz"),
         skt=rules.palss_sketch.output.skt,
         fmd=rules.palss_fmd.output.fmd,
-        reads=pjoin(WD, sample + "-cov{cov}.fq.gz"),
+        reads=pjoin(WD, sample + "-cov{cov}.ec.fa"),
     output:
         sfs=pjoin(WD, "palss", "n{n}", "cov{cov}", "specificstrings-{graph}.d{d}.txt"),
     threads: workflow.cores
