@@ -227,7 +227,38 @@ int main_augment(int argc, char *argv[]) {
       std::cerr << "Computed " << n_chunks << " chunks" << std::endl;
       segments.resize(chunks.first.size());
 
+      // clang-format off
       // XXX: hardcoded to 2 threads to keep RAM usage <90GB
+      /**
+	 Chr GB  Min
+	 ===========
+	 1   42  40
+	 2   41  44
+	 3   31  34
+	 4   34  34
+	 5   32  32
+	 6   30  31
+	 7   32  30
+	 8   29  27
+	 9   23  23
+	 10  24  24
+	 11  25  24
+	 12  24  23
+	 13  19  19
+	 14  18  19
+	 15  17  17
+	 16  16  17
+	 17  15  15
+	 18  12  13
+	 19  11  12
+	 20  12  12
+	 21  7.5 8
+	 22  9.4 10
+	 X   15  15
+	 Y   0   0
+	 M   0   0
+       **/
+      // clang-format on
 #pragma omp parallel for num_threads(2) schedule(static, 1)
       for (size_t i = 0; i < n_chunks; ++i) {
         const gbwtgraph::GBZ &sub_gbz = chunks.first[i];
