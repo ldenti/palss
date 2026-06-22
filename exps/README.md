@@ -1,6 +1,6 @@
 ```
 cd utils
-g++ -I$PWD/../../include/ -L$PWD/../../lib -Wl,-rpath,$PWD/../../lib -o extract_subgraph extract_subgraph.cpp -lgbwtgraph -lgbwt -lsdsl -fopenmp -lhandlegraph
+g++ -I$PWD/../../include/ -L$PWD/../../build/zstd-prefix/src/zstd/lib -L$PWD/../../lib -Wl,-rpath,$PWD/../../lib -o extract_subgraph extract_subgraph.cpp -lgbwtgraph -lgbwt -lsdsl -fopenmp -lhandlegraph -lzstd -lcrypto
 cd ..
 
 bash prepare_data.sh [graph.gbz] [out_dir]

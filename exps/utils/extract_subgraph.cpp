@@ -84,18 +84,35 @@ int main(int argc, char *argv[]) {
   // XXX: this could be done way better (no need to store strings)
 
   // Print S lines
-  std::set<std::string> segments;
+  std::string last_gfa_name = "";
+  std::string seq = "";
+  bool last_is_reverse = false;
   for (const auto &node : nodes) {
     gbwtgraph::handle_t handle = gbz.graph.node_to_handle(node);
     std::string gfa_name = gbz.graph.get_segment_name(handle);
-    if (segments.find(gfa_name) != segments.end())
-      continue;
-    std::string seq = gbz.graph.get_sequence(handle);
-    std::cout << "S"
-              << "\t" << gfa_name << "\t"
-              << ((node & 1) ? reverseAndComplement(seq) : seq) << std::endl;
-    segments.insert(gfa_name);
+    std::string_view vertex_view = gbz.graph.get_sequence_view(handle);
+
+    if (last_gfa_name.empty()) {
+      last_gfa_name = gfa_name;
+      last_is_reverse = node & 1;
+    }
+    if (gfa_name.compare(last_gfa_name) == 0) {
+      seq += std::string(vertex_view.data(), vertex_view.size());
+    } else {
+      if (!seq.empty())
+        std::cout << "S"
+                  << "\t" << last_gfa_name << "\t"
+                  << (last_is_reverse ? reverseAndComplement(seq) : seq)
+                  << std::endl;
+      seq = std::string(vertex_view.data(), vertex_view.size());
+      last_gfa_name = gfa_name;
+    }
   }
+  if (!seq.empty())
+    std::cout << "S"
+              << "\t" << last_gfa_name << "\t"
+              << (last_is_reverse ? reverseAndComplement(seq) : seq)
+              << std::endl;
 
   // Print L lines
   std::set<std::string> links;
