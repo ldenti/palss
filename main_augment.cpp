@@ -11,7 +11,10 @@
 #include "usage.hpp"
 
 #include "bdsg/packed_graph.hpp"
+#include "gbwtgraph/algorithms.h"
+#include "gbwtgraph/gbz.h"
 #include "handlegraph/types.hpp"
+#include "sdsl/simple_sds.hpp"
 
 std::vector<std::vector<handlegraph::handle_t>>
 dp(bdsg::PackedGraph *pg, handlegraph::handle_t source,
@@ -158,20 +161,19 @@ bool flag_edge(
 int main_augment(int argc, char *argv[]) {
   // double rt;
 
+  bool chunk = false;
   size_t min_supp = 2;
-  bool is_gbz = false;
   std::string wd = "/tmp";
-  bool augment = true;
   size_t maxp = 1024;
   std::string retained_gaf_fn = "";
-  // int nth = 4;
+  int nthreads = 4;
   // size_t max_plen = 100000;
 
   int _c;
-  while ((_c = getopt(argc, argv, "an:w:g:zs:h")) != -1) {
+  while ((_c = getopt(argc, argv, "cn:w:g:zs:@:h")) != -1) {
     switch (_c) {
-    case 'a':
-      augment = false;
+    case 'c':
+      chunk = true;
       break;
     case 'n':
       maxp = std::stoi(optarg);
@@ -179,14 +181,11 @@ int main_augment(int argc, char *argv[]) {
     case 'w':
       wd = optarg;
       break;
-      // case '@':
-      //   nth = std::stoi(optarg);
-      //   break;
+    case '@':
+      nthreads = std::stoi(optarg);
+      break;
     case 'g':
       retained_gaf_fn = optarg;
-      break;
-    case 'z':
-      is_gbz = true;
       break;
     case 's':
       min_supp = std::stoi(optarg);
@@ -204,271 +203,372 @@ int main_augment(int argc, char *argv[]) {
     return 1;
   }
 
-  std::string graph_fn = argv[optind++];
+  std::string gbz_fn = argv[optind++];
   std::string gaf_fn = argv[optind++];
 
   std::filesystem::create_directories(wd);
 
-  // convert graph to packed graph (if needed)
-  std::string pg_fn = graph_fn;
-  if (is_gbz) {
-    std::ostringstream cmd;
-    cmd << "vg convert --packed-out " << graph_fn << " > " << wd << "/graph.pg";
-    std::cerr << cmd.str() << std::endl;
-    std::system(cmd.str().c_str());
-    pg_fn = wd + "/graph.pg";
-  }
+  std::vector<std::pair<std::string, std::string>> file_pairs;
 
-  // augment graph
-  if (augment) {
-    std::ostringstream cmd;
-    cmd << "vg augment --include-paths --min-coverage 1 --gaf " << pg_fn << " "
-        << gaf_fn << " > " << wd << "/graph-augmented.pg";
-    std::cerr << cmd.str() << std::endl;
-    std::system(cmd.str().c_str());
-    pg_fn = wd + "/graph-augmented.pg";
-  }
-  bdsg::PackedGraph *pg = new bdsg::PackedGraph();
-  pg->deserialize(pg_fn);
+  if (chunk) {
+    size_t n_chunks;
+    std::vector<std::set<std::string>> segments;
+    {
+      gbwtgraph::GBZ gbz;
+      std::cerr << "Loading the graph from " << gbz_fn << "..." << std::endl;
+      sdsl::simple_sds::load_from(gbz, gbz_fn);
 
-  std::cerr << "Loaded packed graph" << std::endl;
+      // Chunking required 7m:35s and 32.8GB
+      std::cerr << "Chunking GBZ..." << std::endl;
+      std::pair<std::vector<gbwtgraph::GBZ>, std::vector<std::string>> chunks =
+          chunk_graph(gbz, {});
 
-  size_t total_paths = pg->get_path_count();
+      n_chunks = chunks.first.size();
+      std::cerr << "Computed " << n_chunks << " chunks" << std::endl;
+      segments.resize(chunks.first.size());
 
-  std::set<handlegraph::handle_t> known_vertices;
-  std::set<handlegraph::edge_t> known_edges;
-  int pi = 0;
-  int np = 0;
+      // XXX: hardcoded to 2 threads to keep RAM usage <90GB
+#pragma omp parallel for num_threads(2) schedule(static, 1)
+      for (size_t i = 0; i < n_chunks; ++i) {
+        const gbwtgraph::GBZ &sub_gbz = chunks.first[i];
+        std::string fn = std::to_string(i); // + "_" + chunks.second[i];
+        std::string sub_gbz_fn = wd + "/" + fn + ".gbz";
+        std::string sub_pg_fn = wd + "/" + fn + ".pg";
 
-  pg->for_each_path_handle([&](const bdsg::path_handle_t p) {
-    std::string pname = pg->get_path_name(p);
-    std::string_view sv = pname;
-    // std::cerr << pi << "/" << total_paths << " paths\r";
-    // XXX: improve this, quite inefficient (batch insert?)
-    if (sv.substr(0, 5).compare("palss") != 0) {
-      handlegraph::handle_t last_h;
-      bool first = true;
-      // pg->for_each_step_in_path(p, [&](const bdsg::step_handle_t s) {
-      //   std::cerr << pg->get_id(pg->get_handle_of_step(s)) << " ";
-      // });
-      // std::cerr << std::endl;
+        std::stringstream log;
+        log << "Dumping " << chunks.second[i] << "\n";
+        std::cerr << log.str();
 
-      for (const handlegraph::handle_t &h : pg->scan_path(p)) {
-        // std::cerr << pg->get_id(h) << " ";
-        known_vertices.insert(h);
-        if (!first)
-          known_edges.insert(std::make_pair(last_h, h));
-        first = false;
-        last_h = h;
+        sdsl::simple_sds::serialize_to(chunks.first[i], sub_gbz_fn);
+        std::ostringstream cmd;
+        cmd << "vg convert --packed-out " << sub_gbz_fn << " > " << sub_pg_fn;
+        log.str("");
+        log.clear();
+        log << "Converting " << chunks.second[i] << "\n";
+        std::cerr << log.str();
+        std::system(cmd.str().c_str());
+
+        log.str("");
+        log.clear();
+        log << "Parsing " << chunks.second[i] << "\n";
+        std::cerr << log.str();
+
+        sub_gbz.graph.for_each_handle([&](const handlegraph::handle_t &handle) {
+          segments[i].insert(sub_gbz.graph.get_segment_name(handle));
+        });
       }
-      // std::cerr << std::endl;
-    } else {
-      ++np;
     }
-    ++pi;
-  });
-  std::cerr << pi << "/" << total_paths << " paths" << std::endl;
-  std::cerr << "Novel paths: " << np << std::endl;
-  std::cerr << "Known vertices: " << known_vertices.size() << std::endl;
-  std::cerr << "Known edges: " << known_edges.size() << std::endl;
 
-  // for (const auto &v : known_vertices)
-  //   std::cerr << "NOVEL " << pg->get_id(v) << std::endl;
+    // splitting GAF
+    std::cerr << "Chunking GAF..." << std::endl;
+    {
+      std::vector<std::ofstream> sub_gafs(n_chunks + 1);
+      for (size_t c = 0; c < sub_gafs.size(); ++c) {
+        sub_gafs[c].open(wd + "/" + std::to_string(c) + ".gaf");
+      }
+      std::ifstream file(gaf_fn);
+      std::string line;
+      while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        std::string token;
+        int t = 0;
 
-  std::map<std::string, std::set<std::string>> cluster_support;
-  {
-    std::cerr << "Parsing GAF..." << std::endl;
-    std::ifstream file(gaf_fn);
-    std::string line;
-    while (std::getline(file, line)) {
-      std::istringstream iss(line);
-      std::string token;
-      int i = 0;
-      std::string cname;
-      while (std::getline(iss, token, '\t')) {
-        if (i == 0) {
-          cname = token;
-        } else if (i == 15) {
-          std::string rname;
-          std::istringstream iss2(token);
-          iss2.ignore(5);
-          while (std::getline(iss2, rname, '|')) {
-            cluster_support[cname].insert(rname);
+        std::string vertex; // XXX: is first vertex enough?
+                            // std::vector<std::string> vertices;
+        while (std::getline(iss, token, '\t')) {
+          if (t == 5) {
+            // size_t last_p = 1;
+            size_t p;
+            for (p = 1 /* last_p */; p < token.size(); ++p) {
+              if (token[p] == '<' || token[p] == '>') {
+                // vertices.push_back(token.substr(last_p, p - last_p));
+                // last_p = p + 1;
+                break;
+              }
+            }
+            vertex = token.substr(1 /*last_p*/, p - 1 /*last_p*/);
+            // vertices.push_back(token.substr(last_p, token.size() - last_p));
+
+            size_t c;
+            for (c = 0; c < segments.size(); ++c) {
+              if (segments[c].find(vertex) != segments[c].end())
+                break;
+            }
+            sub_gafs[c] << line << std::endl;
           }
+          ++t;
         }
-        ++i;
+      }
+      for (auto &o : sub_gafs) {
+        o.close();
       }
     }
+
+    // augment graphs
+    std::cerr << "Augmenting..." << std::endl;
+    {
+      for (size_t c = 0; c < n_chunks; ++c) {
+        std::string original_pg_fn = wd + "/" + std::to_string(c) + ".pg";
+        std::string augmented_pg_fn =
+            wd + "/" + std::to_string(c) + ".augmented.pg";
+        std::string gaf_fn = wd + "/" + std::to_string(c) + ".gaf";
+        std::ostringstream cmd;
+        cmd << "vg augment --include-paths --min-coverage 1 --gaf "
+            << original_pg_fn << " " << gaf_fn << " > " << augmented_pg_fn;
+        std::system(cmd.str().c_str());
+        file_pairs.push_back({augmented_pg_fn, gaf_fn});
+      }
+    }
+  } else {
+    std::string pg_fn = wd + "/graph.pg";
+    std::string augmented_pg_fn = wd + "/graph.augmented.pg";
+
+    std::ostringstream cmd1;
+    cmd1 << "vg convert --packed-out " << gbz_fn << " > " << pg_fn;
+    std::system(cmd1.str().c_str());
+
+    std::ostringstream cmd2;
+    cmd2 << "vg augment --include-paths --min-coverage 1 --gaf " << pg_fn << " "
+         << gaf_fn << " > " << augmented_pg_fn;
+    std::system(cmd2.str().c_str());
+
+    file_pairs.push_back({augmented_pg_fn, gaf_fn});
   }
 
-  std::map<std::string, std::vector<handlegraph::handle_t>> real_novel;
-  pg->for_each_path_handle([&](const bdsg::path_handle_t path) {
-    std::string pname = pg->get_path_name(path);
-    // if (pname.compare("palss-37356.0") != 0)
-    //   return;
-    std::string_view sv = pname;
-    if (sv.substr(0, 5).compare("palss") == 0) {
-      std::string seq;
-      int plen = 0;
-      for (const handlegraph::handle_t &h : pg->scan_path(path)) {
-        ++plen;
-        seq += pg->get_sequence(h); // already rc
+#pragma omp parallel for num_threads(nthreads) schedule(static, 1)
+  for (size_t c = 0; c < file_pairs.size(); ++c) {
+    std::string pg_fn = file_pairs[c].first;
+    std::string gaf_fn = file_pairs[c].second;
+    std::cerr << pg_fn << " " << gaf_fn << std::endl;
 
-        // pg->get_is_reverse(h)
-        // pg->get_id(h)
-      }
+    bdsg::PackedGraph *pg = new bdsg::PackedGraph();
+    pg->deserialize(pg_fn);
 
-      handlegraph::handle_t source =
-          pg->get_handle_of_step(pg->path_begin(path));
-      handlegraph::handle_t sink = pg->get_handle_of_step(pg->path_back(path));
+    // std::cerr << "Loaded packed graph" << std::endl;
 
-      if (source == sink) {
-        // XXX: why do we have single-vertex paths?
-        assert(plen == 1);
-        return;
-      }
+    size_t total_paths = pg->get_path_count();
 
-      uint32_t best_novel_path_count = -1;
+    std::set<handlegraph::handle_t> known_vertices;
+    std::set<handlegraph::edge_t> known_edges;
+    int pi = 0;
+    int np = 0;
 
-      std::vector<handlegraph::handle_t> best_novel_path;
+    pg->for_each_path_handle([&](const bdsg::path_handle_t p) {
+      std::string pname = pg->get_path_name(p);
+      std::string_view sv = pname;
+      // std::cerr << pi << "/" << total_paths << " paths\r";
+      // XXX: improve this, quite inefficient (batch insert?)
+      if (sv.substr(0, 5).compare("palss") != 0) {
+        handlegraph::handle_t last_h;
+        bool first = true;
+        // pg->for_each_step_in_path(p, [&](const bdsg::step_handle_t s) {
+        //   std::cerr << pg->get_id(pg->get_handle_of_step(s)) << " ";
+        // });
+        // std::cerr << std::endl;
 
-      // std::cerr << pname << std::endl;
-
-      std::vector<std::vector<handlegraph::handle_t>> reconstructed_paths =
-          dp(pg, source, sink, seq, maxp);
-
-      assert(!reconstructed_paths.empty());
-
-      for (const std::vector<handlegraph::handle_t> &rpath :
-           reconstructed_paths) {
-
-        // TODO: check edges?
-
-        std::string rseq;
-        size_t n_novel_vertices = 0;
-        size_t n_novel_edges = 0;
-
-        n_novel_vertices +=
-            known_vertices.find(rpath[0]) == known_vertices.end();
-        rseq += pg->get_sequence(rpath[0]);
-        // std::cerr << pg->get_id(rpath[0]);
-        for (size_t h = 1; h < rpath.size(); ++h) {
-          // std::cerr << " " << pg->get_id(rpath[h]);
-          n_novel_vertices +=
-              known_vertices.find(rpath[h]) == known_vertices.end();
-          // std::cerr << pg->get_id(rpath[h - 1]) << " " <<
-          // pg->get_id(rpath[h])
-          //           << " "
-          //           << (known_edges.find(std::make_pair(
-          //                   rpath[h - 1], rpath[h])) == known_edges.end())
-          //           << std::endl;
-          n_novel_edges +=
-              known_edges.find(std::make_pair(rpath[h - 1], rpath[h])) ==
-              known_edges.end();
-          rseq += pg->get_sequence(rpath[h]);
+        for (const handlegraph::handle_t &h : pg->scan_path(p)) {
+          // std::cerr << pg->get_id(h) << " ";
+          known_vertices.insert(h);
+          if (!first)
+            known_edges.insert(std::make_pair(last_h, h));
+          first = false;
+          last_h = h;
         }
         // std::cerr << std::endl;
-        // std::cerr << seq << std::endl;
-        // std::cerr << rseq << std::endl;
-        assert(seq.compare(rseq) == 0);
-
-        // std::cerr << n_novel_vertices << " " << n_novel_edges << std::endl;
-
-        if (n_novel_vertices == 0 && n_novel_edges == 0) {
-          best_novel_path.clear();
-          break;
-        }
-        // XXX: parsimony based on number of novel vertices, not edges
-        if (n_novel_vertices < best_novel_path_count) {
-          best_novel_path_count = n_novel_vertices;
-          best_novel_path = rpath;
-        }
+      } else {
+        ++np;
       }
-      if (!best_novel_path.empty()) {
-        real_novel[pname] = best_novel_path;
-        // std::cerr << pname << " " << best_novel_path_count << " "
-        //           << best_novel_path.size() << std::endl;
+      ++pi;
+    });
+    std::cerr << pi << "/" << total_paths << " paths" << std::endl;
+    std::cerr << "Novel paths: " << np << std::endl;
+    std::cerr << "Known vertices: " << known_vertices.size() << std::endl;
+    std::cerr << "Known edges: " << known_edges.size() << std::endl;
+
+    // for (const auto &v : known_vertices)
+    //   std::cerr << "NOVEL " << pg->get_id(v) << std::endl;
+
+    std::map<std::string, std::set<std::string>> cluster_support;
+    {
+      std::cerr << "Parsing GAF..." << std::endl;
+      std::ifstream file(gaf_fn);
+      std::string line;
+      while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        std::string token;
+        int i = 0;
+        std::string cname;
+        while (std::getline(iss, token, '\t')) {
+          if (i == 0) {
+            cname = token;
+          } else if (i == 15) {
+            std::string rname;
+            std::istringstream iss2(token);
+            iss2.ignore(5);
+            while (std::getline(iss2, rname, '|')) {
+              cluster_support[cname].insert(rname);
+            }
+          }
+          ++i;
+        }
       }
     }
-  });
 
-  std::cerr << real_novel.size() << " novel paths will be retained"
-            << std::endl;
+    std::map<std::string, std::vector<handlegraph::handle_t>> real_novel;
+    pg->for_each_path_handle([&](const bdsg::path_handle_t path) {
+      std::string pname = pg->get_path_name(path);
+      // if (pname.compare("palss-37356.0") != 0)
+      //   return;
+      std::string_view sv = pname;
+      if (sv.substr(0, 5).compare("palss") == 0) {
+        std::string seq;
+        int plen = 0;
+        for (const handlegraph::handle_t &h : pg->scan_path(path)) {
+          ++plen;
+          seq += pg->get_sequence(h); // already rc
+          // pg->get_is_reverse(h)
+          // pg->get_id(h)
+        }
 
-  std::cerr << "Selecting segments/links to remove..." << std::endl;
+        handlegraph::handle_t source =
+            pg->get_handle_of_step(pg->path_begin(path));
+        handlegraph::handle_t sink =
+            pg->get_handle_of_step(pg->path_back(path));
 
-  // 2-pass cleaning. If a vertex is supported by at least one path, we want
-  // to keep it even if it's not supported by others
-  std::map<handlegraph::handle_t, std::set<std::string>> novel_vertices;
-  std::map<handlegraph::edge_t, std::set<std::string>> novel_edges;
+        if (source == sink) {
+          // XXX: why do we have single-vertex paths?
+          assert(plen == 1);
+          return;
+        }
 
-  // get novel vertices and edges from real novel paths
-  for (const auto &pp : real_novel) {
-    std::string cname = pp.first;
-    // std::cerr << cname << " >";
-    // for (const auto &h : pp.second) {
-    //   std::cerr << " " << pg->get_id(h);
-    // }
-    // std::cerr << std::endl;
+        uint32_t best_novel_path_count = -1;
 
-    if (known_vertices.find(pp.second[0]) == known_vertices.end())
-      novel_vertices[pp.second[0]].insert(cluster_support[cname].begin(),
-                                          cluster_support[cname].end());
-    // std::cerr << pg->get_id(pp.second[0]) << " "
-    //           << (known_vertices.find(pp.second[0]) == known_vertices.end())
-    //           << std::endl;
-    for (size_t h = 1; h < pp.second.size(); ++h) {
-      // std::cerr << pg->get_id(pp.second[h]) << " "
-      //           << (known_vertices.find(pp.second[h]) ==
+        std::vector<handlegraph::handle_t> best_novel_path;
+
+        std::vector<std::vector<handlegraph::handle_t>> reconstructed_paths =
+            dp(pg, source, sink, seq, maxp);
+
+        assert(!reconstructed_paths.empty());
+
+        for (const std::vector<handlegraph::handle_t> &rpath :
+             reconstructed_paths) {
+
+          // TODO: check edges?
+
+          std::string rseq;
+          size_t n_novel_vertices = 0;
+          size_t n_novel_edges = 0;
+
+          n_novel_vertices +=
+              known_vertices.find(rpath[0]) == known_vertices.end();
+          rseq += pg->get_sequence(rpath[0]);
+          // std::cerr << pg->get_id(rpath[0]);
+          for (size_t h = 1; h < rpath.size(); ++h) {
+            // std::cerr << " " << pg->get_id(rpath[h]);
+            n_novel_vertices +=
+                known_vertices.find(rpath[h]) == known_vertices.end();
+            // std::cerr << pg->get_id(rpath[h - 1]) << " " <<
+            // pg->get_id(rpath[h])
+            //           << " "
+            //           << (known_edges.find(std::make_pair(
+            //                   rpath[h - 1], rpath[h])) == known_edges.end())
+            //           << std::endl;
+            n_novel_edges +=
+                known_edges.find(std::make_pair(rpath[h - 1], rpath[h])) ==
+                known_edges.end();
+            rseq += pg->get_sequence(rpath[h]);
+          }
+          // std::cerr << std::endl;
+          // std::cerr << seq << std::endl;
+          // std::cerr << rseq << std::endl;
+          assert(seq.compare(rseq) == 0);
+
+          // std::cerr << n_novel_vertices << " " << n_novel_edges << std::endl;
+
+          if (n_novel_vertices == 0 && n_novel_edges == 0) {
+            best_novel_path.clear();
+            break;
+          }
+          // XXX: parsimony based on number of novel vertices, not edges
+          if (n_novel_vertices < best_novel_path_count) {
+            best_novel_path_count = n_novel_vertices;
+            best_novel_path = rpath;
+          }
+        }
+        if (!best_novel_path.empty()) {
+          real_novel[pname] = best_novel_path;
+          // std::cerr << pname << " " << best_novel_path_count << " "
+          //           << best_novel_path.size() << std::endl;
+        }
+      }
+    });
+
+    std::cerr << real_novel.size() << " novel paths will be retained"
+              << std::endl;
+
+    std::cerr << "Selecting segments/links to remove..." << std::endl;
+
+    // 2-pass cleaning. If a vertex is supported by at least one path, we want
+    // to keep it even if it's not supported by others
+    std::map<handlegraph::handle_t, std::set<std::string>> novel_vertices;
+    std::map<handlegraph::edge_t, std::set<std::string>> novel_edges;
+
+    // get novel vertices and edges from real novel paths
+    for (const auto &pp : real_novel) {
+      std::string cname = pp.first;
+      // std::cerr << cname << " >";
+      // for (const auto &h : pp.second) {
+      //   std::cerr << " " << pg->get_id(h);
+      // }
+      // std::cerr << std::endl;
+
+      if (known_vertices.find(pp.second[0]) == known_vertices.end())
+        novel_vertices[pp.second[0]].insert(cluster_support[cname].begin(),
+                                            cluster_support[cname].end());
+      // std::cerr << pg->get_id(pp.second[0]) << " "
+      //           << (known_vertices.find(pp.second[0]) ==
       //           known_vertices.end())
       //           << std::endl;
-      if (known_vertices.find(pp.second[h]) == known_vertices.end())
-        novel_vertices[pp.second[h]].insert(cluster_support[cname].begin(),
-                                            cluster_support[cname].end());
-      if (known_edges.find(std::make_pair(pp.second[h - 1], pp.second[h])) ==
-          known_edges.end()) {
-        novel_edges[std::make_pair(pp.second[h - 1], pp.second[h])].insert(
-            cluster_support[cname].begin(), cluster_support[cname].end());
+      for (size_t h = 1; h < pp.second.size(); ++h) {
+        // std::cerr << pg->get_id(pp.second[h]) << " "
+        //           << (known_vertices.find(pp.second[h]) ==
+        //           known_vertices.end())
+        //           << std::endl;
+        if (known_vertices.find(pp.second[h]) == known_vertices.end())
+          novel_vertices[pp.second[h]].insert(cluster_support[cname].begin(),
+                                              cluster_support[cname].end());
+        if (known_edges.find(std::make_pair(pp.second[h - 1], pp.second[h])) ==
+            known_edges.end()) {
+          novel_edges[std::make_pair(pp.second[h - 1], pp.second[h])].insert(
+              cluster_support[cname].begin(), cluster_support[cname].end());
+        }
       }
     }
-  }
 
-  // std::cerr << novel_vertices.size() << " " << novel_edges.size() <<
-  // std::endl;
+    // std::cerr << novel_vertices.size() << " " << novel_edges.size() <<
+    // std::endl;
 
-  // iterate over original novel paths to get novel vertices not used by real
-  // novel (cleaned) paths
-  std::set<handlegraph::handle_t> vertices_to_remove;
-  std::set<handlegraph::edge_t> edges_to_remove;
+    // iterate over original novel paths to get novel vertices not used by real
+    // novel (cleaned) paths
+    std::set<handlegraph::handle_t> vertices_to_remove;
+    std::set<handlegraph::edge_t> edges_to_remove;
 
-  pg->for_each_path_handle([&](const bdsg::path_handle_t p) {
-    std::string pname = pg->get_path_name(p);
-    std::string_view sv = pname;
-    if (sv.substr(0, 5).compare("palss") == 0) {
-      std::vector<handlegraph::handle_t> path;
-      // if (real_novel.find(pname) == real_novel.end()) {
-      for (const handlegraph::handle_t &h : pg->scan_path(p)) {
-        // std::cerr << pg->get_id(h) << " ";
-        path.push_back(h);
-      }
-      // } else {
-      //   path = real_novel[pname];
-      // }
+    pg->for_each_path_handle([&](const bdsg::path_handle_t p) {
+      std::string pname = pg->get_path_name(p);
+      std::string_view sv = pname;
+      if (sv.substr(0, 5).compare("palss") == 0) {
+        std::vector<handlegraph::handle_t> path;
+        // if (real_novel.find(pname) == real_novel.end()) {
+        for (const handlegraph::handle_t &h : pg->scan_path(p)) {
+          // std::cerr << pg->get_id(h) << " ";
+          path.push_back(h);
+        }
+        // } else {
+        //   path = real_novel[pname];
+        // }
 
-      handlegraph::handle_t prev_handle;
-      handlegraph::handle_t handle = path[0];
-      if (flag_vertex(handle, known_vertices, novel_vertices, min_supp) &&
-          flag_vertex(pg->flip(handle), known_vertices, novel_vertices,
-                      min_supp)) {
-        vertices_to_remove.insert(handle);
-        vertices_to_remove.insert(pg->flip(handle));
-      }
-
-      for (size_t h = 1; h < path.size(); ++h) {
-        prev_handle = path[h - 1];
-        handle = path[h];
-
-        // vertex
+        handlegraph::handle_t prev_handle;
+        handlegraph::handle_t handle = path[0];
         if (flag_vertex(handle, known_vertices, novel_vertices, min_supp) &&
             flag_vertex(pg->flip(handle), known_vertices, novel_vertices,
                         min_supp)) {
@@ -476,23 +576,32 @@ int main_augment(int argc, char *argv[]) {
           vertices_to_remove.insert(pg->flip(handle));
         }
 
-        // edge
-        handlegraph::edge_t edge = std::make_pair(prev_handle, handle);
-        handlegraph::edge_t edge2 =
-            std::make_pair(pg->flip(handle), pg->flip(prev_handle));
-        if (flag_edge(edge, known_edges, novel_edges, min_supp) &&
-            flag_edge(edge2, known_edges, novel_edges, min_supp)) {
-          edges_to_remove.insert(edge);
-          edges_to_remove.insert(edge2);
+        for (size_t h = 1; h < path.size(); ++h) {
+          prev_handle = path[h - 1];
+          handle = path[h];
+
+          // vertex
+          if (flag_vertex(handle, known_vertices, novel_vertices, min_supp) &&
+              flag_vertex(pg->flip(handle), known_vertices, novel_vertices,
+                          min_supp)) {
+            vertices_to_remove.insert(handle);
+            vertices_to_remove.insert(pg->flip(handle));
+          }
+
+          // edge
+          handlegraph::edge_t edge = std::make_pair(prev_handle, handle);
+          handlegraph::edge_t edge2 =
+              std::make_pair(pg->flip(handle), pg->flip(prev_handle));
+          if (flag_edge(edge, known_edges, novel_edges, min_supp) &&
+              flag_edge(edge2, known_edges, novel_edges, min_supp)) {
+            edges_to_remove.insert(edge);
+            edges_to_remove.insert(edge2);
+          }
         }
       }
-    }
-  });
+    });
 
-  if (!retained_gaf_fn.empty()) {
-    std::cerr << "Writing retained GAF to " << retained_gaf_fn << "..."
-              << std::endl;
-    std::ofstream outfile(retained_gaf_fn);
+    std::ofstream outfile(wd + "/" + std::to_string(c) + ".retained.gaf");
     std::ifstream file(gaf_fn);
     std::string line;
     while (std::getline(file, line)) {
@@ -502,104 +611,119 @@ int main_augment(int argc, char *argv[]) {
       if (real_novel.find(cname) != real_novel.end())
         outfile << line << std::endl;
     }
-  }
+    outfile.close();
 
-  std::cerr << "Dumping GFA..." << std::endl;
+    outfile.open(wd + "/" + std::to_string(c) + ".final.gfa");
 
-  // === H LINE ======================================================
-  std::cout << "H\tVN:Z:1.1" << std::endl;
-
-  // === S LINES =====================================================
-  pg->for_each_handle(
-      [&](const handlegraph::handle_t &handle) {
-        // if (pg->get_id(handle) == 1002985) {
-        //   std::cerr << 1002985 << " "
-        //             << (vertices_to_remove.find(handle) ==
-        //                 vertices_to_remove.end())
-        //             << " "
-        //             << (vertices_to_remove.find(pg->flip(handle)) ==
-        //                 vertices_to_remove.end())
-        //             << std::endl;
-        // }
-        // XXX: assuming here handle is always on + strand
-        if (vertices_to_remove.find(handle) == vertices_to_remove.end())
-          std::cout << "S\t" << pg->get_id(handle) << "\t"
+    // === S LINES
+    // =====================================================
+    pg->for_each_handle(
+        [&](const handlegraph::handle_t &handle) {
+          // XXX: assuming here handle is always on + strand
+          if (vertices_to_remove.find(handle) == vertices_to_remove.end())
+            outfile << "S"
+                    << "\t" << pg->get_id(handle) << "\t"
                     << pg->get_sequence(handle) << std::endl;
-      },
-      false);
+        },
+        false);
 
-  // === L LINES =====================================================
-  pg->for_each_edge(
-      [&](const handlegraph::edge_t &edge) {
-        if (edges_to_remove.find(edge) == edges_to_remove.end())
-          std::cout << "L\t" << pg->get_id(edge.first) << "\t"
+    // === L LINES
+    // =====================================================
+    pg->for_each_edge(
+        [&](const handlegraph::edge_t &edge) {
+          if (edges_to_remove.find(edge) == edges_to_remove.end())
+            outfile << "L\t" << pg->get_id(edge.first) << "\t"
                     << (pg->get_is_reverse(edge.first) ? '-' : '+') << "\t"
                     << pg->get_id(edge.second) << "\t"
                     << (pg->get_is_reverse(edge.second) ? '-' : '+') << "\t"
                     << "0M" << std::endl;
-      },
-      false);
+        },
+        false);
 
-  // === W LINES =====================================================
-  pg->for_each_path_handle([&](const bdsg::path_handle_t &path) {
-    std::string pname = pg->get_path_name(path);
-    std::string_view sv = pname;
-    if (sv.substr(0, 5).compare("palss") != 0) {
+    // === W LINES
+    // =====================================================
+    pg->for_each_path_handle([&](const bdsg::path_handle_t &path) {
+      std::string pname = pg->get_path_name(path);
+      std::string_view sv = pname;
+      if (sv.substr(0, 5).compare("palss") != 0) {
 
-      // XXX: this is copied from
-      // https://github.com/vgteam/vg/blob/cee90d25878c71cdfb733d801e55548db4828a65/src/gfa.cpp#L190
-      // FIXME: however, it seems to not work... With P-lines I get only 0,0 and
-      // then vg mod complains
-      size_t start_offset = 0;
-      size_t end_offset = 0;
-      auto subrange = pg->get_subrange(path);
-      bool w_line = false;
-      if (subrange != handlegraph::PathMetadata::NO_SUBRANGE) {
-        start_offset = subrange.first;
-        if (subrange.second != handlegraph::PathMetadata::NO_END_POSITION) {
-          end_offset = subrange.second;
-          w_line = true;
+        // XXX: this is copied from
+        // https://github.com/vgteam/vg/blob/cee90d25878c71cdfb733d801e55548db4828a65/src/gfa.cpp#L190
+        // FIXME: however, it seems to not work... With P-lines I get only 0,0
+        // and then vg mod complains
+        size_t start_offset = 0;
+        size_t end_offset = 0;
+        auto subrange = pg->get_subrange(path);
+        bool w_line = false;
+        if (subrange != handlegraph::PathMetadata::NO_SUBRANGE) {
+          start_offset = subrange.first;
+          if (subrange.second != handlegraph::PathMetadata::NO_END_POSITION) {
+            end_offset = subrange.second;
+            w_line = true;
+          }
         }
-      }
-      size_t path_length = 0;
-      pg->for_each_step_in_path(
-          path, [&](handlegraph::step_handle_t step_handle) {
-            path_length += pg->get_length(pg->get_handle_of_step(step_handle));
-          });
-      if (end_offset != 0 && start_offset + path_length != end_offset) {
-        std::cerr << "[gfa] warning: incorrect end offset (" << end_offset
-                  << ") extracted from from path name "
-                  << pg->get_path_name(path) << ", using "
-                  << (start_offset + path_length) << " instead" << std::endl;
-      }
-      // =============================================================
+        size_t path_length = 0;
+        pg->for_each_step_in_path(
+            path, [&](handlegraph::step_handle_t step_handle) {
+              path_length +=
+                  pg->get_length(pg->get_handle_of_step(step_handle));
+            });
+        if (end_offset != 0 && start_offset + path_length != end_offset) {
+          std::cerr << "[gfa] warning: incorrect end offset (" << end_offset
+                    << ") extracted from from path name "
+                    << pg->get_path_name(path) << ", using "
+                    << (start_offset + path_length) << " instead" << std::endl;
+        }
+        // =============================================================
 
-      if (w_line) {
-        std::cout << "W" << "\t" << pg->get_sample_name(path) << "\t"
+        if (w_line) {
+          outfile << "W"
+                  << "\t" << pg->get_sample_name(path) << "\t"
                   << pg->get_haplotype(path) << "\t" << pg->get_locus_name(path)
                   << "\t" << start_offset << "\t" << start_offset + path_length
                   << "\t";
-        for (const handlegraph::handle_t &handle : pg->scan_path(path)) {
-          std::cout << (pg->get_is_reverse(handle) ? '<' : '>')
+          for (const handlegraph::handle_t &handle : pg->scan_path(path)) {
+            outfile << (pg->get_is_reverse(handle) ? '<' : '>')
                     << pg->get_id(handle);
-        }
-        std::cout << std::endl;
-      } else {
-        std::cout << "P" << "\t" << pname << "\t";
+          }
+          outfile << std::endl;
+        } else {
+          outfile << "P"
+                  << "\t" << pname << "\t";
 
-        std::stringstream sp;
-        for (const handlegraph::handle_t &handle : pg->scan_path(path)) {
-          sp << pg->get_id(handle) << (pg->get_is_reverse(handle) ? "-" : "+")
-             << ",";
+          std::stringstream sp;
+          for (const handlegraph::handle_t &handle : pg->scan_path(path)) {
+            sp << pg->get_id(handle) << (pg->get_is_reverse(handle) ? "-" : "+")
+               << ",";
+          }
+          std::string p = sp.str();
+          p.pop_back();
+          outfile << p << "\t"
+                  << "*" << std::endl;
         }
-        std::string p = sp.str();
-        p.pop_back();
-        std::cout << p << "\t" << "*" << std::endl;
       }
-    }
-  });
+    });
+    outfile.close();
+  }
 
-  delete pg;
+  std::cerr << "Merging to final files..." << std::endl;
+  std::ofstream out_gaf;
+  if (!retained_gaf_fn.empty())
+    out_gaf.open(retained_gaf_fn, std::ios::out);
+  std::cout << "H\tVN:Z:1.1" << std::endl;
+  for (size_t c = 0; c < file_pairs.size(); ++c) {
+    std::ifstream in;
+    in.open(wd + "/" + std::to_string(c) + ".final.gfa");
+    std::cout << in.rdbuf();
+    in.close();
+    if (!retained_gaf_fn.empty()) {
+      in.open(wd + "/" + std::to_string(c) + ".retained.gaf");
+      out_gaf << in.rdbuf();
+      in.close();
+    }
+    //
+  }
+  out_gaf.close();
 
   return 0;
 }
