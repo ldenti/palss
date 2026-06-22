@@ -380,10 +380,9 @@ int main_sketch(int argc, char *argv[]) {
           gbz.graph.get_handle(source_id, strand);
       gbwt::node_type source = gbz.graph.handle_to_node(source_handle);
 
-      gbwtgraph::view_type source_view =
-          gbz.graph.get_sequence_view(source_handle);
-      size_t source_length = source_view.second;
-      std::string source_sequence(source_view.first, source_view.second);
+      std::string_view source_view = gbz.graph.get_sequence_view(source_handle);
+      size_t source_length = source_view.size();
+      std::string source_sequence(source_view.data(), source_view.size());
       std::vector<gbwt::node_type> source_info(source_sequence.size(), source);
       bool source_isref = false;
 
@@ -426,9 +425,9 @@ int main_sketch(int argc, char *argv[]) {
         for (const gbwt::node_type &v : path.vertices) {
           gbwtgraph::handle_t h = gbwtgraph::GBWTGraph::node_to_handle(v);
           vlengths[v] = gbz.graph.get_length(h);
-          gbwtgraph::view_type view = gbz.graph.get_sequence_view(h);
-          path_sequence.append(view.first, view.second);
-          for (size_t i = 0; i < view.second; ++i)
+          std::string_view view = gbz.graph.get_sequence_view(h);
+          path_sequence.append(view.data(), view.size());
+          for (size_t i = 0; i < view.size(); ++i)
             vinfo.push_back(v);
         }
 
@@ -574,8 +573,8 @@ int main_sketch(int argc, char *argv[]) {
       if (a.is_valid) {
         if (use_edges || a.v1 == a.v2)
           // if (a.v1 != a.v2)
-          sk_insert(sketch, a.kmer, a.v1, a.v2, a.pos1, a.pos2, a.has_both,
-                    a.is_reference);
+          sk_insert2(sketch, a.kmer, a.v1, a.v2, a.pos1, a.pos2, a.has_both,
+                     a.is_reference);
       }
     }
     if (!in.eof()) {

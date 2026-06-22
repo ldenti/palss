@@ -69,9 +69,9 @@ int64_t sk_get_p(sketch_t *sk, uint64_t kmer_d) {
   return binary_search(sk->sxs, sk->pxs[px], end, kmer_d);
 }
 
-void sk_insert(sketch_t *sk, uint64_t kmer_d, uint32_t v1, uint32_t v2,
-               uint32_t p1, uint32_t p2, uint8_t has_both,
-               uint8_t is_reference) {
+void sk_insert2(sketch_t *sk, uint64_t kmer_d, uint32_t v1, uint32_t v2,
+                uint32_t p1, uint32_t p2, uint8_t has_both,
+                uint8_t is_reference) {
   assert(sk->n < sk->size);
   uint64_t px = (kmer_d >> (2 * (sk->k - sk->m))) & (sk->np - 1);
   if (sk->pxs[px] == -1UL) {

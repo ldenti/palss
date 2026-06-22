@@ -55,8 +55,8 @@ int64_t sk_get_p(sketch_t *sk, uint64_t kmer_d);
 hit_t sk_get(sketch_t *sk, uint64_t kmer_d, uint8_t ref_only);
 
 // Add kmer to sketch
-void sk_insert(sketch_t *sk, uint64_t kmer_d, uint32_t v1, uint32_t v2,
-               uint32_t p1, uint32_t p2, uint8_t has_both,
-               uint8_t is_reference);
+void sk_insert2(sketch_t *sk, uint64_t kmer_d, uint32_t v1, uint32_t v2,
+                uint32_t p1, uint32_t p2, uint8_t has_both,
+                uint8_t is_reference);
 
 #endif

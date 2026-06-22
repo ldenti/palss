@@ -55,9 +55,9 @@ path_t Graph::get_path(gbwt::size_type path_id) const {
     path.vertices.push_back(curr.first);
     gbwtgraph::handle_t handle =
         gbwtgraph::GBWTGraph::node_to_handle(curr.first);
-    // view_type: in-place view of the sequence: (start, length)
-    gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
-    path.sequence.append(view.first, view.second);
+    // in-place view of the sequence: (start, length)
+    std::string_view view = gbz.graph.get_sequence_view(handle);
+    path.sequence.append(view.data(), view.size());
     curr = gbz.index.LF(curr);
   }
   return path;
@@ -74,7 +74,8 @@ std::vector<path_t> Graph::get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
   std::vector<gbwt::size_type> intervals2 = fl.decompressSA(ev2);
 
   // std::cerr << get_gfa_name(v1 >> 1) << ((v1 & 1) ? "-" : "+")
-  //               << " > " << get_gfa_name(v2 >> 1) << ((v2 & 1) ? "-" : "+") << std::endl;
+  //               << " > " << get_gfa_name(v2 >> 1) << ((v2 & 1) ? "-" : "+")
+  //               << std::endl;
 
   for (size_t i = 0; i < intervals1.size(); ++i) {
     gbwt::FastLocate::size_type int1 = intervals1[i];
@@ -127,19 +128,19 @@ std::vector<path_t> Graph::get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
         path.vertices.push_back(position.first);
         gbwtgraph::handle_t handle =
             gbwtgraph::GBWTGraph::node_to_handle(position.first);
-        // view_type: in-place view of the sequence: (start, length)
-        gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
+        // in-place view of the sequence: (start, length)
+        std::string_view view = gbz.graph.get_sequence_view(handle);
         // std::cerr << gbz.graph.get_segment_name(handle) << " ";
-        path.sequence.append(view.first, view.second);
+        path.sequence.append(view.data(), view.size());
         position = gbz.index.LF(position);
       }
       path.vertices.push_back(position.first);
       gbwtgraph::handle_t handle =
           gbwtgraph::GBWTGraph::node_to_handle(position.first);
       // std::cerr << gbz.graph.get_segment_name(handle) << std::endl;
-      // view_type: in-place view of the sequence: (start, length)
-      gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
-      path.sequence.append(view.first, view.second);
+      // in-place view of the sequence: (start, length)
+      std::string_view view = gbz.graph.get_sequence_view(handle);
+      path.sequence.append(view.data(), view.size());
       paths.push_back(path);
     }
   }

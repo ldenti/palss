@@ -13,9 +13,11 @@ add_executable(palss reads.cpp sfs.cpp misc.cpp kmer.cpp graph.cpp gaf.cpp sketc
 set_target_properties(palss PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_compile_options(palss PRIVATE -Wall) # -Wno-char-subscripts -Wno-unused-function -Wno-misleading-indentation) # -Wall -Wextra -Wpedantic -Werror)
 # add_definitions("-Wp,-w")
+
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
-# find_package(TBB REQUIRED)
+find_package(OpenSSL REQUIRED)
+# find_package(ZSTD REQUIRED)
 
 SET(INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 SET(LIB_DIR ${CMAKE_SOURCE_DIR}/lib)
@@ -24,7 +26,7 @@ SET(LIB_DIR ${CMAKE_SOURCE_DIR}/lib)
 message(STATUS "libhandlegraph will be built from source")
 ExternalProject_Add(lhg
     GIT_REPOSITORY https://github.com/vgteam/libhandlegraph.git
-    GIT_TAG 0e70dadb5054568d8071e280b3b7b11b5658937f
+    GIT_TAG b95f7637968b4c8c3c4d1bad13aaa1835c607fe0
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_SOURCE_DIR} -DCMAKE_INSTALL_LIBDIR=${LIB_DIR}
 )
 
@@ -32,7 +34,7 @@ ExternalProject_Add(lhg
 message(STATUS "sdsl-lite will be built from source")
 ExternalProject_Add(sdsl
     GIT_REPOSITORY https://github.com/vgteam/sdsl-lite.git
-    GIT_TAG 8abd7c9c183055d74f9b57915d5e36967a453062
+    GIT_TAG 349de444ded81547cb55a718abeada41960531b5
     BUILD_IN_SOURCE 1
     UPDATE_COMMAND ""
     CONFIGURE_COMMAND ""
@@ -46,7 +48,7 @@ SET(SDSL_SRC_DIR ${SOURCE_DIR})
 message(STATUS "gbwt will be built from source")
 ExternalProject_Add(gbwt
     GIT_REPOSITORY https://github.com/jltsiren/gbwt.git
-    GIT_TAG 32187dc2c866a17ef474529895965303034ed9fd
+    GIT_TAG 9e92e4f11bafcb1df92df9adf5991199c0f09f61
     BUILD_IN_SOURCE 1
     UPDATE_COMMAND ""
     CONFIGURE_COMMAND ""
@@ -59,7 +61,7 @@ ExternalProject_Add(gbwt
 message(STATUS "gbwtgraph will be built from source")
 ExternalProject_Add(gbwtgraph
     GIT_REPOSITORY https://github.com/jltsiren/gbwtgraph.git
-    GIT_TAG 197e1c3f454cebb919a9f5564021ce46273a162d
+    GIT_TAG 26760da46c471d9bb51b21faf6e1a016ab6a5bc6 # 197e1c3f454cebb919a9f5564021ce46273a162d
     BUILD_IN_SOURCE 1
     UPDATE_COMMAND ""
     CONFIGURE_COMMAND ""
@@ -72,7 +74,7 @@ ExternalProject_Add(gbwtgraph
 message(STATUS "libbdsg will be built from source")
 ExternalProject_Add(bdsg
     GIT_REPOSITORY https://github.com/vgteam/libbdsg.git
-    GIT_TAG c10ca5b08fb2abf738bfae55c8d141340dca1adf
+    GIT_TAG 2193e4c994c9c65884d4e5f765457ab3f6de7f13
     CMAKE_ARGS -DRUN_DOXYGEN=OFF -DBUILD_PYTHON_BINDINGS=OFF -DCMAKE_INSTALL_PREFIX=${CMAKE_SOURCE_DIR} -DCMAKE_INSTALL_LIBDIR=${LIB_DIR}
 )
 
@@ -144,12 +146,30 @@ SET(ABPOA_INCLUDE_DIR ${ABPOA_SOURCE_DIR}/include)
 # add_library(ABPOA STATIC IMPORTED)
 # set_target_properties(ABPOA PROPERTIES IMPORTED_LOCATION ${ABPOA_SOURCE_DIR}/lib/libabpoa.a)
 
+# zstd
+message(STATUS "zstd will be built from source")
+ExternalProject_Add(zstd
+    GIT_REPOSITORY https://github.com/facebook/zstd.git
+    GIT_TAG f8745da6ff1ad1e7bab384bd1f9d742439278e99
+    BUILD_IN_SOURCE 1
+    UPDATE_COMMAND ""
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND "make"
+    INSTALL_COMMAND ""
+)
+ExternalProject_Get_Property(zstd SOURCE_DIR)
+SET(ZSTD_SOURCE_DIR ${SOURCE_DIR})
+SET(ZSTD_INCLUDE_DIR ${ZSTD_SOURCE_DIR})
+add_library(ZSTD STATIC IMPORTED)
+set_target_properties(ZSTD PROPERTIES IMPORTED_LOCATION ${ZSTD_SOURCE_DIR}/lib/libzstd.so)
+add_dependencies(ZSTD zstd)
+
 
 ############################################
 ### final setup (includes and libraries) ###
 ############################################
 
-add_dependencies(gbwt sdsl)
+add_dependencies(gbwt sdsl zstd)
 add_dependencies(gbwtgraph gbwt lhg)
 add_dependencies(palss RB3 gbwtgraph bdsg abpoa ksw2 XXH) # KMC
 
@@ -163,6 +183,17 @@ target_include_directories(palss
 )
 
 target_link_libraries(palss
+    PUBLIC z
+    # PUBLIC ZSTD::ZSTD
+    # PUBLIC ssl
+    # PUBLIC crypto
+    # PUBLIC profiler
+    PUBLIC pthread
+    PUBLIC OpenMP::OpenMP_C
+    PUBLIC OpenMP::OpenMP_CXX
+    PUBLIC OpenSSL::Crypto
+    PUBLIC OpenSSL::SSL
+
     PUBLIC ${KSW2_INCLUDE_DIR}/ksw2_extd2_sse.o
     PUBLIC ${ABPOA_SOURCE_DIR}/lib/libabpoa.a
     PUBLIC ${XXH_SOURCE_DIR}/libxxhash.a
@@ -173,11 +204,6 @@ target_link_libraries(palss
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libsdsl.a
     PUBLIC ${CMAKE_SOURCE_DIR}/lib/libhandlegraph.a
 
+    PUBLIC ZSTD
     PUBLIC RB3
-    PUBLIC z
-    # PUBLIC profiler
-    PUBLIC pthread
-    PUBLIC OpenMP::OpenMP_C
-    PUBLIC OpenMP::OpenMP_CXX
-    # PUBLIC TBB::tbb
 )

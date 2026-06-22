@@ -359,18 +359,18 @@ int main_align(int argc, char *argv[]) {
             path.vertices.push_back(position.first);
             gbwtgraph::handle_t handle =
                 gbwtgraph::GBWTGraph::node_to_handle(position.first);
-            // view_type: in-place view of the sequence: (start, length)
-            gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
+            // in-place view of the sequence: (start, length)
+            std::string_view view = gbz.graph.get_sequence_view(handle);
 
-            path.total_length += view.second;
+            path.total_length += view.size();
 
             if (position.first == local_sv) {
               // cut prefix
               path.skipped_prefix = local_soff;
-              path.sequence.append(view.first + local_soff,
-                                   view.second - local_soff);
+              path.sequence.append(view.data() + local_soff,
+                                   view.size() - local_soff);
             } else
-              path.sequence.append(view.first, view.second);
+              path.sequence.append(view.data(), view.size());
             position = gbz.index.LF(position);
           }
 
@@ -378,16 +378,16 @@ int main_align(int argc, char *argv[]) {
           path.vertices.push_back(position.first);
           gbwtgraph::handle_t handle =
               gbwtgraph::GBWTGraph::node_to_handle(position.first);
-          gbwtgraph::view_type view = gbz.graph.get_sequence_view(handle);
-          path.total_length += view.second;
+          std::string_view view = gbz.graph.get_sequence_view(handle);
+          path.total_length += view.size();
           if (position.first == local_sv) {
             path.skipped_prefix = local_soff;
-            path.sequence.append(view.first + local_soff,
+            path.sequence.append(view.data() + local_soff,
                                  local_eoff + 1 - local_soff);
-            path.skipped_suffix = view.second - local_eoff - 1;
+            path.skipped_suffix = view.size() - local_eoff - 1;
           } else {
-            path.sequence.append(view.first, local_eoff + 1);
-            path.skipped_suffix = view.second - local_eoff - 1;
+            path.sequence.append(view.data(), local_eoff + 1);
+            path.skipped_suffix = view.size() - local_eoff - 1;
           }
 
           // std::cerr << gbwt::Path::is_reverse(seqid) << " " << path.sequence
