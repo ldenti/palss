@@ -128,5 +128,5 @@ rule get_nm_palss:
     threads: workflow.cores / 4
     shell:
         """
-        python3 ./utils/get_nm.py -t palss-d{wildcards.d} -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
+        python3 ./utils/get_nm.py -t palss-d{wildcards.d}-w{wildcards.w} -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
         """

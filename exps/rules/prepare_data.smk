@@ -52,8 +52,10 @@ rule extract_subgraph:
             if wildcards.n == "0" and wildcards.t == "oneout"
             else "| vg mod --unchop -"
         ),
+    threads: workflow.cores
     shell:
         """
+        # JUST TO FORCE RERUN
         ./utils/extract_subgraph {input.gbz} {input.txt} {params.unchop} > {output.gfa}
         """
 

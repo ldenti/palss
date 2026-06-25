@@ -95,6 +95,6 @@ rule get_support_palss:
     threads: workflow.cores / 4
     shell:
         """
-        python3 ./utils/get_support.py -t palss-d{wildcards.d} -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
+        python3 ./utils/get_support.py -t palss-d{wildcards.d}-w{wildcards.w} -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
         python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {input.bed} > {output.csv}
         """

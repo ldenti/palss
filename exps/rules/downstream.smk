@@ -4,83 +4,47 @@
   * corrected reads: pjoin(WD, sample + "-cov{cov}.ec.fa"),
 """
 
-# rule align_reads:
-#     input:
-#         fa=FA,
-#         fq=pjoin(WD, sample + "-reads.fq.gz"),
-#     output:
-#         bam=pjoin(WD, sample + "-reads.bam"),
-#     conda:
-#         "../envs/minimap2.yaml"
-#     threads: workflow.cores
-#     shell:
-#         """
-#         minimap2 -t{threads} --MD -ax map-hifi --eqx {input.fa} {input.fq} | samtools view -bS | samtools sort > {output.bam}
-#         samtools index {output.bam}
-#         """
 
-# rule align_corrected_reads:
-#     input:
-#         fa=FA,
-#         reads=pjoin(WD, sample + "-reads.ec.fa"),
-#     output:
-#         bam=pjoin(WD, sample + "-reads.ec.bam"),
-#     conda:
-#         "../envs/minimap2.yaml"
-#     threads: workflow.cores
-#     shell:
-#         """
-#         minimap2 -t{threads} --MD -ax map-hifi --eqx {input.fa} {input.reads} | samtools view -bS | samtools sort > {output.bam}
-#         samtools index {output.bam}
-#         """
-
-# rule align_reads_to_haplotypes:
-#     input:
-#         fa=pjoin(WD, sample + "-haps.fa"),
-#         fq=pjoin(WD, sample + "-reads.fq.gz"),
-#     output:
-#         bam=pjoin(WD, sample + "-reads.tohaps.bam"),
-#     conda:
-#         "../envs/minimap2.yaml"
-#     threads: workflow.cores
-#     shell:
-#         """
-#         minimap2 -t{threads} --MD -ax map-hifi --eqx {input.fa} {input.fq} | samtools view -bS | samtools sort > {output.bam}
-#         samtools index {output.bam}
-#         """
+### DOWNSTREAM (AKA READS ALIGNMENT)
+rule get_complex_reads:
+    input:
+        bam=pjoin(WD, sample + "-cov{cov}.bam"),
+        bed=BED,
+    output:
+        txt=pjoin(WD, sample + "-cov{cov}.overlapping-complex.list"),
+    conda:
+        "../envs/bedtools.yaml"
+    shell:
+        """
+        bedtools intersect -f 0.33 -u -a {input.bam} -b {input.bed} | samtools view | cut -f1 > {output.txt}
+        """
 
 
-# rule graphaligner_original:
-#     input:
-#         gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
-#         reads=pjoin(WD, sample + "-reads.fq.gz"),
-#     output:
-#         gaf=pjoin(WD, "n{n}", "graphaligner", "original-{t}.gaf"),
-#     conda:
-#         "../envs/graphaligner.yaml"
-#     threads: workflow.cores / 2
-#     shell:
-#         """
-#         GraphAligner --graph {input.gfa} --reads {input.reads} --alignments-out {output.gaf} --preset vg --threads {threads}
-#         """
+rule get_downstream:
+    input:
+        expand(
+            pjoin(WD, "n{n}", "downstream", "palss-{graph}.d{d}.w{w}.cov{cov}.csv"),
+            n=Ns,
+            cov=coverages,
+            graph=["oneout"],
+            d=Ds,
+            w=Ws,
+        ),
+        expand(
+            pjoin(WD, "n{n}", "downstream", "mgcactus.cov{cov}.csv"),
+            n=Ns,
+            cov=coverages,
+        ),
+    output:
+        pjoin(WD, "downstream.csv"),
+    shell:
+        """
+        head -1 {input[0]} > {output}
+        for i in {input} ; do sed '1d' $i ; done >> {output}
+        """
 
 
-# rule graphaligner_original_ec:
-#     input:
-#         gfa=pjoin(WD, "n{n}", "pangenome-{t}.gfa"),
-#         reads=pjoin(WD, sample + "-reads.ec.fa"),
-#     output:
-#         gaf=pjoin(WD, "n{n}", "graphaligner.ec", "original-{t}.gaf"),
-#     conda:
-#         "../envs/graphaligner.yaml"
-#     threads: workflow.cores / 2
-#     shell:
-#         """
-#         GraphAligner --graph {input.gfa} --reads {input.reads} --alignments-out {output.gaf} --preset vg --threads {threads}
-#         """
-
-
-rule graphaligner_postpalss:
+rule graphaligner_reads_palss:
     input:
         gfa=pjoin(WD, "palss", "n{n}", "cov{cov}", "augmented-{graph}.d{d}.w{w}.gfa"),
         reads=pjoin(WD, sample + "-cov{cov}.fq.gz"),
@@ -95,7 +59,7 @@ rule graphaligner_postpalss:
         """
 
 
-rule graphaligner_postmgc:
+rule graphaligner_reads_mgc:
     input:
         gfa=pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
         reads=pjoin(WD, sample + "-cov{cov}.fq.gz"),
@@ -107,4 +71,32 @@ rule graphaligner_postmgc:
     shell:
         """
         GraphAligner --graph {input.gfa} --reads {input.reads} --alignments-out {output.gaf} --preset vg --threads {threads}
+        """
+
+
+rule get_downstream_palss:
+    input:
+        gaf=rules.graphaligner_reads_palss.output.gaf,
+        txt=rules.get_complex_reads.output.txt,
+    output:
+        csv=pjoin(WD, "n{n}", "downstream", "palss-{graph}.d{d}.w{w}.cov{cov}.csv"),
+    conda:
+        "../envs/pysam.yaml"
+    shell:
+        """
+        python3 ./utils/get_nm.py -t palss-d{wildcards.d}-w{wildcards.w} -l 0 -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
+        """
+
+
+rule get_downstream_mgc:
+    input:
+        gaf=rules.graphaligner_reads_mgc.output.gaf,
+        txt=rules.get_complex_reads.output.txt,
+    output:
+        csv=pjoin(WD, "n{n}", "downstream", "mgcactus.cov{cov}.csv"),
+    conda:
+        "../envs/pysam.yaml"
+    shell:
+        """
+        python3 ./utils/get_nm.py -t mgcactus -l 0 -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
         """

@@ -31,7 +31,8 @@ Ws = config["ws"]
 #
 
 graphs = ["oneout", "full"]
-SIZES = [10000, 50000]
+# SIZES = [10000, 50000]
+SIZES = [50000]
 
 
 wildcard_constraints:
@@ -133,17 +134,4 @@ rule run:
         #
         pjoin(WD, "nm.csv"),
         pjoin(WD, "support.csv"),
-        #
-        expand(
-            pjoin(WD, "n{n}", "downstream", "palss-{graph}.d{d}.w{w}.cov{cov}.gaf"),
-            n=Ns,
-            cov=coverages,
-            graph=["oneout"],
-            d=Ds,
-            w=Ws,
-        ),
-        expand(
-            pjoin(WD, "n{n}", "downstream", "mgcactus.cov{cov}.gaf"),
-            n=Ns,
-            cov=coverages,
-        ),
+        pjoin(WD, "downstream.csv"),

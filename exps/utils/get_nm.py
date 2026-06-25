@@ -79,6 +79,7 @@ def main():
     else:
         nms = parse_gaf(args.FN)
         for qidx, (c, nm) in nms.items():
+            # Cs is just a single value here
             for cov in Cs:
                 print(
                     args.t,

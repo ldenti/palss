@@ -95,7 +95,7 @@ rule palss_augment:
     threads: workflow.cores
     shell:
         """
-        /usr/bin/time -vo {log.time} ../palss augment -s 2 -w {params.wd} -g {output.gaf} {input.pg} {input.gaf} > {output.gfa}.unchop 2> {log.log}
+        /usr/bin/time -vo {log.time} ../palss augment -s {wildcards.w} -w {params.wd} -g {output.gaf} {input.pg} {input.gaf} > {output.gfa}.unchop 2> {log.log}
         vg mod --unchop {output.gfa}.unchop > {output.gfa}
         """
 
