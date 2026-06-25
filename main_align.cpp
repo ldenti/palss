@@ -1,4 +1,5 @@
 // #include <algorithm>
+#include <fstream>
 #include <getopt.h>
 #include <iostream>
 #include <omp.h>
@@ -109,6 +110,12 @@ std::vector<uint32_t> count_kmers_plain(const char *seq, int seql, int klen) {
   return kcounts;
 }
 
+void free_cluster(std::vector<sfs_t> &cluster) {
+  for (sfs_t &s : cluster)
+    free(s.seq);
+  cluster.clear();
+}
+
 // XXX: improve/remove
 std::string reverseAndComplement(const std::string &input) {
   std::string reversed(input.rbegin(), input.rend());
@@ -197,9 +204,9 @@ int main_align(int argc, char *argv[]) {
           clusters.size(), realtime() - rt);
 
   // Initialize what we need for main loop
-  std::vector<abpoa_t *> abpoa_ts(nth);
-  std::vector<abpoa_para_t *> abpoa_para_ts(nth);
-  std::vector<ksw_extz_t> ksws(nth);
+  // std::vector<abpoa_t *> abpoa_ts(nth);
+  // std::vector<abpoa_para_t *> abpoa_para_ts(nth);
+  // std::vector<ksw_extz_t> ksws(nth);
 
   // ksw2 parameters
   // https://github.com/lh3/minimap2/blob/69e36299168d739dded1c5549f662793af10da83/options.c#L144
@@ -216,24 +223,24 @@ int main_align(int argc, char *argv[]) {
   std::vector<int *> cluster_seqs_lens(nth);
 
   for (int t = 0; t < nth; ++t) {
-    // init abpoa
-    abpoa_ts[t] = abpoa_init();
-    abpoa_para_ts[t] = abpoa_init_para();
-    abpoa_para_t *abpt = abpoa_para_ts[t];
-    abpt->align_mode = 0; // global
-    abpt->out_msa = 0;
-    abpt->out_cons = 1;
-    abpt->out_gfa = 0;
-    abpt->disable_seeding = 1;
-    abpt->progressive_poa = 0;
-    abpt->amb_strand = 0;
-    // abpt->wb = -1;
-    abpt->max_n_cons = 2;
-    abpt->min_freq = 0.25;
-    abpoa_post_set_para(abpt);
+    // // init abpoa
+    // abpoa_ts[t] = abpoa_init();
+    // abpoa_para_ts[t] = abpoa_init_para();
+    // abpoa_para_t *abpt = abpoa_para_ts[t];
+    // abpt->align_mode = 0; // global
+    // abpt->out_msa = 0;
+    // abpt->out_cons = 1;
+    // abpt->out_gfa = 0;
+    // abpt->disable_seeding = 1;
+    // abpt->progressive_poa = 0;
+    // abpt->amb_strand = 0;
+    // // abpt->wb = -1;
+    // abpt->max_n_cons = 2;
+    // abpt->min_freq = 0.25;
+    // abpoa_post_set_para(abpt);
 
-    // init ksw2
-    memset(&ksws[t], 0, sizeof(ksw_extz_t));
+    // // init ksw2
+    // memset(&ksws[t], 0, sizeof(ksw_extz_t));
 
     // Array to store specific strings sequences
     // XXX: Assuming clusters of size <= 64
@@ -249,22 +256,22 @@ int main_align(int argc, char *argv[]) {
 
     std::vector<sfs_t> &cluster = clusters[cidx];
 
-    // if (cidx > 1000)
-    //   continue;
     // if (cidx != 30337)
     //   continue;
-
     // std::cerr << "=== " << cidx << " ===" << std::endl;
 
-    //   if ((cidx + 1) % 10000 == 0) {
-    //     fprintf(stderr, "[M::%s] analyzed %ld/%ld clusters in %.3f sec\n",
-    //             __func__, cidx + 1, clusters.size(), realtime() - rt);
-    //   }
+    if (cidx > 0 && cidx % 10000 == 0) {
+      fprintf(
+          stderr,
+          "[M::%s] analyzed %ld clusters in %.3f sec (current rss: %lldGB)\n",
+          __func__, cidx, realtime() - rt, current_rss_kb() / 1024 / 1024);
+    }
 
     if (cluster.size() > 64) {
       // FIXME
       fprintf(stderr, "[W::%s] skipping cluster %ld since >64\n", __func__,
               cidx);
+      free_cluster(cluster);
       continue;
     }
 
@@ -415,12 +422,29 @@ int main_align(int argc, char *argv[]) {
       }
     }
 
-    if (paths.empty())
+    if (paths.empty()) {
+      free_cluster(cluster);
       continue;
+    }
 
     // XXX: path sequences should all start/end in the same way (same "strand")
 
     /** **************************************************************/
+
+    // init abpoa
+    abpoa_t *ab = abpoa_init();
+    abpoa_para_t *abp = abpoa_init_para();
+    abp->align_mode = 0; // global
+    abp->out_msa = 0;
+    abp->out_cons = 1;
+    abp->out_gfa = 0;
+    abp->disable_seeding = 1;
+    abp->progressive_poa = 0;
+    abp->amb_strand = 0;
+    // abpt->wb = -1;
+    abp->max_n_cons = 2;
+    abp->min_freq = 0.25;
+    abpoa_post_set_para(abp);
 
     // Consensus via abpoa
     int goods = 0;
@@ -429,9 +453,9 @@ int main_align(int argc, char *argv[]) {
       cluster_seqs[tt][goods] = s.seq;
       ++goods;
     }
-    abpoa_t *ab = abpoa_ts[tt];
-    abpoa_msa(ab, abpoa_para_ts[tt], goods, NULL, cluster_seqs_lens[tt],
-              cluster_seqs[tt], NULL, NULL);
+
+    abpoa_msa(ab, abp, goods, NULL, cluster_seqs_lens[tt], cluster_seqs[tt],
+              NULL, NULL);
 
     abpoa_cons_t *abc = ab->abc;
     for (int sub_cidx = 0; sub_cidx < abc->n_cons; ++sub_cidx) {
@@ -468,7 +492,9 @@ int main_align(int argc, char *argv[]) {
       // if (path.sequence.size() > max_plen)
       //   continue;
 
-      ksw_extz_t ez = ksws[tt];
+      // init ksw2
+      ksw_extz_t ez;
+      memset(&ez, 0, sizeof(ksw_extz_t));
       ksw_extd2_sse(0, cons_l, (uint8_t *)cons_seq, path.sequence.size(),
                     (uint8_t *)path.sequence.c_str(), 5, mat, gapo, gape, gapo2,
                     gape2, -1, -1, -1, 0, &ez);
@@ -490,6 +516,7 @@ int main_align(int argc, char *argv[]) {
       if ((ez.cigar[0] & 0xf) != 0 || (ez.cigar[ez.n_cigar - 1] & 0xf) != 0) {
         // clipped = true;
         // free(path_seq);
+        free(ez.cigar);
         continue; // XXX: do we want these?
       }
 
@@ -594,19 +621,29 @@ int main_align(int argc, char *argv[]) {
       gr.pseq = pseq;
 
       gr.write();
+
+      free(ez.cigar);
     }
+
+    abpoa_free_para(abp);
+    abpoa_free(ab);
+
+    free_cluster(cluster);
   }
 
+  fprintf(stderr,
+          "[M::%s] analyzed %ld clusters in %.3f sec (current rss: %lldGB)\n",
+          __func__, clusters.size(), realtime() - rt,
+          current_rss_kb() / 1024 / 1024);
+
   for (int t = 0; t < nth; ++t) {
-    free(ksws[t].cigar);
-    abpoa_free_para(abpoa_para_ts[t]);
-    abpoa_free(abpoa_ts[t]);
+
     free(cluster_seqs[t]);
     free(cluster_seqs_lens[t]);
   }
 
-  for (sfs_t &s : specific_strings)
-    free(s.seq);
+  // for (sfs_t &s : specific_strings)
+  //   free(s.seq);
 
   return 0;
 }
