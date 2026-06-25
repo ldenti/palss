@@ -127,8 +127,10 @@ uint32_t flip(uint32_t v) { return v ^ 1; }
 
 // Get paths containing an anchor (since we store only start/end vertices, we
 // need to subset paths over bubbles)
-void set_paths(const Graph &graph, anchor_t &anchor, int klen) {
+void set_paths(const Graph &graph, anchor_t &anchor, int klen, size_t NP) {
   // XXX: what about cycles?
+
+  anchor.paths.clear();
 
   uint32_t v1 = anchor.v1;
   uint32_t v2 = anchor.v2;
@@ -137,12 +139,20 @@ void set_paths(const Graph &graph, anchor_t &anchor, int klen) {
   char akmer[klen];
   d2s(anchor.kmer, klen, akmer_can);
   d2s(rc(anchor.kmer, klen), klen, akmer);
+  if (anchor.inverted) {
+    // we can enter here here only after chaining, since we set the inverted bit
+    // only after chaining. This means that the anchor was inverted along the
+    // path, so we need to flip the vertices to get the correct orientation of
+    // the anchor along the path
+    v1 = flip(anchor.v2);
+    v2 = flip(anchor.v1);
+  }
 
   // Get paths on + strand only (1) - 3 is both, 2 is - only
 
   // From v1 to v2 I must check for canonical kmer (since sketch stores
   // canonical direction)
-  std::vector<path_t> paths = graph.get_paths(v1, v2, 1, false);
+  std::vector<path_t> paths = graph.get_paths(v1, v2, 1, NP, false);
   for (path_t &p : paths) {
     if (p.sequence.find(akmer_can) != std::string::npos) {
       // if the anchor from read was already canonical, then strand is + (we
@@ -153,7 +163,8 @@ void set_paths(const Graph &graph, anchor_t &anchor, int klen) {
     }
   }
 
-  std::vector<path_t> paths2 = graph.get_paths(flip(v2), flip(v1), 1, false);
+  std::vector<path_t> paths2 =
+      graph.get_paths(flip(v2), flip(v1), 1, NP, false);
   for (path_t &p : paths2) {
     if (p.sequence.find(akmer) != std::string::npos) {
       // if the anchor from read was canonical, then strand is - (we do not have
@@ -328,7 +339,6 @@ anchoring_t chaining(const Graph &graph, anchors_t &anchors,
       anchor_t &a = anchors[aa >> 1];
       path_anchors.push_back(aa >> 1); // remove inverted bit
 
-      a.inverted = false;
       if (aa & 1) {
         // invert if inverted bit is set
         a.inverted = true;
@@ -371,7 +381,7 @@ anchoring_t chaining(const Graph &graph, anchors_t &anchors,
 // Anchor specific strings on graph using graph sketch
 void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
             uint8_t *read, int readl, std::map<uint64_t, int> kcounts, int klen,
-            size_t NA, bool reference_only) {
+            size_t NA, size_t NP, bool reference_only, bool overlapping) {
   int beg, end;
   uint8_t kmer[klen];
   uint64_t kmer_d;       // kmer
@@ -383,6 +393,11 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
 
   for (uint sidx = 0; sidx < sfs.size(); ++sidx) {
     sfs_t &s = sfs[sidx];
+
+    // char kmer_s[klen + 1];
+    // kmer_s[klen] = '\0';
+    // d2s(kmer_d, klen, kmer_s);
+    // std::cerr << kmer_s << std::endl;
 
     // Finding anchors on the left
     anchors_t sanchors;
@@ -410,18 +425,31 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
           a.has_both = (hit.info >> 1) & 1;
           a.is_reference = hit.info & 1;
           a.is_canonical = ckmer_d == kmer_d;
+          a.inverted = false;
 
           sanchors.push_back(a);
-          set_paths(graph, sanchors.back(), klen);
+          set_paths(graph, sanchors.back(), klen, NP);
         }
-        --beg;
-        if (beg < 0)
-          break;
 
-        c = read[beg] - 1;
-        kmer_d = rsprepend(kmer_d, c, klen);
-        rckmer_d = lsappend(rckmer_d, reverse_char(c), klen);
-        ckmer_d = std::min(kmer_d, rckmer_d);
+        --beg;
+
+        if (overlapping || hit.value == -1UL || count != 1) {
+          if (beg < 0)
+            break;
+          c = read[beg] - 1;
+          kmer_d = rsprepend(kmer_d, c, klen);
+          rckmer_d = lsappend(rckmer_d, reverse_char(c), klen);
+          ckmer_d = std::min(kmer_d, rckmer_d);
+        } else {
+          beg = beg - klen + 1;
+          if (beg < 0)
+            break;
+          memcpy(kmer, read + beg, klen);
+          kmer[klen] = '\0';
+          kmer_d = k2d((char *)kmer, klen);
+          rckmer_d = rc(kmer_d, klen);
+          ckmer_d = std::min(kmer_d, rckmer_d);
+        }
       }
     }
 
@@ -439,7 +467,6 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
       while (eanchors.size() < NA) {
         hit = sk_get(sketch, ckmer_d, reference_only);
         count = kcounts[ckmer_d];
-        memcpy(kmer, read + end, klen);
         if (hit.value != -1UL && count == 1) {
           anchor_t a;
           a.kmer = ckmer_d;
@@ -452,18 +479,31 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
           a.has_both = (hit.info >> 1) & 1;
           a.is_reference = hit.info & 1;
           a.is_canonical = ckmer_d == kmer_d;
+          a.inverted = false;
 
           eanchors.push_back(a);
-          set_paths(graph, eanchors.back(), klen);
+          set_paths(graph, eanchors.back(), klen, NP);
         }
-        ++end;
-        if (end == readl - klen + 1)
-          break;
 
-        c = read[end + klen - 1] - 1;
-        kmer_d = lsappend(kmer_d, c, klen);
-        rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
-        ckmer_d = std::min(kmer_d, rckmer_d);
+        ++end;
+
+        if (overlapping || hit.value == -1UL || count != 1) {
+          if (end >= readl - klen + 1)
+            break;
+          c = read[end + klen - 1] - 1;
+          kmer_d = lsappend(kmer_d, c, klen);
+          rckmer_d = rsprepend(rckmer_d, reverse_char(c), klen);
+          ckmer_d = std::min(kmer_d, rckmer_d);
+        } else {
+          end = end + klen - 1;
+          if (end >= readl - klen + 1)
+            break;
+          memcpy(kmer, read + end, klen);
+          kmer[klen] = '\0';
+          kmer_d = k2d((char *)kmer, klen);
+          rckmer_d = rc(kmer_d, klen);
+          ckmer_d = std::min(kmer_d, rckmer_d);
+        }
       }
     }
 
@@ -546,6 +586,11 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     // We could use anchor in between the chain (.anchor)
     anchor_t a1 = schains.anchor2;
     anchor_t a2 = echains.anchor1;
+
+    if (NP != (size_t)-1) {
+      set_paths(graph, a1, klen, -1);
+      set_paths(graph, a2, klen, -1);
+    }
 
     s.flag = 0;
     s.s = a1.qp;
@@ -684,21 +729,29 @@ int main_sfs(int argc, char *argv[]) {
   double rt;
   int bsize = 10000; // batch size
   size_t NA = 20;    // number of kmers to check for anchoring
-  int nth = 1;       // number of threads
+  size_t NP = -1;    // number of paths to check per anchor (default: all paths)
+  int nth = 4;       // number of threads
   bool reference_only = false;
-  bool anchoring = true;
+  bool search_only = false;
+  bool overlapping = true;
 
   int _c;
-  while ((_c = getopt(argc, argv, "a:b:nr@:h")) != -1) {
+  while ((_c = getopt(argc, argv, "a:p:b:sor@:h")) != -1) {
     switch (_c) {
     case 'a':
       NA = std::stoi(optarg);
       break;
+    case 'p':
+      NP = std::stoi(optarg);
+      break;
     case 'b':
       bsize = std::stoi(optarg);
       break;
-    case 'n':
-      anchoring = false;
+    case 's':
+      search_only = true;
+      break;
+    case 'o':
+      overlapping = false;
       break;
     case 'r':
       reference_only = true;
@@ -766,15 +819,16 @@ int main_sfs(int argc, char *argv[]) {
 
       // search specific strings
       output[qq] = ping_pong_search(&fmd, seq, seql, rb->reads[qq]->name);
+      // std::cerr << rb->reads[qq]->name << std::endl;
 
       // assemble overlapping specific strings
       assemble(output[qq], 0);
 
       // anchor specific strings to graph
-      if (anchoring) {
+      if (!search_only) {
         std::map<uint64_t, int> kmers = count_kmers(seq, seql, sketch->k);
-        anchor(graph, sketch, output[qq], seq, seql, kmers, klen, NA,
-               reference_only);
+        anchor(graph, sketch, output[qq], seq, seql, kmers, klen, NA, NP,
+               reference_only, overlapping);
         remove_duplicates(output[qq]);
       }
 
@@ -782,7 +836,7 @@ int main_sfs(int argc, char *argv[]) {
       for (sfs_t &s : output[qq]) {
         fill_sequence(s, seq);
 
-        if (anchoring & (s.flag == 0)) {
+        if (!search_only & (s.flag == 0)) {
           std::cout << sfs_to_string(s, graph.get_gfa_name(s.sv >> 1),
                                      graph.get_gfa_name(s.ev >> 1));
         } else {
@@ -790,6 +844,9 @@ int main_sfs(int argc, char *argv[]) {
         }
       }
     }
+    fprintf(stderr,
+            "[M::%s] Processed %d reads in %.3f sec (current rss: %lldGB)\n",
+            __func__, nreads, realtime() - rt, current_rss_kb() / 1024 / 1024);
   }
 
   rbx_destroy(rb);

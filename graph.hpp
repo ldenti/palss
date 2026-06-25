@@ -70,7 +70,7 @@ public:
   path_t get_path(gbwt::size_type path_id) const;
   // Get all paths from v1 to v2 (with strand info)
   std::vector<path_t> get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
-                                bool ref_only = false) const;
+                                size_t NP, bool ref_only = false) const;
   // Get all paths from v1 to v2 (without strand info)
   std::vector<path_t> get_paths_both(uint32_t v1, uint32_t v2,
                                      bool ref_only = false) const;

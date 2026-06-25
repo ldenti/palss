@@ -65,7 +65,7 @@ path_t Graph::get_path(gbwt::size_type path_id) const {
 
 // v1 and v2 has strand information
 std::vector<path_t> Graph::get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
-                                     bool ref_only) const {
+                                     size_t NP, bool ref_only) const {
   std::vector<path_t> paths;
 
   int ev1 = v1;
@@ -78,6 +78,8 @@ std::vector<path_t> Graph::get_paths(uint32_t v1, uint32_t v2, uint8_t strand,
   //               << std::endl;
 
   for (size_t i = 0; i < intervals1.size(); ++i) {
+    if (paths.size() == NP)
+      break;
     gbwt::FastLocate::size_type int1 = intervals1[i];
     gbwt::size_type seqid1 = fl.seqId(int1);
     // std::cerr << gbz.index.metadata.fullPath(seqid1 >> 1).sample_name << " "
