@@ -32,9 +32,9 @@ LD_LIBRARY_PATH="$PWD/lib" ./build/gbwtgraph-prefix/src/gbwtgraph/bin/gbz_extrac
 # cluster specific strings and analyze clusters
 ./palss align ./example/graph.gbz ./example/reads.sfs > ./example/consensus.gaf
 
-# augment the graph (in GBZ format, so -z) and keeps novel vertices/edges supported by at least 2 reads
+# augment the graph and keeps novel vertices/edges supported by at least 2 reads
 # (this requires vg to be in your $PATH)
-./palss augment -z -s 2./example/graph.gbz ./example/consensus.gaf > ./example/graph.augmented.gfa
+./palss augment -s2 ./example/graph.gbz ./example/consensus.gaf > ./example/graph.augmented.gfa
 ```
 
 ### Experiments
