@@ -130,8 +130,6 @@ uint32_t flip(uint32_t v) { return v ^ 1; }
 void set_paths(const Graph &graph, anchor_t &anchor, int klen, size_t NP) {
   // XXX: what about cycles?
 
-  anchor.paths.clear();
-
   uint32_t v1 = anchor.v1;
   uint32_t v2 = anchor.v2;
 
@@ -589,6 +587,8 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     anchor_t a2 = echains.anchor1;
 
     if (NP != (size_t)-1) {
+      a1.paths.clear();
+      a2.paths.clear();
       set_paths(graph, a1, klen, -1);
       set_paths(graph, a2, klen, -1);
     }
