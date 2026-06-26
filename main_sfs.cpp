@@ -299,12 +299,11 @@ typedef struct {
   // bool strand;
 } anchoring_t;
 
-anchoring_t chaining(const Graph &graph, anchors_t &anchors,
-                     size_t selected_path, int klen) {
+anchoring_t
+chaining(const Graph &graph, anchors_t &anchors, size_t selected_path, int klen,
+         std::map<gbwt::size_type, std::map<uint64_t, size_t>> &dmemo) {
 
   anchoring_t result;
-
-  std::map<gbwt::size_type, std::map<uint64_t, size_t>> dmemo;
 
   // Get how many anchors we have on "each" path
   std::map<uint32_t, std::vector<uint32_t>> pcounts;
@@ -390,6 +389,8 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
   int c;                 // current char
   hit_t hit;             // hit from sketch
   int count;
+
+  std::map<gbwt::size_type, std::map<uint64_t, size_t>> dmemo;
 
   for (uint sidx = 0; sidx < sfs.size(); ++sidx) {
     sfs_t &s = sfs[sidx];
@@ -578,8 +579,8 @@ void anchor(const Graph &graph, sketch_t *sketch, std::vector<sfs_t> &sfs,
     // XXX: this might create problems with our greedy strategy since we start
     // from farthest anchor
     std::reverse(sanchors.begin(), sanchors.end());
-    anchoring_t schains = chaining(graph, sanchors, selected_path, klen);
-    anchoring_t echains = chaining(graph, eanchors, selected_path, klen);
+    anchoring_t schains = chaining(graph, sanchors, selected_path, klen, dmemo);
+    anchoring_t echains = chaining(graph, eanchors, selected_path, klen, dmemo);
 
     // chains are reported following original read positions
 
