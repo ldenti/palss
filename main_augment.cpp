@@ -379,7 +379,7 @@ int main_augment(int argc, char *argv[]) {
     (void)std::system(cmd2.str().c_str());
 
     file_pairs.push_back({augmented_pg_fn, gaf_fn});
-    fprintf(stderr, "[M::%s] Converted ad augmented graph in %.3f sec\n",
+    fprintf(stderr, "[M::%s] Converted and augmented graph in %.3f sec\n",
             __func__, realtime() - rt);
   }
 
@@ -681,7 +681,10 @@ int main_augment(int argc, char *argv[]) {
     // =====================================================
     pg->for_each_edge(
         [&](const handlegraph::edge_t &edge) {
-          if (edges_to_remove.find(edge) == edges_to_remove.end())
+          if (vertices_to_remove.find(edge.first) == vertices_to_remove.end() &&
+              vertices_to_remove.find(edge.second) ==
+                  vertices_to_remove.end() &&
+              edges_to_remove.find(edge) == edges_to_remove.end())
             outfile << "L\t" << pg->get_id(edge.first) << "\t"
                     << (pg->get_is_reverse(edge.first) ? '-' : '+') << "\t"
                     << pg->get_id(edge.second) << "\t"
