@@ -264,7 +264,7 @@ int main_align(int argc, char *argv[]) {
       fprintf(
           stderr,
           "[M::%s] analyzed %ld clusters in %.3f sec (current rss: %lldGB)\n",
-          __func__, cidx, realtime() - rt, current_rss_kb() / 1024 / 1024);
+          __func__, cidx, realtime() - rt, current_rss_kb());
     }
 
     if (cluster.size() > 64) {

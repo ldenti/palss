@@ -38,7 +38,7 @@ long long current_rss_kb() {
   while (std::getline(f, line)) {
     if (line.rfind("VmRSS:", 0) == 0) { // starts with "VmRSS:"
       auto pos = line.find_first_of("0123456789");
-      return std::stoll(line.substr(pos)) / 1024 / 1024; // kB
+      return std::stoll(line.substr(pos)) / 1024 / 1024;
     }
   }
   return -1;

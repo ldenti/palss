@@ -846,7 +846,7 @@ int main_sfs(int argc, char *argv[]) {
     }
     fprintf(stderr,
             "[M::%s] Processed %d reads in %.3f sec (current rss: %lldGB)\n",
-            __func__, nreads, realtime() - rt, current_rss_kb() / 1024 / 1024);
+            __func__, nreads, realtime() - rt, current_rss_kb());
   }
 
   rbx_destroy(rb);
