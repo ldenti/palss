@@ -163,6 +163,8 @@ int main_augment(int argc, char *argv[]) {
   double rt;
 
   bool chunk = false;
+  bool force = false;
+  bool delete_temp = false;
   size_t min_supp = 2;
   std::string wd = "/tmp";
   size_t maxp = 1024;
@@ -171,10 +173,16 @@ int main_augment(int argc, char *argv[]) {
   // size_t max_plen = 100000;
 
   int _c;
-  while ((_c = getopt(argc, argv, "cn:w:g:zs:@:h")) != -1) {
+  while ((_c = getopt(argc, argv, "cfdn:w:g:zs:@:h")) != -1) {
     switch (_c) {
     case 'c':
       chunk = true;
+      break;
+    case 'f':
+      force = true;
+      break;
+    case 'd':
+      delete_temp = true;
       break;
     case 'n':
       maxp = std::stoi(optarg);
@@ -214,24 +222,38 @@ int main_augment(int argc, char *argv[]) {
   rt = realtime();
   if (chunk) {
     size_t n_chunks;
-    std::vector<std::set<std::string>> segments;
-    {
-      gbwtgraph::GBZ gbz;
-      double rt0 = realtime();
-      sdsl::simple_sds::load_from(gbz, gbz_fn);
-      fprintf(stderr, "[M::%s] Load graph in %.3f sec\n", __func__,
-              realtime() - rt0);
+    std::string done_fp = wd + "/DONE";
+    std::ifstream f(done_fp);
+    if (f.good() && !force) {
+      f >> n_chunks;
+      for (size_t c = 0; c < n_chunks; ++c) {
+        std::string augmented_pg_fn =
+            wd + "/" + std::to_string(c) + ".augmented.pg";
+        std::string gaf_fn = wd + "/" + std::to_string(c) + ".gaf";
+        file_pairs.push_back({augmented_pg_fn, gaf_fn});
+      }
+      f.close();
+      fprintf(stderr, "[M::%s] Loaded %d chunks in %.3f sec\n", __func__,
+              n_chunks, realtime() - rt);
+    } else {
+      std::vector<std::set<std::string>> segments;
+      {
+        gbwtgraph::GBZ gbz;
+        double rt0 = realtime();
+        sdsl::simple_sds::load_from(gbz, gbz_fn);
+        fprintf(stderr, "[M::%s] Load graph in %.3f sec\n", __func__,
+                realtime() - rt0);
 
-      // Chunking required 7m:35s and 32.8GB for HPRCv2
-      rt0 = realtime();
-      std::pair<std::vector<gbwtgraph::GBZ>, std::vector<std::string>> chunks =
-          chunk_graph(gbz, {});
-      n_chunks = chunks.first.size();
-      fprintf(stderr, "[M::%s] Computed %ld chunks in %.3f sec\n", __func__,
-              n_chunks, realtime() - rt0);
-      segments.resize(chunks.first.size());
+        // Chunking required 7m:35s and 32.8GB for HPRCv2
+        rt0 = realtime();
+        std::pair<std::vector<gbwtgraph::GBZ>, std::vector<std::string>>
+            chunks = chunk_graph(gbz, {});
+        n_chunks = chunks.first.size();
+        fprintf(stderr, "[M::%s] Computed %ld chunks in %.3f sec\n", __func__,
+                n_chunks, realtime() - rt0);
+        segments.resize(chunks.first.size());
 
-      // clang-format off
+        // clang-format off
       // XXX: hardcoded to 2 threads to keep RAM usage <90GB
       /**
 	 Chr GB  Min
@@ -262,107 +284,121 @@ int main_augment(int argc, char *argv[]) {
 	 Y   0   0
 	 M   0   0
        **/
-      // clang-format on
+        // clang-format on
 #pragma omp parallel for num_threads(2) schedule(static, 1)
-      for (size_t i = 0; i < n_chunks; ++i) {
-        double rt0 = realtime();
+        for (size_t i = 0; i < n_chunks; ++i) {
+          double rt0 = realtime();
 
-        const gbwtgraph::GBZ &sub_gbz = chunks.first[i];
-        std::string fn = std::to_string(i); // + "_" + chunks.second[i];
-        std::string sub_gbz_fn = wd + "/" + fn + ".gbz";
-        std::string sub_pg_fn = wd + "/" + fn + ".pg";
+          const gbwtgraph::GBZ &sub_gbz = chunks.first[i];
+          std::string fn = std::to_string(i); // + "_" + chunks.second[i];
+          std::string sub_gbz_fn = wd + "/" + fn + ".gbz";
+          std::string sub_pg_fn = wd + "/" + fn + ".pg";
 
-        sdsl::simple_sds::serialize_to(chunks.first[i], sub_gbz_fn);
-        std::ostringstream cmd;
-        cmd << "vg convert --packed-out " << sub_gbz_fn << " > " << sub_pg_fn;
+          sdsl::simple_sds::serialize_to(chunks.first[i], sub_gbz_fn);
+          std::ostringstream cmd;
+          cmd << "vg convert --packed-out " << sub_gbz_fn << " > " << sub_pg_fn;
 
-        // XXX: do this better
-        (void)std::system(cmd.str().c_str());
+          // XXX: do this better
+          (void)std::system(cmd.str().c_str());
 
-        sub_gbz.graph.for_each_handle([&](const handlegraph::handle_t &handle) {
-          segments[i].insert(sub_gbz.graph.get_segment_name(handle));
-        });
+          sub_gbz.graph.for_each_handle(
+              [&](const handlegraph::handle_t &handle) {
+                segments[i].insert(sub_gbz.graph.get_segment_name(handle));
+              });
+
+          if (delete_temp)
+            std::filesystem::remove(sub_gbz_fn);
 
 #pragma omp critical(printf_lock)
-        {
-          fprintf(stderr, "[M::%s::%d] Processed chunk %ld (%s) in %.3f sec\n",
-                  __func__, omp_get_thread_num(), i, chunks.second[i].c_str(),
-                  realtime() - rt0);
-          fflush(stdout);
-        }
-      }
-    }
-
-    // splitting GAF
-    {
-      std::vector<std::ofstream> sub_gafs(n_chunks + 1);
-      for (size_t c = 0; c < sub_gafs.size(); ++c) {
-        sub_gafs[c].open(wd + "/" + std::to_string(c) + ".gaf");
-      }
-      std::ifstream file(gaf_fn);
-      std::string line;
-      while (std::getline(file, line)) {
-        std::istringstream iss(line);
-        std::string token;
-        int t = 0;
-
-        std::string vertex; // XXX: is first vertex enough?
-                            // std::vector<std::string> vertices;
-        while (std::getline(iss, token, '\t')) {
-          if (t == 5) {
-            // size_t last_p = 1;
-            size_t p;
-            for (p = 1 /* last_p */; p < token.size(); ++p) {
-              if (token[p] == '<' || token[p] == '>') {
-                // vertices.push_back(token.substr(last_p, p - last_p));
-                // last_p = p + 1;
-                break;
-              }
-            }
-            vertex = token.substr(1 /*last_p*/, p - 1 /*last_p*/);
-            // vertices.push_back(token.substr(last_p, token.size() -
-            // last_p));
-
-            size_t c;
-            for (c = 0; c < segments.size(); ++c) {
-              if (segments[c].find(vertex) != segments[c].end())
-                break;
-            }
-            sub_gafs[c] << line << std::endl;
+          {
+            fprintf(stderr,
+                    "[M::%s::%d] Processed chunk %ld (%s) in %.3f sec\n",
+                    __func__, omp_get_thread_num(), i, chunks.second[i].c_str(),
+                    realtime() - rt0);
+            fflush(stdout);
           }
-          ++t;
         }
       }
-      for (auto &o : sub_gafs) {
-        o.close();
+
+      // splitting GAF
+      {
+        std::vector<std::ofstream> sub_gafs(n_chunks + 1);
+        for (size_t c = 0; c < sub_gafs.size(); ++c) {
+          sub_gafs[c].open(wd + "/" + std::to_string(c) + ".gaf");
+        }
+        std::ifstream file(gaf_fn);
+        std::string line;
+        while (std::getline(file, line)) {
+          std::istringstream iss(line);
+          std::string token;
+          int t = 0;
+
+          std::string vertex; // XXX: is first vertex enough?
+                              // std::vector<std::string> vertices;
+          while (std::getline(iss, token, '\t')) {
+            if (t == 5) {
+              // size_t last_p = 1;
+              size_t p;
+              for (p = 1 /* last_p */; p < token.size(); ++p) {
+                if (token[p] == '<' || token[p] == '>') {
+                  // vertices.push_back(token.substr(last_p, p - last_p));
+                  // last_p = p + 1;
+                  break;
+                }
+              }
+              vertex = token.substr(1 /*last_p*/, p - 1 /*last_p*/);
+              // vertices.push_back(token.substr(last_p, token.size() -
+              // last_p));
+
+              size_t c;
+              for (c = 0; c < segments.size(); ++c) {
+                if (segments[c].find(vertex) != segments[c].end())
+                  break;
+              }
+              sub_gafs[c] << line << std::endl;
+            }
+            ++t;
+          }
+        }
+        for (auto &o : sub_gafs) {
+          o.close();
+        }
       }
-    }
 
-    fprintf(stderr, "[M::%s] Chunked %ld components in %.3f sec\n", __func__,
-            n_chunks, realtime() - rt);
+      fprintf(stderr, "[M::%s] Chunked %ld components in %.3f sec\n", __func__,
+              n_chunks, realtime() - rt);
 
-    // augment chunks
-    rt = realtime();
-    {
-      for (size_t c = 0; c < n_chunks; ++c) {
-        std::string original_pg_fn = wd + "/" + std::to_string(c) + ".pg";
-        std::string augmented_pg_fn =
-            wd + "/" + std::to_string(c) + ".augmented.pg";
-        std::string gaf_fn = wd + "/" + std::to_string(c) + ".gaf";
-        std::ostringstream cmd;
-        cmd << "vg augment --include-paths --min-coverage 1 --gaf "
-            << original_pg_fn << " " << gaf_fn << " > " << augmented_pg_fn;
+      // augment chunks
+      rt = realtime();
+      {
+        for (size_t c = 0; c < n_chunks; ++c) {
+          std::string original_pg_fn = wd + "/" + std::to_string(c) + ".pg";
+          std::string augmented_pg_fn =
+              wd + "/" + std::to_string(c) + ".augmented.pg";
+          std::string gaf_fn = wd + "/" + std::to_string(c) + ".gaf";
+          std::ostringstream cmd;
+          cmd << "vg augment --include-paths --min-coverage 1 --gaf "
+              << original_pg_fn << " " << gaf_fn << " > " << augmented_pg_fn;
 
-        // XXX: do this better
-        (void)std::system(cmd.str().c_str());
-        file_pairs.push_back({augmented_pg_fn, gaf_fn});
+          // XXX: do this better
+          (void)std::system(cmd.str().c_str());
+          file_pairs.push_back({augmented_pg_fn, gaf_fn});
 
-        fprintf(stderr, "[M::%s] Augmented chunk %ld in %.3f sec\n", __func__,
-                c, realtime() - rt);
+          fprintf(stderr, "[M::%s] Augmented chunk %ld in %.3f sec\n", __func__,
+                  c, realtime() - rt);
+          if (delete_temp)
+            std::filesystem::remove(original_pg_fn);
+        }
       }
+      fprintf(stderr, "[M::%s] Augmented %ld chunks in %.3f sec\n", __func__,
+              n_chunks, realtime() - rt);
+
+      // ---
+
+      std::ofstream out(done_fp, std::ios::out | std::ios::trunc);
+      out << n_chunks << std::endl;
+      out.close();
     }
-    fprintf(stderr, "[M::%s] Augmented %ld chunks in %.3f sec\n", __func__,
-            n_chunks, realtime() - rt);
   } else {
     std::string pg_fn = wd + "/graph.pg";
     std::string augmented_pg_fn = wd + "/graph.augmented.pg";
@@ -377,6 +413,9 @@ int main_augment(int argc, char *argv[]) {
          << gaf_fn << " > " << augmented_pg_fn;
     // XXX: do this better
     (void)std::system(cmd2.str().c_str());
+
+    if (delete_temp)
+      std::filesystem::remove(pg_fn);
 
     file_pairs.push_back({augmented_pg_fn, gaf_fn});
     fprintf(stderr, "[M::%s] Converted and augmented graph in %.3f sec\n",
@@ -671,8 +710,7 @@ int main_augment(int argc, char *argv[]) {
         [&](const handlegraph::handle_t &handle) {
           // XXX: assuming here handle is always on + strand
           if (vertices_to_remove.find(handle) == vertices_to_remove.end())
-            outfile << "S"
-                    << "\t" << pg->get_id(handle) << "\t"
+            outfile << "S" << "\t" << pg->get_id(handle) << "\t"
                     << pg->get_sequence(handle) << std::endl;
         },
         false);
@@ -722,7 +760,8 @@ int main_augment(int argc, char *argv[]) {
                   pg->get_length(pg->get_handle_of_step(step_handle));
             });
         // if (end_offset != 0 && start_offset + path_length != end_offset) {
-        //   std::cerr << "[gfa] warning: incorrect end offset (" << end_offset
+        //   std::cerr << "[gfa] warning: incorrect end offset (" <<
+        //   end_offset
         //             << ") extracted from from path name "
         //             << pg->get_path_name(path) << ", using "
         //             << (start_offset + path_length) << " instead" <<
@@ -731,8 +770,7 @@ int main_augment(int argc, char *argv[]) {
         // =============================================================
 
         if (w_line) {
-          outfile << "W"
-                  << "\t" << pg->get_sample_name(path) << "\t"
+          outfile << "W" << "\t" << pg->get_sample_name(path) << "\t"
                   << pg->get_haplotype(path) << "\t" << pg->get_locus_name(path)
                   << "\t" << start_offset << "\t" << start_offset + path_length
                   << "\t";
@@ -742,8 +780,7 @@ int main_augment(int argc, char *argv[]) {
           }
           outfile << std::endl;
         } else {
-          outfile << "P"
-                  << "\t" << pname << "\t";
+          outfile << "P" << "\t" << pname << "\t";
 
           std::stringstream sp;
           for (const handlegraph::handle_t &handle : pg->scan_path(path)) {
@@ -752,8 +789,7 @@ int main_augment(int argc, char *argv[]) {
           }
           std::string p = sp.str();
           p.pop_back();
-          outfile << p << "\t"
-                  << "*" << std::endl;
+          outfile << p << "\t" << "*" << std::endl;
         }
       }
     });

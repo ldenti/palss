@@ -59,9 +59,10 @@ static const char *const AUGMENT_USAGE_MESSAGE =
     "/tmp)\n"
     "        -g <PATH>  store retained consensus to this file (default: '', do "
     "not store)\n"
-    "        -z         input graph is GBZ (so we will convert it to packed "
-    "graph)\n"
-    "        -a         do not perform augmentation\n"
+    "        -c         chunk inputs per weak connected components (default: "
+    "false)\n"
+    "        -f         force chunking (default: false)\n"
+    "        -d         delete temporary files (default: false)\n"
     // "        -r         use anchors from reference only\n"
     "        -h         display this help and exit\n "
     "\n";
