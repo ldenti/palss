@@ -233,7 +233,7 @@ int main_augment(int argc, char *argv[]) {
         file_pairs.push_back({augmented_pg_fn, gaf_fn});
       }
       f.close();
-      fprintf(stderr, "[M::%s] Loaded %d chunks in %.3f sec\n", __func__,
+      fprintf(stderr, "[M::%s] Loaded %ld chunks in %.3f sec\n", __func__,
               n_chunks, realtime() - rt);
     } else {
       std::vector<std::set<std::string>> segments;
@@ -814,7 +814,10 @@ int main_augment(int argc, char *argv[]) {
       out_gaf << in.rdbuf();
       in.close();
     }
-    //
+    if (delete_temp) {
+      std::filesystem::remove(wd + "/" + std::to_string(c) + ".final.gfa");
+      std::filesystem::remove(wd + "/" + std::to_string(c) + ".retained.gaf");
+    }
   }
   out_gaf.close();
 
