@@ -426,6 +426,8 @@ int main_augment(int argc, char *argv[]) {
   rt = realtime();
 #pragma omp parallel for num_threads(nthreads) schedule(static, 1)
   for (size_t c = 0; c < file_pairs.size(); ++c) {
+    // if (c != 10)
+    //   continue;
     double rt0 = realtime();
     std::string pg_fn = file_pairs[c].first;
     std::string gaf_fn = file_pairs[c].second;
@@ -794,6 +796,7 @@ int main_augment(int argc, char *argv[]) {
       }
     });
     outfile.close();
+    delete pg;
     fprintf(stderr, "[M::%s] Refined chunk %ld in %.3f sec\n", __func__, c,
             realtime() - rt0);
   }
