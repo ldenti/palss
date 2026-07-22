@@ -17,6 +17,120 @@
 #include "handlegraph/types.hpp"
 #include "sdsl/simple_sds.hpp"
 
+void rewrite_P_line(std::string &line,
+                    std::map<std::string, std::string> &mapping) {
+  size_t p = 0;
+  size_t i = 0;
+  while (p <= line.size()) {
+    std::size_t pos = line.find('\t', p);
+    if (pos == std::string::npos)
+      pos = line.size();
+    if (i == 0) {
+      std::cout << "P\t";
+    } else if (i == 1) {
+      std::cout << line.substr(p, pos - p) << "\t";
+    } else if (i == 2) {
+      size_t idx = 0;
+      while (p < pos) {
+        char c = line[p];
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+          idx = idx * 10 + (c - '0');
+        } else if (c == '+' || c == '-') {
+          std::cout << mapping[std::to_string(idx)] << c << line[p + 1];
+          idx = 0;
+          ++p; // skip comma
+        }
+        ++p;
+      }
+    } else {
+      std::cout << "*" << std::endl;
+    }
+
+    ++i;
+    p = pos + 1;
+
+    if (pos == line.size())
+      break;
+  }
+}
+
+void rewrite_W_line(std::string &line,
+                    std::map<std::string, std::string> &mapping) {
+  size_t p = 0;
+  size_t i = 0;
+  while (p <= line.size()) {
+    std::size_t pos = line.find('\t', p);
+    if (pos == std::string::npos)
+      pos = line.size();
+
+    if (i < 6) {
+      std::cout << line.substr(p, pos - p) << "\t";
+    } else if (i == 6) {
+      size_t idx = 0;
+      char c = line[p];
+      char c0 = c;
+      ++p;
+      while (p < pos) {
+        c = line[p];
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+          idx = idx * 10 + (c - '0');
+        } else {
+          std::cout << c0 << mapping[std::to_string(idx)];
+          idx = 0;
+          c0 = c;
+        }
+        ++p;
+      }
+      std::cout << c0 << mapping[std::to_string(idx)] << std::endl;
+    }
+
+    ++i;
+    p = pos + 1;
+
+    if (pos == line.size())
+      break;
+  }
+
+  // std::vector<size_t> path;
+  // size_t s = 0;
+  // size_t i = 0;
+  // while (s <= line.size()) {
+  //   std::size_t pos = line.find('\t', s);
+  //   if (pos == std::string::npos)
+  //     pos = line.size();
+  //   if (i == 1) {
+  //     sample = line.substr(s, pos - s);
+  //   } else if (i == 2) {
+  //     haplotype = line.substr(s, pos - s);
+  //   } else if (i == 3) {
+  //     contig = line.substr(s, pos - s);
+  //   } else if (i == 4) {
+  //     start = line.substr(s, pos - s);
+  //   } else if (i == 5) {
+  //     end = line.substr(s, pos - s);
+  //   } else {
+  //     bool strand = line[s] == '>';
+  //     ++s;
+  //     size_t ss = 0;
+  //     while (s <= line.size()) {
+  //       if (line[s + ss] == '>' || line[s + ss] == '<') {
+  //         std::string idx_s = line.substr(s, ss - s);
+  //         std::cerr << strand << " " << idx_s << std::endl;
+  //       }
+  //     }
+
+  //     // seq = line.substr(start, pos - start);
+  //     break;
+  //   }
+  //   ++i;
+  //   s = pos + 1;
+
+  //   if (pos == line.size())
+  //     break;
+  // }
+  // return path;
+}
+
 std::vector<std::vector<handlegraph::handle_t>>
 dp(bdsg::PackedGraph *pg, handlegraph::handle_t source,
    handlegraph::handle_t sink, std::string sequence, size_t maxp) {
@@ -30,9 +144,6 @@ dp(bdsg::PackedGraph *pg, handlegraph::handle_t source,
   std::vector<std::set<handlegraph::handle_t>> DP(m + 1);
   size_t starting_position = pg->get_length(source);
   DP[starting_position].insert(source);
-  // std::cerr << pg->get_id(source) << " " << starting_position << std::endl;
-  // std::cerr << sequence_view.substr(0, starting_position) << " "
-  //           << pg->get_sequence(source) << std::endl;
   assert(sequence_view.substr(0, starting_position)
              .compare(pg->get_sequence(source)) == 0);
 
@@ -51,27 +162,10 @@ dp(bdsg::PackedGraph *pg, handlegraph::handle_t source,
                           pg->get_sequence(out)) == 0) {
           DP[j].insert(out);
           predecessors[std::make_pair(out, j)].push_back(std::make_pair(h, i));
-          // if (i == starting_position) {
-          //   std::cerr << pg->get_id(h) << " " << i << std::endl;
-          //   std::cerr << pg->get_id(out) << " " << j << std::endl;
-          //   std::cerr << pg->get_id(
-          //                    predecessors[std::make_pair(out, j)][0].first)
-          //             << std::endl;
-          //   std::cerr << predecessors[std::make_pair(out, j)][0].second
-          //             << std::endl;
-          // }
         }
       });
     }
   }
-
-  // for (size_t i = 0; i < m + 1; ++i) {
-  //   std::cerr << "DP[" << i << "] (" << DP[i].size() << ") [ ";
-  //   for (const auto &h : DP[i]) {
-  //     std::cerr << pg->get_id(h) << " ";
-  //   }
-  //   std::cerr << "]" << std::endl;
-  // }
 
   // we should have sink in DP[m]
   // CHECKME: but in some cases we also have other vertices, why?
@@ -89,15 +183,6 @@ dp(bdsg::PackedGraph *pg, handlegraph::handle_t source,
               });
   }
 
-  // for (const auto &pred : predecessors) {
-  //   std::cerr << "PRED[(" << pg->get_id(pred.first.first) << ","
-  //             << pred.first.second << ")] (" << pred.second.size() << ") [ ";
-  //   for (const auto &x : pred.second) {
-  //     std::cerr << "(" << pg->get_id(x.first) << "," << x.second << ") ";
-  //   }
-  //   std::cerr << "]" << std::endl;
-  // }
-
   // XXX: backtracking can be done way better. Avoid all those copies
   std::stack<std::tuple<handlegraph::handle_t, size_t,
                         std::vector<handlegraph::handle_t>>>
@@ -112,7 +197,6 @@ dp(bdsg::PackedGraph *pg, handlegraph::handle_t source,
     handlegraph::handle_t vertex = std::get<0>(curr);
     size_t pos = std::get<1>(curr);
     std::vector<handlegraph::handle_t> path = std::get<2>(curr);
-    // std::cerr << "STACK " << pg->get_id(vertex) << " " << pos << std::endl;
     if (pos == starting_position) {
       std::reverse(path.begin(), path.end());
       paths.push_back(std::move(path));
@@ -160,8 +244,7 @@ bool flag_edge(
 }
 
 int main_augment(int argc, char *argv[]) {
-  double rt;
-
+  // === CLI =========================================================
   bool chunk = false;
   bool force = false;
   bool delete_temp = false;
@@ -170,7 +253,6 @@ int main_augment(int argc, char *argv[]) {
   size_t maxp = 1024;
   std::string retained_gaf_fn = "";
   int nthreads = 4;
-  // size_t max_plen = 100000;
 
   int _c;
   while ((_c = getopt(argc, argv, "cfdn:w:g:zs:@:h")) != -1) {
@@ -216,12 +298,17 @@ int main_augment(int argc, char *argv[]) {
   std::string gaf_fn = argv[optind++];
 
   std::filesystem::create_directories(wd);
+  double rt = realtime();
+
+  // =================================================================
 
   std::vector<std::pair<std::string, std::string>> file_pairs;
 
-  rt = realtime();
   if (chunk) {
+    // === CHUNK AND CONVERT =========================================
     size_t n_chunks;
+
+    // Use existing chunks if not -f
     std::string done_fp = wd + "/DONE";
     std::ifstream f(done_fp);
     if (f.good() && !force) {
@@ -236,6 +323,7 @@ int main_augment(int argc, char *argv[]) {
       fprintf(stderr, "[M::%s] Loaded %ld chunks in %.3f sec\n", __func__,
               n_chunks, realtime() - rt);
     } else {
+      // --- Chunk ---------------------------------------------------
       std::vector<std::set<std::string>> segments;
       {
         gbwtgraph::GBZ gbz;
@@ -254,8 +342,8 @@ int main_augment(int argc, char *argv[]) {
         segments.resize(chunks.first.size());
 
         // clang-format off
-      // XXX: hardcoded to 2 threads to keep RAM usage <90GB
-      /**
+	// XXX: hardcoded to 2 threads to keep RAM usage <90GB
+        /**
 	 Chr GB  Min
 	 ===========
 	 1   42  40
@@ -283,8 +371,10 @@ int main_augment(int argc, char *argv[]) {
 	 X   15  15
 	 Y   0   0
 	 M   0   0
-       **/
+         **/
         // clang-format on
+
+        // --- Convert .gbz to .pg -----------------------------------
 #pragma omp parallel for num_threads(2) schedule(static, 1)
         for (size_t i = 0; i < n_chunks; ++i) {
           double rt0 = realtime();
@@ -315,12 +405,12 @@ int main_augment(int argc, char *argv[]) {
                     "[M::%s::%d] Processed chunk %ld (%s) in %.3f sec\n",
                     __func__, omp_get_thread_num(), i, chunks.second[i].c_str(),
                     realtime() - rt0);
-            fflush(stdout);
+            fflush(stderr);
           }
         }
       }
 
-      // splitting GAF
+      // --- Split GAF -----------------------------------------------
       {
         std::vector<std::ofstream> sub_gafs(n_chunks + 1);
         for (size_t c = 0; c < sub_gafs.size(); ++c) {
@@ -368,9 +458,10 @@ int main_augment(int argc, char *argv[]) {
       fprintf(stderr, "[M::%s] Chunked %ld components in %.3f sec\n", __func__,
               n_chunks, realtime() - rt);
 
-      // augment chunks
+      // --- augment chunks ------------------------------------------
       rt = realtime();
       {
+#pragma omp parallel for num_threads(2) schedule(static, 1)
         for (size_t c = 0; c < n_chunks; ++c) {
           std::string original_pg_fn = wd + "/" + std::to_string(c) + ".pg";
           std::string augmented_pg_fn =
@@ -384,8 +475,12 @@ int main_augment(int argc, char *argv[]) {
           (void)std::system(cmd.str().c_str());
           file_pairs.push_back({augmented_pg_fn, gaf_fn});
 
-          fprintf(stderr, "[M::%s] Augmented chunk %ld in %.3f sec\n", __func__,
-                  c, realtime() - rt);
+#pragma omp critical(printf_lock)
+          {
+            fprintf(stderr, "[M::%s::%d] Augmented chunk %ld in %.3f sec\n",
+                    __func__, omp_get_thread_num(), c, realtime() - rt);
+            fflush(stderr);
+          }
           if (delete_temp)
             std::filesystem::remove(original_pg_fn);
         }
@@ -400,11 +495,12 @@ int main_augment(int argc, char *argv[]) {
       out.close();
     }
   } else {
-    std::string pg_fn = wd + "/graph.pg";
-    std::string augmented_pg_fn = wd + "/graph.augmented.pg";
+    std::string pg_fn = wd + "/0.pg";
+    std::string augmented_pg_fn = wd + "/0.augmented.pg";
 
     std::ostringstream cmd1;
     cmd1 << "vg convert --packed-out " << gbz_fn << " > " << pg_fn;
+
     // XXX: do this better
     (void)std::system(cmd1.str().c_str());
 
@@ -417,12 +513,17 @@ int main_augment(int argc, char *argv[]) {
     if (delete_temp)
       std::filesystem::remove(pg_fn);
 
+    std::ofstream out(wd + "/DONE", std::ios::out | std::ios::trunc);
+    out << 1 << std::endl;
+    out.close();
+
     file_pairs.push_back({augmented_pg_fn, gaf_fn});
     fprintf(stderr, "[M::%s] Converted and augmented graph in %.3f sec\n",
             __func__, realtime() - rt);
   }
 
   // =================================================================
+
   rt = realtime();
 #pragma omp parallel for num_threads(nthreads) schedule(static, 1)
   for (size_t c = 0; c < file_pairs.size(); ++c) {
@@ -435,10 +536,9 @@ int main_augment(int argc, char *argv[]) {
     bdsg::PackedGraph *pg = new bdsg::PackedGraph();
     pg->deserialize(pg_fn);
 
-    // std::cerr << "Loaded packed graph" << std::endl;
-
     // size_t total_paths = pg->get_path_count();
 
+    uint32_t max_known_id = 0;
     std::set<handlegraph::handle_t> known_vertices;
     std::set<handlegraph::edge_t> known_edges;
     int pi = 0;
@@ -447,37 +547,26 @@ int main_augment(int argc, char *argv[]) {
     pg->for_each_path_handle([&](const bdsg::path_handle_t p) {
       std::string pname = pg->get_path_name(p);
       std::string_view sv = pname;
-      // std::cerr << pi << "/" << total_paths << " paths\r";
       // XXX: improve this, quite inefficient (batch insert?)
       if (sv.substr(0, 5).compare("palss") != 0) {
         handlegraph::handle_t last_h;
         bool first = true;
-        // pg->for_each_step_in_path(p, [&](const bdsg::step_handle_t s) {
-        //   std::cerr << pg->get_id(pg->get_handle_of_step(s)) << " ";
-        // });
-        // std::cerr << std::endl;
 
         for (const handlegraph::handle_t &h : pg->scan_path(p)) {
-          // std::cerr << pg->get_id(h) << " ";
           known_vertices.insert(h);
+          if (pg->get_id(h) > max_known_id)
+            max_known_id = pg->get_id(h);
+
           if (!first)
             known_edges.insert(std::make_pair(last_h, h));
           first = false;
           last_h = h;
         }
-        // std::cerr << std::endl;
       } else {
         ++np;
       }
       ++pi;
     });
-    // std::cerr << pi << "/" << total_paths << " paths" << std::endl;
-    // std::cerr << "Novel paths: " << np << std::endl;
-    // std::cerr << "Known vertices: " << known_vertices.size() << std::endl;
-    // std::cerr << "Known edges: " << known_edges.size() << std::endl;
-
-    // for (const auto &v : known_vertices)
-    //   std::cerr << "NOVEL " << pg->get_id(v) << std::endl;
 
     std::map<std::string, std::set<std::string>> cluster_support;
     {
@@ -552,30 +641,15 @@ int main_augment(int argc, char *argv[]) {
           n_novel_vertices +=
               known_vertices.find(rpath[0]) == known_vertices.end();
           rseq += pg->get_sequence(rpath[0]);
-          // std::cerr << pg->get_id(rpath[0]);
           for (size_t h = 1; h < rpath.size(); ++h) {
-            // std::cerr << " " << pg->get_id(rpath[h]);
             n_novel_vertices +=
                 known_vertices.find(rpath[h]) == known_vertices.end();
-            // std::cerr << pg->get_id(rpath[h - 1]) << " " <<
-            // pg->get_id(rpath[h])
-            //           << " "
-            //           << (known_edges.find(std::make_pair(
-            //                   rpath[h - 1], rpath[h])) ==
-            //                   known_edges.end())
-            //           << std::endl;
             n_novel_edges +=
                 known_edges.find(std::make_pair(rpath[h - 1], rpath[h])) ==
                 known_edges.end();
             rseq += pg->get_sequence(rpath[h]);
           }
-          // std::cerr << std::endl;
-          // std::cerr << seq << std::endl;
-          // std::cerr << rseq << std::endl;
           assert(seq.compare(rseq) == 0);
-
-          // std::cerr << n_novel_vertices << " " << n_novel_edges <<
-          // std::endl;
 
           if (n_novel_vertices == 0 && n_novel_edges == 0) {
             best_novel_path.clear();
@@ -589,15 +663,9 @@ int main_augment(int argc, char *argv[]) {
         }
         if (!best_novel_path.empty()) {
           real_novel[pname] = best_novel_path;
-          // std::cerr << pname << " " << best_novel_path_count << " "
-          //           << best_novel_path.size() << std::endl;
         }
       }
     });
-
-    // std::cerr << real_novel.size() << " novel paths will be retained"
-    //           << std::endl;
-    // std::cerr << "Selecting segments/links to remove..." << std::endl;
 
     // 2-pass cleaning. If a vertex is supported by at least one path, we want
     // to keep it even if it's not supported by others
@@ -607,24 +675,10 @@ int main_augment(int argc, char *argv[]) {
     // get novel vertices and edges from real novel paths
     for (const auto &pp : real_novel) {
       std::string cname = pp.first;
-      // std::cerr << cname << " >";
-      // for (const auto &h : pp.second) {
-      //   std::cerr << " " << pg->get_id(h);
-      // }
-      // std::cerr << std::endl;
-
       if (known_vertices.find(pp.second[0]) == known_vertices.end())
         novel_vertices[pp.second[0]].insert(cluster_support[cname].begin(),
                                             cluster_support[cname].end());
-      // std::cerr << pg->get_id(pp.second[0]) << " "
-      //           << (known_vertices.find(pp.second[0]) ==
-      //           known_vertices.end())
-      //           << std::endl;
       for (size_t h = 1; h < pp.second.size(); ++h) {
-        // std::cerr << pg->get_id(pp.second[h]) << " "
-        //           << (known_vertices.find(pp.second[h]) ==
-        //           known_vertices.end())
-        //           << std::endl;
         if (known_vertices.find(pp.second[h]) == known_vertices.end())
           novel_vertices[pp.second[h]].insert(cluster_support[cname].begin(),
                                               cluster_support[cname].end());
@@ -635,9 +689,6 @@ int main_augment(int argc, char *argv[]) {
         }
       }
     }
-
-    // std::cerr << novel_vertices.size() << " " << novel_edges.size() <<
-    // std::endl;
 
     // iterate over original novel paths to get novel vertices not used by
     // real novel (cleaned) paths
@@ -651,7 +702,6 @@ int main_augment(int argc, char *argv[]) {
         std::vector<handlegraph::handle_t> path;
         // if (real_novel.find(pname) == real_novel.end()) {
         for (const handlegraph::handle_t &h : pg->scan_path(p)) {
-          // std::cerr << pg->get_id(h) << " ";
           path.push_back(h);
         }
         // } else {
@@ -711,9 +761,12 @@ int main_augment(int argc, char *argv[]) {
     pg->for_each_handle(
         [&](const handlegraph::handle_t &handle) {
           // XXX: assuming here handle is always on + strand
-          if (vertices_to_remove.find(handle) == vertices_to_remove.end())
+          if (vertices_to_remove.find(handle) == vertices_to_remove.end()) {
             outfile << "S" << "\t" << pg->get_id(handle) << "\t"
-                    << pg->get_sequence(handle) << std::endl;
+                    << pg->get_sequence(handle)
+                    << (pg->get_id(handle) > max_known_id ? "\tTY:Z:new" : "")
+                    << std::endl;
+          }
         },
         false);
 
@@ -802,27 +855,131 @@ int main_augment(int argc, char *argv[]) {
   }
   fprintf(stderr, "[M::%s] Refined in %.3f sec\n", __func__, realtime() - rt);
 
+  // === UNCHOP ======================================================
+  rt = realtime();
+#pragma omp parallel for num_threads(2) schedule(static, 1)
+  for (size_t c = 0; c < file_pairs.size(); ++c) {
+    double rt0 = realtime();
+
+    std::string gfa = wd + "/" + std::to_string(c) + ".final.gfa";
+    std::string ugfa = wd + "/" + std::to_string(c) + ".final.unchopped.gfa";
+
+    std::ostringstream cmd;
+    cmd << "vg mod --unchop " << gfa << " > " << ugfa;
+    // XXX: do this better
+    (void)std::system(cmd.str().c_str());
+    // if (delete_temp) {
+    std::filesystem::remove(wd + "/" + std::to_string(c) + ".final.gfa");
+    // }
+
+#pragma omp critical(printf_lock)
+    {
+      fprintf(stderr, "[M::%s::%d] Unchopped chunk %ld in %.3f sec\n", __func__,
+              omp_get_thread_num(), c, realtime() - rt0);
+      fflush(stderr);
+    }
+  }
+  fprintf(stderr, "[M::%s] Unchopped in %.3f sec\n", __func__, realtime() - rt);
+
+  // === MERGE =======================================================
   rt = realtime();
   std::ofstream out_gaf;
   if (!retained_gaf_fn.empty())
     out_gaf.open(retained_gaf_fn, std::ios::out);
+
   std::cout << "H\tVN:Z:1.1" << std::endl;
+  size_t min_idx = 1;
   for (size_t c = 0; c < file_pairs.size(); ++c) {
+    double rt0 = realtime();
     std::ifstream in;
-    in.open(wd + "/" + std::to_string(c) + ".final.gfa");
-    std::cout << in.rdbuf();
-    in.close();
+    std::map<std::string, std::string> mapping;
+    {
+      in.open(wd + "/" + std::to_string(c) + ".final.unchopped.gfa");
+
+      std::string line;
+      while (std::getline(in, line)) {
+        if (line[0] == 'S') {
+          std::string name;
+          std::string seq;
+          bool is_new = false;
+
+          size_t start = 0;
+          size_t i = 0;
+          while (start <= line.size()) {
+            std::size_t pos = line.find('\t', start);
+            if (pos == std::string::npos)
+              pos = line.size();
+            if (i == 1) {
+              name = line.substr(start, pos - start);
+            } else if (i == 2) {
+              seq = line.substr(start, pos - start);
+            } else if (i == 3) {
+              is_new = true;
+            }
+            ++i;
+
+            start = pos + 1;
+
+            if (pos == line.size())
+              break;
+          }
+
+          mapping[name] = std::to_string(min_idx);
+          ++min_idx;
+
+          std::cout << "S" << "\t" << mapping[name] << "\t" << seq
+                    << (is_new ? "\tTY:Z:new" : "") << std::endl;
+        } else if (line[0] == 'L') {
+          std::vector<std::string> fields;
+          // std::string name1;
+          // std::string strand1;
+          // std::string name2;
+          // std::string strand2;
+          // std::string cigar;
+
+          size_t start = 0;
+          // size_t i = 0;
+          while (start <= line.size()) {
+            std::size_t pos = line.find('\t', start);
+            if (pos == std::string::npos)
+              pos = line.size();
+            fields.push_back(line.substr(start, pos - start));
+            // ++i;
+            start = pos + 1;
+            if (pos == line.size())
+              break;
+          }
+
+          fields[1] = mapping[fields[1]];
+          fields[3] = mapping[fields[3]];
+          std::cout << "L" << "\t" << fields[1] << "\t" << fields[2] << "\t"
+                    << fields[3] << "\t" << fields[4] << "\t" << fields[5]
+                    << std::endl;
+        } else if (line[0] == 'P') {
+          rewrite_P_line(line, mapping);
+        } else if (line[0] == 'W') {
+          rewrite_W_line(line, mapping);
+        }
+      }
+      in.close();
+    }
+
     if (!retained_gaf_fn.empty()) {
       in.open(wd + "/" + std::to_string(c) + ".retained.gaf");
       out_gaf << in.rdbuf();
       in.close();
     }
     if (delete_temp) {
-      std::filesystem::remove(wd + "/" + std::to_string(c) + ".final.gfa");
+      std::filesystem::remove(wd + "/" + std::to_string(c) +
+                              ".final.unchopped.gfa");
       std::filesystem::remove(wd + "/" + std::to_string(c) + ".retained.gaf");
     }
+
+    fprintf(stderr, "[M::%s] Dumped chunk %ld in %.3f sec\n", __func__, c,
+            realtime() - rt0);
   }
   out_gaf.close();
+  std::cout.flush();
 
   fprintf(stderr, "[M::%s] Merged in %.3f sec\n", __func__, realtime() - rt);
 
