@@ -91,3 +91,33 @@ rule minigraphcactus:
         /usr/bin/time -vo {log.time} bash ./utils/run_mgcactus.sh {input.ref} {input.gbz} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} {log.time2} > {output.gfa}
         vg mod --unchop {output.gfa} > {output.ugfa}
         """
+
+
+rule minigraphcactus_real:
+    input:
+        ref=FA,
+        gbz=pjoin(WD, "n{n}", "pangenome-oneout.gbz"),  # we take known contigs from the pangenome
+        fa1=pjoin(WD, sample + "-hap1.fa"),
+        fa2=pjoin(WD, sample + "-hap2.fa"),
+        venv=cactus_activate,
+    output:
+        gfa=pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus-real.gfa"),
+        ugfa=pjoin(
+            WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus-real.unchop.gfa"
+        ),
+    params:
+        prefix=pjoin(
+            "/scratch2", "luca-palss", WD[1:], "n{n}", "cov{cov}", "mgcactusreal"
+        ),
+    threads: workflow.cores
+    # conda:
+    #     "../envs/mgc.yaml"
+    log:
+        time=pjoin(WD, "times", "mgcactusreal", "full-cov{cov}.n{n}.time"),
+        time2=pjoin(WD, "times", "mgcactusreal", "mgc-cov{cov}.n{n}.time"),
+    shell:
+        """
+        set +u; source {input.venv}; set -u
+        /usr/bin/time -vo {log.time} bash ./utils/run_mgcactus.sh {input.ref} {input.gbz} {sample} {input.fa1} {input.fa2} {params.prefix} {threads} {log.time2} > {output.gfa}
+        vg mod --unchop {output.gfa} > {output.ugfa}
+        """

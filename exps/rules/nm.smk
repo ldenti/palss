@@ -22,11 +22,13 @@ rule get_nm:
             size=SIZES,
         ),
         expand(
-            pjoin(WD, "n{n}", "tables-nm", "mgc.cov{cov}.{size}.csv"),
+            pjoin(WD, "n{n}", "tables-nm", "{mgc}.cov{cov}.{size}.csv"),
+            mgc=["mgc", "mgc-real"],
             n=Ns,
             cov=coverages,
             size=SIZES,
         ),
+        # mgc=["mgc", "mgc-unchop", "mgc-real", "mgc-real-unchop"],
         #
         expand(
             pjoin(
@@ -92,6 +94,9 @@ rule get_nm_original:
         """
 
 
+#######
+
+
 rule get_nm_mgc:
     input:
         gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus.cov{cov}.{size}.gaf"),
@@ -105,6 +110,56 @@ rule get_nm_mgc:
         """
         python3 ./utils/get_nm.py -t mgcactus -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
         """
+
+
+rule get_nm_mgc_unchop:
+    input:
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus-unchop.cov{cov}.{size}.gaf"),
+        txt=pjoin(WD, sample + "-haps.{size}-overlapping.complex.list"),
+    output:
+        csv=pjoin(WD, "n{n}", "tables-nm", "mgc-unchop.cov{cov}.{size}.csv"),
+    conda:
+        "../envs/pysam.yaml"
+    threads: workflow.cores / 4
+    shell:
+        """
+        python3 ./utils/get_nm.py -t mgcactus-unchop -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
+        """
+
+
+rule get_nm_mgc_real:
+    input:
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus-real.cov{cov}.{size}.gaf"),
+        txt=pjoin(WD, sample + "-haps.{size}-overlapping.complex.list"),
+    output:
+        csv=pjoin(WD, "n{n}", "tables-nm", "mgc-real.cov{cov}.{size}.csv"),
+    conda:
+        "../envs/pysam.yaml"
+    threads: workflow.cores / 4
+    shell:
+        """
+        python3 ./utils/get_nm.py -t mgcactus-real -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
+        """
+
+
+rule get_nm_mgc_real_unchop:
+    input:
+        gaf=pjoin(
+            WD, "n{n}", "truecontigs-aln", "mgcactus-real-unchop.cov{cov}.{size}.gaf"
+        ),
+        txt=pjoin(WD, sample + "-haps.{size}-overlapping.complex.list"),
+    output:
+        csv=pjoin(WD, "n{n}", "tables-nm", "mgc-real-unchop.cov{cov}.{size}.csv"),
+    conda:
+        "../envs/pysam.yaml"
+    threads: workflow.cores / 4
+    shell:
+        """
+        python3 ./utils/get_nm.py -t mgcactus-real-unchop -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
+        """
+
+
+#######
 
 
 rule get_nm_palss:
