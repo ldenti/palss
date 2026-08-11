@@ -542,7 +542,6 @@ int main_augment(int argc, char *argv[]) {
 
     // size_t total_paths = pg->get_path_count();
 
-    uint32_t max_known_id = 0;
     std::set<handlegraph::handle_t> known_vertices;
     std::set<handlegraph::edge_t> known_edges;
     int pi = 0;
@@ -558,9 +557,6 @@ int main_augment(int argc, char *argv[]) {
 
         for (const handlegraph::handle_t &h : pg->scan_path(p)) {
           known_vertices.insert(h);
-          if (pg->get_id(h) > max_known_id)
-            max_known_id = pg->get_id(h);
-
           if (!first)
             known_edges.insert(std::make_pair(last_h, h));
           first = false;
@@ -571,6 +567,13 @@ int main_augment(int argc, char *argv[]) {
       }
       ++pi;
     });
+
+#pragma omp critical(printf_lock)
+    {
+      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Known vertices/edges: %ld/%ld\n", __func__, omp_get_thread_num(), c,
+             known_vertices.size(), known_edges.size());
+      fflush(stderr);
+    }
 
     std::map<std::string, std::set<std::string>> cluster_support;
     {
@@ -597,6 +600,7 @@ int main_augment(int argc, char *argv[]) {
       }
     }
 
+    size_t total_consensuses = 0;
     std::map<std::string, std::vector<handlegraph::handle_t>> real_novel;
     pg->for_each_path_handle([&](const bdsg::path_handle_t path) {
       std::string pname = pg->get_path_name(path);
@@ -604,6 +608,7 @@ int main_augment(int argc, char *argv[]) {
       //   return;
       std::string_view sv = pname;
       if (sv.substr(0, 5).compare("palss") == 0) {
+        ++total_consensuses;
         std::string seq;
         int plen = 0;
         for (const handlegraph::handle_t &h : pg->scan_path(path)) {
@@ -671,6 +676,12 @@ int main_augment(int argc, char *argv[]) {
       }
     });
 
+#pragma omp critical(printf_lock)
+    {
+      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Real novel vertices: %ld\n", __func__, omp_get_thread_num(), c, real_novel.size());
+      fflush(stderr);
+    }
+
     // 2-pass cleaning. If a vertex is supported by at least one path, we want
     // to keep it even if it's not supported by others
     std::map<handlegraph::handle_t,
@@ -725,6 +736,9 @@ int main_augment(int argc, char *argv[]) {
 
         handlegraph::handle_t prev_handle;
         handlegraph::handle_t handle = path[0];
+
+	// std::cerr << pg->get_id(handle) << " " << (known_vertices.find(handle) == known_vertices.end()) << " " << ((novel_vertices.find(handle) == novel_vertices.end()) ? -1 : novel_vertices.at(handle).second.size()) << std::endl;
+
         if (flag_vertex(handle, known_vertices, novel_vertices, min_supp) &&
             flag_vertex(pg->flip(handle), known_vertices, novel_vertices,
                         min_supp)) {
@@ -735,6 +749,8 @@ int main_augment(int argc, char *argv[]) {
         for (size_t h = 1; h < path.size(); ++h) {
           prev_handle = path[h - 1];
           handle = path[h];
+
+	  // std::cerr << pg->get_id(handle) << " " << (known_vertices.find(handle) == known_vertices.end()) << " " << ((novel_vertices.find(handle) == novel_vertices.end()) ? -1 : novel_vertices.at(handle).second.size()) << std::endl;
 
           // vertex
           if (flag_vertex(handle, known_vertices, novel_vertices, min_supp) &&
@@ -757,6 +773,12 @@ int main_augment(int argc, char *argv[]) {
       }
     });
 
+#pragma omp critical(printf_lock)
+    {
+      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Vertices/Edges to remove: %ld/%ld\n", __func__, omp_get_thread_num(), c, vertices_to_remove.size(), edges_to_remove.size());
+      fflush(stderr);
+    }
+
     std::set<std::string> retained_consensuses; // store the consensuses of
                                                 // novel vertices/edges we print
 
@@ -767,11 +789,13 @@ int main_augment(int argc, char *argv[]) {
     pg->for_each_handle(
         [&](const handlegraph::handle_t &handle) {
           // XXX: assuming here handle is always on + strand
+	  // if (novel_vertices.find(handle) != novel_vertices.end())
+	  //   std::cerr << "R: " << pg->get_id(handle) << " " << (vertices_to_remove.find(handle) == vertices_to_remove.end()) << std::endl;
           if (vertices_to_remove.find(handle) == vertices_to_remove.end()) {
             outfile << "S"
                     << "\t" << pg->get_id(handle) << "\t"
                     << pg->get_sequence(handle)
-                    << (known_vertices.find(handle) != known_vertices.end()
+                    << (novel_vertices.find(handle) != novel_vertices.end()
                             ? "\tTY:Z:new"
                             : "")
                     << std::endl;
@@ -780,6 +804,11 @@ int main_augment(int argc, char *argv[]) {
           }
         },
         false);
+#pragma omp critical(printf_lock)
+    {
+      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Retained consensuses: %ld over %ld\n", __func__, omp_get_thread_num(), c, retained_consensuses.size(), total_consensuses);
+      fflush(stderr);
+    }
 
     // === L LINES
     // =====================================================
@@ -884,8 +913,12 @@ int main_augment(int argc, char *argv[]) {
     outfile.close();
 
     delete pg;
-    fprintf(stderr, "[M::%s] Refined chunk %ld in %.3f sec\n", __func__, c,
-            realtime() - rt0);
+#pragma omp critical(printf_lock)
+    {
+      fprintf(stderr, "[M::%s::%d] Refined chunk %ld in %.3f sec\n", __func__, omp_get_thread_num(), c,
+              realtime() - rt0);
+      fflush(stderr);
+    }
   }
   fprintf(stderr, "[M::%s] Refined in %.3f sec\n", __func__, realtime() - rt);
 
