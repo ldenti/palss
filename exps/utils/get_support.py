@@ -86,9 +86,9 @@ def main():
     parser.add_argument("-s", type=str, default="")
 
     parser.add_argument("-t", type=str, required=True)
-    parser.add_argument("-n", type=str, required=True)
-    parser.add_argument("-c", type=str, required=True)
-    parser.add_argument("-l", type=str, required=True)
+    parser.add_argument("-n", type=str, default="0", required=False)
+    parser.add_argument("-c", type=str, default="0", required=False)
+    parser.add_argument("-l", type=str, default="0", required=False)
 
     args = parser.parse_args()
 

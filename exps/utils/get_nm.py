@@ -39,18 +39,17 @@ def main():
     parser.add_argument("TXT")  # "contigs" overlapping complex regions
 
     parser.add_argument("-t", type=str, required=True)
-    parser.add_argument("-n", type=str, required=True)
-    parser.add_argument("-c", type=str, required=True)
-    parser.add_argument("-l", type=str, required=True)
+    parser.add_argument("-n", type=str, default="0", required=False)
+    parser.add_argument("-c", type=str, default="0", required=False)
+    parser.add_argument("-l", type=str, default="0", required=False)
 
     args = parser.parse_args()
 
-    Cs = [int(c) for c in args.c.split(",")]
+    Ns = [n for n in args.n.split(",")]
+    Cs = [c for c in args.c.split(",")]
 
     mode = args.FN[-3:]
     assert mode in ["gaf", "bam"]
-
-    Ns = [args.n]
 
     cpx_contigs = []
     for line in open(args.TXT):
