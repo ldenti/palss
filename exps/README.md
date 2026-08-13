@@ -1,4 +1,13 @@
 ### Prerequisites
+Software/libraries:
+* conda
+* snakemake
+* vg
+* bedtools
+* python3-pandas, python3-matplotlib, python3-seaborn, python3-pysam
+
+
+### Data
 ```
 # Get reference
 wget https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz
@@ -43,7 +52,20 @@ python3 ./plots/plot_sketch_analysis.py fq palss-sketch_analysis/d0.5/reads.txt
 ```
 
 ### Experiment 2 - Simulated data
+```
+# Get single (or multi) chromosome(s) data
+samtools faidx chm13v2.0.fa chr1 chr20 > chr1-20.fa
+samtools faidx chr1-20.fa
+wget https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/minigraph-cactus/v2.0/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/chr1.vg
+wget https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/minigraph-cactus/v2.0/hprc-v2.0-mc-chm13/hprc-v2.0-mc-chm13.chroms/chr20.vg
+vg combine chr1.vg chr20.vg > chr1-20.vg
+vg gbwt --gbz-format -g chr1-20.gbz --xg-name chr1-20.vg --index-paths
+egrep '^chr(1|20)[[:space:]]' complex.bed > chr1-20.bed
 
+# edit config/exp2.yaml
+
+snakemake -c32 -p --use-conda -s augment.smk --configfile config/exp2.yaml --keep-going [-n]
+```
 
 ### Experiment 3 - Real data
 ```
