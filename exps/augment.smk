@@ -73,24 +73,28 @@ include: "./rules/downstream.smk"
 
 rule run:
     input:
+        pjoin(WD, "nm.csv"),
+        pjoin(WD, "support.csv"),
+        # pjoin(WD, "downstream.csv"),
+        #
         # prepare_data.smk
-        expand(pjoin(WD, "n{n}", "pangenome-{graph}.gbz"), n=Ns, graph=graphs),
-        expand(pjoin(WD, sample + "-cov{cov}.fq.gz"), cov=coverages),
-        expand(pjoin(WD, sample + "-cov{cov}.ec.fa"), cov=coverages),
+        # expand(pjoin(WD, "n{n}", "pangenome-{graph}.gbz"), n=Ns, graph=graphs),
+        # expand(pjoin(WD, sample + "-cov{cov}.fq.gz"), cov=coverages),
+        # expand(pjoin(WD, sample + "-cov{cov}.ec.fa"), cov=coverages),
         #
         # minigraph-cactus
-        expand(
-            pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
-            n=Ns,
-            cov=coverages,
-        ),
+        # expand(
+        #     pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus.gfa"),
+        #     n=Ns,
+        #     cov=coverages,
+        # ),
         # 
         # contig alignment to reference
-        pjoin(WD, sample + "-hap1.bam"),
-        pjoin(WD, sample + "-hap2.bam"),
+        # pjoin(WD, sample + "-hap1.bam"),
+        # pjoin(WD, sample + "-hap2.bam"),
         # reads alignment to reference
-        expand(pjoin(WD, sample + "-cov{cov}.bam"), cov=coverages),
-        expand(pjoin(WD, sample + "-cov{cov}.ec.bam"), cov=coverages),
+        # expand(pjoin(WD, sample + "-cov{cov}.bam"), cov=coverages),
+        # expand(pjoin(WD, sample + "-cov{cov}.ec.bam"), cov=coverages),
         # reads alignment to real contigs
         # pjoin(WD, sample + "-reads.tohaps.bam"),
         #
@@ -99,14 +103,14 @@ rule run:
         # pjoin(WD, sample + ".asm.bp.hap2.p_ctg.bam"),
         #
         # PALSS
-        expand(
-            pjoin(WD, "palss", "n{n}", "cov{cov}", "augmented-{graph}.d{d}.w{w}.gfa"),
-            n=Ns,
-            cov=coverages,
-            graph=["oneout"],
-            d=Ds,
-            w=Ws,
-        ),
+        # expand(
+        #     pjoin(WD, "palss", "n{n}", "cov{cov}", "augmented-{graph}.d{d}.w{w}.gfa"),
+        #     n=Ns,
+        #     cov=coverages,
+        #     graph=["oneout"],
+        #     d=Ds,
+        #     w=Ws,
+        # ),
         #
         # SFS aligned to reference genome
         # expand(
@@ -117,21 +121,17 @@ rule run:
         # ),
         #
         # PALSS consensus to real contigs
-        expand(
-            pjoin(
-                WD,
-                "palss",
-                "n{n}",
-                "cov{cov}",
-                "anchoredconsensus-{graph}.d{d}.w{w}.to-contigs.bam",
-            ),
-            n=Ns,
-            cov=coverages,
-            graph=["oneout"],
-            d=Ds,
-            w=Ws,
-        ),
-        #
-        pjoin(WD, "nm.csv"),
-        pjoin(WD, "support.csv"),
-        # pjoin(WD, "downstream.csv"),
+        # expand(
+        #     pjoin(
+        #         WD,
+        #         "palss",
+        #         "n{n}",
+        #         "cov{cov}",
+        #         "anchoredconsensus-{graph}.d{d}.w{w}.to-contigs.bam",
+        #     ),
+        #     n=Ns,
+        #     cov=coverages,
+        #     graph=["oneout"],
+        #     d=Ds,
+        #     w=Ws,
+        # ),
