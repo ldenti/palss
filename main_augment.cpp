@@ -570,8 +570,10 @@ int main_augment(int argc, char *argv[]) {
 
 #pragma omp critical(printf_lock)
     {
-      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Known vertices/edges: %ld/%ld\n", __func__, omp_get_thread_num(), c,
-             known_vertices.size(), known_edges.size());
+      fprintf(stderr,
+              "[M::%s::%i] Subgraph %ld - Known vertices/edges: %ld/%ld\n",
+              __func__, omp_get_thread_num(), c, known_vertices.size(),
+              known_edges.size());
       fflush(stderr);
     }
 
@@ -678,7 +680,8 @@ int main_augment(int argc, char *argv[]) {
 
 #pragma omp critical(printf_lock)
     {
-      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Real novel vertices: %ld\n", __func__, omp_get_thread_num(), c, real_novel.size());
+      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Real novel paths: %ld\n",
+              __func__, omp_get_thread_num(), c, real_novel.size());
       fflush(stderr);
     }
 
@@ -721,6 +724,9 @@ int main_augment(int argc, char *argv[]) {
     std::set<handlegraph::handle_t> vertices_to_remove;
     std::set<handlegraph::edge_t> edges_to_remove;
 
+    size_t n_novel_vertices = 0;
+    size_t n_novel_edges = 0;
+
     pg->for_each_path_handle([&](const bdsg::path_handle_t p) {
       std::string pname = pg->get_path_name(p);
       std::string_view sv = pname;
@@ -737,8 +743,11 @@ int main_augment(int argc, char *argv[]) {
         handlegraph::handle_t prev_handle;
         handlegraph::handle_t handle = path[0];
 
-	// std::cerr << pg->get_id(handle) << " " << (known_vertices.find(handle) == known_vertices.end()) << " " << ((novel_vertices.find(handle) == novel_vertices.end()) ? -1 : novel_vertices.at(handle).second.size()) << std::endl;
-
+        // std::cerr << pg->get_id(handle) << " " <<
+        // (known_vertices.find(handle) == known_vertices.end()) << " " <<
+        // ((novel_vertices.find(handle) == novel_vertices.end()) ? -1 :
+        // novel_vertices.at(handle).second.size()) << std::endl;
+        n_novel_vertices += known_vertices.find(handle) == known_vertices.end();
         if (flag_vertex(handle, known_vertices, novel_vertices, min_supp) &&
             flag_vertex(pg->flip(handle), known_vertices, novel_vertices,
                         min_supp)) {
@@ -750,7 +759,12 @@ int main_augment(int argc, char *argv[]) {
           prev_handle = path[h - 1];
           handle = path[h];
 
-	  // std::cerr << pg->get_id(handle) << " " << (known_vertices.find(handle) == known_vertices.end()) << " " << ((novel_vertices.find(handle) == novel_vertices.end()) ? -1 : novel_vertices.at(handle).second.size()) << std::endl;
+          // std::cerr << pg->get_id(handle) << " " <<
+          // (known_vertices.find(handle) == known_vertices.end()) << " " <<
+          // ((novel_vertices.find(handle) == novel_vertices.end()) ? -1 :
+          // novel_vertices.at(handle).second.size()) << std::endl;
+          n_novel_vertices +=
+              known_vertices.find(handle) == known_vertices.end();
 
           // vertex
           if (flag_vertex(handle, known_vertices, novel_vertices, min_supp) &&
@@ -762,6 +776,7 @@ int main_augment(int argc, char *argv[]) {
 
           // edge
           handlegraph::edge_t edge = std::make_pair(prev_handle, handle);
+          n_novel_edges += known_edges.find(edge) == known_edges.end();
           handlegraph::edge_t edge2 =
               std::make_pair(pg->flip(handle), pg->flip(prev_handle));
           if (flag_edge(edge, known_edges, novel_edges, min_supp) &&
@@ -775,7 +790,11 @@ int main_augment(int argc, char *argv[]) {
 
 #pragma omp critical(printf_lock)
     {
-      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Vertices/Edges to remove: %ld/%ld\n", __func__, omp_get_thread_num(), c, vertices_to_remove.size(), edges_to_remove.size());
+      fprintf(stderr,
+              "[M::%s::%i] Subgraph %ld - Vertices/Edges to remove: %ld over "
+              "%ld and %ld over %ld\n",
+              __func__, omp_get_thread_num(), c, vertices_to_remove.size(),
+              n_novel_vertices, edges_to_remove.size(), n_novel_edges);
       fflush(stderr);
     }
 
@@ -789,8 +808,10 @@ int main_augment(int argc, char *argv[]) {
     pg->for_each_handle(
         [&](const handlegraph::handle_t &handle) {
           // XXX: assuming here handle is always on + strand
-	  // if (novel_vertices.find(handle) != novel_vertices.end())
-	  //   std::cerr << "R: " << pg->get_id(handle) << " " << (vertices_to_remove.find(handle) == vertices_to_remove.end()) << std::endl;
+          // if (novel_vertices.find(handle) != novel_vertices.end())
+          //   std::cerr << "R: " << pg->get_id(handle) << " " <<
+          //   (vertices_to_remove.find(handle) == vertices_to_remove.end()) <<
+          //   std::endl;
           if (vertices_to_remove.find(handle) == vertices_to_remove.end()) {
             outfile << "S"
                     << "\t" << pg->get_id(handle) << "\t"
@@ -804,11 +825,6 @@ int main_augment(int argc, char *argv[]) {
           }
         },
         false);
-#pragma omp critical(printf_lock)
-    {
-      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Retained consensuses: %ld over %ld\n", __func__, omp_get_thread_num(), c, retained_consensuses.size(), total_consensuses);
-      fflush(stderr);
-    }
 
     // === L LINES
     // =====================================================
@@ -832,6 +848,15 @@ int main_augment(int argc, char *argv[]) {
           }
         },
         false);
+
+#pragma omp critical(printf_lock)
+    {
+      fprintf(stderr,
+              "[M::%s::%i] Subgraph %ld - Retained consensuses: %ld over %ld\n",
+              __func__, omp_get_thread_num(), c, retained_consensuses.size(),
+              total_consensuses);
+      fflush(stderr);
+    }
 
     // === W LINES
     // =====================================================
@@ -915,8 +940,8 @@ int main_augment(int argc, char *argv[]) {
     delete pg;
 #pragma omp critical(printf_lock)
     {
-      fprintf(stderr, "[M::%s::%d] Refined chunk %ld in %.3f sec\n", __func__, omp_get_thread_num(), c,
-              realtime() - rt0);
+      fprintf(stderr, "[M::%s::%d] Refined chunk %ld in %.3f sec\n", __func__,
+              omp_get_thread_num(), c, realtime() - rt0);
       fflush(stderr);
     }
   }
