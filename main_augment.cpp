@@ -212,17 +212,15 @@ dp(bdsg::PackedGraph *pg, handlegraph::handle_t source,
   return paths;
 }
 
-bool flag_vertex(
-    const handlegraph::handle_t &handle,
-    const std::set<handlegraph::handle_t> &known_vertices,
-    const std::map<handlegraph::handle_t,
-                   std::pair<std::set<std::string>, std::set<std::string>>>
-        &novel_vertices,
-    size_t min_supp) {
+bool flag_vertex(const handlegraph::handle_t &handle,
+                 const std::set<handlegraph::handle_t> &known_vertices,
+                 const std::map<handlegraph::handle_t, std::set<std::string>>
+                     &novel_vertices,
+                 size_t min_supp) {
   if (known_vertices.find(handle) == known_vertices.end()) {
     // if vertex is novel
     if (novel_vertices.find(handle) == novel_vertices.end() ||
-        novel_vertices.at(handle).second.size() < min_supp) {
+        novel_vertices.at(handle).size() < min_supp) {
       // if vertex is not real novel OR its support is low
       return true;
     }
@@ -234,13 +232,11 @@ bool flag_vertex(
 bool flag_edge(
     const handlegraph::edge_t &edge,
     const std::set<handlegraph::edge_t> &known_edges,
-    const std::map<handlegraph::edge_t,
-                   std::pair<std::set<std::string>, std::set<std::string>>>
-        &novel_edges,
+    const std::map<handlegraph::edge_t, std::set<std::string>> &novel_edges,
     size_t min_supp) {
   if (known_edges.find(edge) == known_edges.end()) {
     if (novel_edges.find(edge) == novel_edges.end() ||
-        novel_edges.at(edge).second.size() < min_supp) {
+        novel_edges.at(edge).size() < min_supp) {
       return true;
     }
   }
@@ -255,11 +251,11 @@ int main_augment(int argc, char *argv[]) {
   size_t min_supp = 2;
   std::string wd = "/tmp";
   size_t maxp = 1024;
-  std::string retained_gaf_fn = "";
+  // std::string retained_gaf_fn = "";
   int nthreads = 4;
 
   int _c;
-  while ((_c = getopt(argc, argv, "cfdn:w:g:zs:@:h")) != -1) {
+  while ((_c = getopt(argc, argv, "cfdn:w:zs:@:h")) != -1) {
     switch (_c) {
     case 'c':
       chunk = true;
@@ -279,9 +275,9 @@ int main_augment(int argc, char *argv[]) {
     case '@':
       nthreads = std::stoi(optarg);
       break;
-    case 'g':
-      retained_gaf_fn = optarg;
-      break;
+    // case 'g':
+    //   retained_gaf_fn = optarg;
+    //   break;
     case 's':
       min_supp = std::stoi(optarg);
       break;
@@ -308,24 +304,26 @@ int main_augment(int argc, char *argv[]) {
 
   std::vector<std::pair<std::string, std::string>> file_pairs;
 
-  size_t n_chunks;
-  // Use existing chunks if not -f
-  std::string done_fp = wd + "/DONE";
-  std::ifstream f(done_fp);
-  if (f.good() && !force) {
-    f >> n_chunks;
-    for (size_t c = 0; c < n_chunks; ++c) {
-      std::string augmented_pg_fn =
-          wd + "/" + std::to_string(c) + ".augmented.pg";
-      std::string gaf_fn = wd + "/" + std::to_string(c) + ".gaf";
-      file_pairs.push_back({augmented_pg_fn, gaf_fn});
-    }
-    f.close();
-    fprintf(stderr, "[M::%s] Loaded %ld chunks in %.3f sec\n", __func__,
-            n_chunks, realtime() - rt);
-  } else {
-    if (chunk) {
-      // === CHUNK AND CONVERT =========================================
+  if (chunk) {
+    // === CHUNK AND CONVERT =========================================
+    size_t n_chunks;
+
+    // Use existing chunks if not -f
+    std::string done_fp = wd + "/DONE";
+    std::ifstream f(done_fp);
+    if (f.good() && !force) {
+      f >> n_chunks;
+      for (size_t c = 0; c < n_chunks; ++c) {
+        std::string augmented_pg_fn =
+            wd + "/" + std::to_string(c) + ".augmented.pg";
+        std::string gaf_fn = wd + "/" + std::to_string(c) + ".gaf";
+        file_pairs.push_back({augmented_pg_fn, gaf_fn});
+      }
+      f.close();
+      fprintf(stderr, "[M::%s] Loaded %ld chunks in %.3f sec\n", __func__,
+              n_chunks, realtime() - rt);
+    } else {
+      // --- Chunk ---------------------------------------------------
       std::vector<std::set<std::string>> segments;
       {
         gbwtgraph::GBZ gbz;
@@ -346,56 +344,60 @@ int main_augment(int argc, char *argv[]) {
         // clang-format off
 	// XXX: hardcoded to 2 threads to keep RAM usage <90GB
         /**
-	 Chr GB  Min
-	 ===========
-	 1   42  40
-	 2   41  44
-	 3   31  34
-	 4   34  34
-	 5   32  32
-	 6   30  31
-	 7   32  30
-	 8   29  27
-	 9   23  23
-	 10  24  24
-	 11  25  24
-	 12  24  23
-	 13  19  19
-	 14  18  19
-	 15  17  17
-	 16  16  17
-	 17  15  15
-	 18  12  13
-	 19  11  12
-	 20  12  12
-	 21  7.5 8
-	 22  9.4 10
-	 X   15  15
-	 Y   0   0
-	 M   0   0
-         **/
+	   Chr GB  Min
+	   ===========
+	   1   42  40
+	   2   41  44
+	   3   31  34
+	   4   34  34
+	   5   32  32
+	   6   30  31
+	   7   32  30
+	   8   29  27
+	   9   23  23
+	   10  24  24
+	   11  25  24
+	   12  24  23
+	   13  19  19
+	   14  18  19
+	   15  17  17
+	   16  16  17
+	   17  15  15
+	   18  12  13
+	   19  11  12
+	   20  12  12
+	   21  7.5 8
+	   22  9.4 10
+	   X   15  15
+	   Y   0   0
+	   M   0   0
+	**/
         // clang-format on
 
         // --- Convert .gbz to .pg -----------------------------------
 #pragma omp parallel for num_threads(2) schedule(static, 1)
-        for (size_t i = 0; i < n_chunks; ++i) {
+        for (size_t ch = 0; ch < n_chunks; ++ch) {
           double rt0 = realtime();
 
-          const gbwtgraph::GBZ &sub_gbz = chunks.first[i];
-          std::string fn = std::to_string(i); // + "_" + chunks.second[i];
+          const gbwtgraph::GBZ &sub_gbz = chunks.first[ch];
+          std::string fn = std::to_string(ch); // + "_" + chunks.second[i];
           std::string sub_gbz_fn = wd + "/" + fn + ".gbz";
           std::string sub_pg_fn = wd + "/" + fn + ".pg";
 
-          sdsl::simple_sds::serialize_to(chunks.first[i], sub_gbz_fn);
+          sdsl::simple_sds::serialize_to(sub_gbz, sub_gbz_fn);
           std::ostringstream cmd;
           cmd << "vg convert --packed-out " << sub_gbz_fn << " > " << sub_pg_fn;
-
+#pragma omp critical(printf_lock)
+          {
+            fprintf(stderr, "%s\n", cmd.str().c_str());
+            fflush(stderr);
+          }
           // XXX: do this better
           (void)std::system(cmd.str().c_str());
 
           sub_gbz.graph.for_each_handle(
               [&](const handlegraph::handle_t &handle) {
-                segments[i].insert(sub_gbz.graph.get_segment_name(handle));
+                segments[ch].insert(sub_gbz.graph.get_segment_name(handle));
               });
 
           if (delete_temp)
@@ -405,8 +407,8 @@ int main_augment(int argc, char *argv[]) {
           {
             fprintf(stderr,
                     "[M::%s::%d] Processed chunk %ld (%s) in %.3f sec\n",
-                    __func__, omp_get_thread_num(), i, chunks.second[i].c_str(),
-                    realtime() - rt0);
+                    __func__, omp_get_thread_num(), ch,
+                    chunks.second[ch].c_str(), realtime() - rt0);
             fflush(stderr);
           }
         }
@@ -414,9 +416,9 @@ int main_augment(int argc, char *argv[]) {
 
       // --- Split GAF -----------------------------------------------
       {
-        std::vector<std::ofstream> sub_gafs(n_chunks + 1);
-        for (size_t c = 0; c < sub_gafs.size(); ++c) {
-          sub_gafs[c].open(wd + "/" + std::to_string(c) + ".gaf");
+        std::vector<std::ofstream> sub_gafs(n_chunks);
+        for (size_t ch = 0; ch < sub_gafs.size(); ++ch) {
+          sub_gafs[ch].open(wd + "/" + std::to_string(ch) + ".gaf");
         }
         std::ifstream file(gaf_fn);
         std::string line;
@@ -442,12 +444,12 @@ int main_augment(int argc, char *argv[]) {
               // vertices.push_back(token.substr(last_p, token.size() -
               // last_p));
 
-              size_t c;
-              for (c = 0; c < segments.size(); ++c) {
-                if (segments[c].find(vertex) != segments[c].end())
+              size_t ch;
+              for (ch = 0; ch < segments.size(); ++ch) {
+                if (segments[ch].find(vertex) != segments[ch].end())
                   break;
               }
-              sub_gafs[c] << line << std::endl;
+              sub_gafs[ch] << line << std::endl;
             }
             ++t;
           }
@@ -464,15 +466,21 @@ int main_augment(int argc, char *argv[]) {
       rt = realtime();
       {
 #pragma omp parallel for num_threads(2) schedule(static, 1)
-        for (size_t c = 0; c < n_chunks; ++c) {
-          std::string original_pg_fn = wd + "/" + std::to_string(c) + ".pg";
+        for (size_t ch = 0; ch < n_chunks; ++ch) {
+          double rt0 = realtime();
+          std::string original_pg_fn = wd + "/" + std::to_string(ch) + ".pg";
           std::string augmented_pg_fn =
-              wd + "/" + std::to_string(c) + ".augmented.pg";
-          std::string gaf_fn = wd + "/" + std::to_string(c) + ".gaf";
+              wd + "/" + std::to_string(ch) + ".augmented.pg";
+          std::string gaf_fn = wd + "/" + std::to_string(ch) + ".gaf";
+
           std::ostringstream cmd;
           cmd << "vg augment --include-paths --min-coverage 1 --gaf "
               << original_pg_fn << " " << gaf_fn << " > " << augmented_pg_fn;
-
+#pragma omp critical(printf_lock)
+          {
+            fprintf(stderr, "%s\n", cmd.str().c_str());
+            fflush(stderr);
+          }
           // XXX: do this better
           (void)std::system(cmd.str().c_str());
           file_pairs.push_back({augmented_pg_fn, gaf_fn});
@@ -480,7 +488,7 @@ int main_augment(int argc, char *argv[]) {
 #pragma omp critical(printf_lock)
           {
             fprintf(stderr, "[M::%s::%d] Augmented chunk %ld in %.3f sec\n",
-                    __func__, omp_get_thread_num(), c, realtime() - rt);
+                    __func__, omp_get_thread_num(), ch, realtime() - rt0);
             fflush(stderr);
           }
           if (delete_temp)
@@ -496,57 +504,58 @@ int main_augment(int argc, char *argv[]) {
       out << n_chunks << std::endl;
       out.close();
     }
+  } else {
+    std::string pg_fn = wd + "/0.pg";
+    std::string augmented_pg_fn = wd + "/0.augmented.pg";
 
-    else {
-      std::string pg_fn = wd + "/0.pg";
-      std::string augmented_pg_fn = wd + "/0.augmented.pg";
+    std::ostringstream cmd1;
+    cmd1 << "vg convert --packed-out " << gbz_fn << " > " << pg_fn;
 
-      std::ostringstream cmd1;
-      cmd1 << "vg convert --packed-out " << gbz_fn << " > " << pg_fn;
+    // XXX: do this better
+    (void)std::system(cmd1.str().c_str());
 
-      // XXX: do this better
-      (void)std::system(cmd1.str().c_str());
+    std::ostringstream cmd2;
+    cmd2 << "vg augment --include-paths --min-coverage 1 --gaf " << pg_fn << " "
+         << gaf_fn << " > " << augmented_pg_fn;
+    // XXX: do this better
+    (void)std::system(cmd2.str().c_str());
 
-      std::ostringstream cmd2;
-      cmd2 << "vg augment --include-paths --min-coverage 1 --gaf " << pg_fn
-           << " " << gaf_fn << " > " << augmented_pg_fn;
-      // XXX: do this better
-      (void)std::system(cmd2.str().c_str());
+    if (delete_temp)
+      std::filesystem::remove(pg_fn);
 
-      if (delete_temp)
-        std::filesystem::remove(pg_fn);
+    std::ofstream out(wd + "/DONE", std::ios::out | std::ios::trunc);
+    out << 1 << std::endl;
+    out.close();
 
-      std::ofstream out(wd + "/DONE", std::ios::out | std::ios::trunc);
-      out << 1 << std::endl;
-      out.close();
-
-      file_pairs.push_back({augmented_pg_fn, gaf_fn});
-      fprintf(stderr, "[M::%s] Converted and augmented graph in %.3f sec\n",
-              __func__, realtime() - rt);
-    }
+    file_pairs.push_back({augmented_pg_fn, gaf_fn});
+    fprintf(stderr, "[M::%s] Converted and augmented graph in %.3f sec\n",
+            __func__, realtime() - rt);
   }
+
   // =================================================================
 
   rt = realtime();
 #pragma omp parallel for num_threads(nthreads) schedule(static, 1)
-  for (size_t c = 0; c < file_pairs.size(); ++c) {
+  for (size_t ch = 0; ch < file_pairs.size(); ++ch) {
     // if (c != 10)
     //   continue;
     double rt0 = realtime();
-    std::string pg_fn = file_pairs[c].first;
-    if (chunk)
-      gaf_fn = file_pairs[c].second;
+    std::string pg_fn = file_pairs[ch].first;
+    std::string gaf_fn = file_pairs[ch].second;
+
+#pragma omp critical(printf_lock)
+    {
+      fprintf(stderr, "[M::%s::%d] Analyzing chunk %ld: %s and %s\n", __func__,
+              omp_get_thread_num(), ch, pg_fn.c_str(), gaf_fn.c_str());
+      fflush(stderr);
+    }
 
     bdsg::PackedGraph *pg = new bdsg::PackedGraph();
     pg->deserialize(pg_fn);
 
-    // size_t total_paths = pg->get_path_count();
-
+    // load known vertices and edges from original graph paths
     std::set<handlegraph::handle_t> known_vertices;
     std::set<handlegraph::edge_t> known_edges;
-    int pi = 0;
-    int np = 0;
-
     pg->for_each_path_handle([&](const bdsg::path_handle_t p) {
       std::string pname = pg->get_path_name(p);
       std::string_view sv = pname;
@@ -554,7 +563,6 @@ int main_augment(int argc, char *argv[]) {
       if (sv.substr(0, 5).compare("palss") != 0) {
         handlegraph::handle_t last_h;
         bool first = true;
-
         for (const handlegraph::handle_t &h : pg->scan_path(p)) {
           known_vertices.insert(h);
           if (!first)
@@ -562,20 +570,8 @@ int main_augment(int argc, char *argv[]) {
           first = false;
           last_h = h;
         }
-      } else {
-        ++np;
       }
-      ++pi;
     });
-
-#pragma omp critical(printf_lock)
-    {
-      fprintf(stderr,
-              "[M::%s::%i] Subgraph %ld - Known vertices/edges: %ld/%ld\n",
-              __func__, omp_get_thread_num(), c, known_vertices.size(),
-              known_edges.size());
-      fflush(stderr);
-    }
 
     std::map<std::string, std::set<std::string>> cluster_support;
     {
@@ -602,15 +598,12 @@ int main_augment(int argc, char *argv[]) {
       }
     }
 
-    size_t total_consensuses = 0;
+    // check novel paths using dynamic programming
     std::map<std::string, std::vector<handlegraph::handle_t>> real_novel;
     pg->for_each_path_handle([&](const bdsg::path_handle_t path) {
       std::string pname = pg->get_path_name(path);
-      // if (pname.compare("palss-37356.0") != 0)
-      //   return;
       std::string_view sv = pname;
       if (sv.substr(0, 5).compare("palss") == 0) {
-        ++total_consensuses;
         std::string seq;
         int plen = 0;
         for (const handlegraph::handle_t &h : pg->scan_path(path)) {
@@ -627,24 +620,20 @@ int main_augment(int argc, char *argv[]) {
 
         if (source == sink) {
           // XXX: why do we have single-vertex paths?
+          std::cerr << "Consensus path of size 1: " << pname << std::endl;
           assert(plen == 1);
           return;
         }
 
         uint32_t best_novel_path_count = -1;
-
         std::vector<handlegraph::handle_t> best_novel_path;
 
         std::vector<std::vector<handlegraph::handle_t>> reconstructed_paths =
             dp(pg, source, sink, seq, maxp);
-
         assert(!reconstructed_paths.empty());
 
         for (const std::vector<handlegraph::handle_t> &rpath :
              reconstructed_paths) {
-
-          // TODO: check edges?
-
           std::string rseq;
           size_t n_novel_vertices = 0;
           size_t n_novel_edges = 0;
@@ -663,6 +652,7 @@ int main_augment(int argc, char *argv[]) {
           assert(seq.compare(rseq) == 0);
 
           if (n_novel_vertices == 0 && n_novel_edges == 0) {
+            // we found a path with no novel vertices or edges
             best_novel_path.clear();
             break;
           }
@@ -678,43 +668,26 @@ int main_augment(int argc, char *argv[]) {
       }
     });
 
-#pragma omp critical(printf_lock)
-    {
-      fprintf(stderr, "[M::%s::%i] Subgraph %ld - Real novel paths: %ld\n",
-              __func__, omp_get_thread_num(), c, real_novel.size());
-      fflush(stderr);
-    }
-
     // 2-pass cleaning. If a vertex is supported by at least one path, we want
     // to keep it even if it's not supported by others
-    std::map<handlegraph::handle_t,
-             std::pair<std::set<std::string>, std::set<std::string>>>
-        novel_vertices;
-    std::map<handlegraph::edge_t,
-             std::pair<std::set<std::string>, std::set<std::string>>>
-        novel_edges;
+    std::map<handlegraph::handle_t, std::set<std::string>> novel_vertices;
+    std::map<handlegraph::edge_t, std::set<std::string>> novel_edges;
 
     // get novel vertices and edges from real novel paths
     for (const auto &pp : real_novel) {
       std::string cname = pp.first;
-      if (known_vertices.find(pp.second[0]) == known_vertices.end()) {
-        novel_vertices[pp.second[0]].first.insert(cname);
-        novel_vertices[pp.second[0]].second.insert(
-            cluster_support[cname].begin(), cluster_support[cname].end());
-      }
-      for (size_t h = 1; h < pp.second.size(); ++h) {
-        if (known_vertices.find(pp.second[h]) == known_vertices.end()) {
-          novel_vertices[pp.second[h]].first.insert(cname);
-          novel_vertices[pp.second[h]].second.insert(
-              cluster_support[cname].begin(), cluster_support[cname].end());
-        }
-        if (known_edges.find(std::make_pair(pp.second[h - 1], pp.second[h])) ==
+      std::vector<handlegraph::handle_t> path = pp.second;
+      if (known_vertices.find(path[0]) == known_vertices.end())
+        novel_vertices[path[0]].insert(cluster_support[cname].begin(),
+                                       cluster_support[cname].end());
+      for (size_t h = 1; h < path.size(); ++h) {
+        if (known_vertices.find(path[h]) == known_vertices.end())
+          novel_vertices[path[h]].insert(cluster_support[cname].begin(),
+                                         cluster_support[cname].end());
+        if (known_edges.find(std::make_pair(path[h - 1], path[h])) ==
             known_edges.end()) {
-          novel_edges[std::make_pair(pp.second[h - 1], pp.second[h])]
-              .first.insert(cname);
-          novel_edges[std::make_pair(pp.second[h - 1], pp.second[h])]
-              .second.insert(cluster_support[cname].begin(),
-                             cluster_support[cname].end());
+          novel_edges[std::make_pair(path[h - 1], path[h])].insert(
+              cluster_support[cname].begin(), cluster_support[cname].end());
         }
       }
     }
@@ -724,30 +697,17 @@ int main_augment(int argc, char *argv[]) {
     std::set<handlegraph::handle_t> vertices_to_remove;
     std::set<handlegraph::edge_t> edges_to_remove;
 
-    size_t n_novel_vertices = 0;
-    size_t n_novel_edges = 0;
-
     pg->for_each_path_handle([&](const bdsg::path_handle_t p) {
       std::string pname = pg->get_path_name(p);
       std::string_view sv = pname;
       if (sv.substr(0, 5).compare("palss") == 0) {
         std::vector<handlegraph::handle_t> path;
-        // if (real_novel.find(pname) == real_novel.end()) {
         for (const handlegraph::handle_t &h : pg->scan_path(p)) {
           path.push_back(h);
         }
-        // } else {
-        //   path = real_novel[pname];
-        // }
 
         handlegraph::handle_t prev_handle;
         handlegraph::handle_t handle = path[0];
-
-        // std::cerr << pg->get_id(handle) << " " <<
-        // (known_vertices.find(handle) == known_vertices.end()) << " " <<
-        // ((novel_vertices.find(handle) == novel_vertices.end()) ? -1 :
-        // novel_vertices.at(handle).second.size()) << std::endl;
-        n_novel_vertices += known_vertices.find(handle) == known_vertices.end();
         if (flag_vertex(handle, known_vertices, novel_vertices, min_supp) &&
             flag_vertex(pg->flip(handle), known_vertices, novel_vertices,
                         min_supp)) {
@@ -759,13 +719,6 @@ int main_augment(int argc, char *argv[]) {
           prev_handle = path[h - 1];
           handle = path[h];
 
-          // std::cerr << pg->get_id(handle) << " " <<
-          // (known_vertices.find(handle) == known_vertices.end()) << " " <<
-          // ((novel_vertices.find(handle) == novel_vertices.end()) ? -1 :
-          // novel_vertices.at(handle).second.size()) << std::endl;
-          n_novel_vertices +=
-              known_vertices.find(handle) == known_vertices.end();
-
           // vertex
           if (flag_vertex(handle, known_vertices, novel_vertices, min_supp) &&
               flag_vertex(pg->flip(handle), known_vertices, novel_vertices,
@@ -776,7 +729,6 @@ int main_augment(int argc, char *argv[]) {
 
           // edge
           handlegraph::edge_t edge = std::make_pair(prev_handle, handle);
-          n_novel_edges += known_edges.find(edge) == known_edges.end();
           handlegraph::edge_t edge2 =
               std::make_pair(pg->flip(handle), pg->flip(prev_handle));
           if (flag_edge(edge, known_edges, novel_edges, min_supp) &&
@@ -788,40 +740,31 @@ int main_augment(int argc, char *argv[]) {
       }
     });
 
-#pragma omp critical(printf_lock)
-    {
-      fprintf(stderr,
-              "[M::%s::%i] Subgraph %ld - Vertices/Edges to remove: %ld over "
-              "%ld and %ld over %ld\n",
-              __func__, omp_get_thread_num(), c, vertices_to_remove.size(),
-              n_novel_vertices, edges_to_remove.size(), n_novel_edges);
-      fflush(stderr);
-    }
+    // std::ofstream outfile(wd + "/" + std::to_string(ch) + ".retained.gaf");
+    // std::ifstream file(gaf_fn);
+    // std::string line;
+    // while (std::getline(file, line)) {
+    //   std::istringstream iss(line);
+    //   std::string cname;
+    //   std::getline(iss, cname, '\t');
+    //   if (real_novel.find(cname) != real_novel.end())
+    //     outfile << line << std::endl;
+    // }
+    // outfile.close();
 
-    std::set<std::string> retained_consensuses; // store the consensuses of
-                                                // novel vertices/edges we print
-
-    std::ofstream outfile(wd + "/" + std::to_string(c) + ".final.gfa");
+    std::ofstream outfile(wd + "/" + std::to_string(ch) + ".final.gfa");
 
     // === S LINES
     // =====================================================
     pg->for_each_handle(
         [&](const handlegraph::handle_t &handle) {
           // XXX: assuming here handle is always on + strand
-          // if (novel_vertices.find(handle) != novel_vertices.end())
-          //   std::cerr << "R: " << pg->get_id(handle) << " " <<
-          //   (vertices_to_remove.find(handle) == vertices_to_remove.end()) <<
-          //   std::endl;
           if (vertices_to_remove.find(handle) == vertices_to_remove.end()) {
-            outfile << "S"
-                    << "\t" << pg->get_id(handle) << "\t"
-                    << pg->get_sequence(handle)
-                    << (novel_vertices.find(handle) != novel_vertices.end()
-                            ? "\tTY:Z:new"
-                            : "")
-                    << std::endl;
-            retained_consensuses.insert(novel_vertices[handle].first.begin(),
-                                        novel_vertices[handle].first.end());
+            outfile
+                << "S" << "\t" << pg->get_id(handle) << "\t"
+                << pg->get_sequence(handle)
+                // << (pg->get_id(handle) > max_known_id ? "\tTY:Z:new" : "")
+                << std::endl;
           }
         },
         false);
@@ -833,30 +776,14 @@ int main_augment(int argc, char *argv[]) {
           if (vertices_to_remove.find(edge.first) == vertices_to_remove.end() &&
               vertices_to_remove.find(edge.second) ==
                   vertices_to_remove.end() &&
-              edges_to_remove.find(edge) == edges_to_remove.end()) {
+              edges_to_remove.find(edge) == edges_to_remove.end())
             outfile << "L\t" << pg->get_id(edge.first) << "\t"
                     << (pg->get_is_reverse(edge.first) ? '-' : '+') << "\t"
                     << pg->get_id(edge.second) << "\t"
                     << (pg->get_is_reverse(edge.second) ? '-' : '+') << "\t"
-                    << "0M"
-                    << (known_edges.find(edge) != known_edges.end()
-                            ? "\tTY:Z:new"
-                            : "")
-                    << std::endl;
-            retained_consensuses.insert(novel_edges[edge].first.begin(),
-                                        novel_edges[edge].first.end());
-          }
+                    << "0M" << std::endl;
         },
         false);
-
-#pragma omp critical(printf_lock)
-    {
-      fprintf(stderr,
-              "[M::%s::%i] Subgraph %ld - Retained consensuses: %ld over %ld\n",
-              __func__, omp_get_thread_num(), c, retained_consensuses.size(),
-              total_consensuses);
-      fflush(stderr);
-    }
 
     // === W LINES
     // =====================================================
@@ -897,8 +824,7 @@ int main_augment(int argc, char *argv[]) {
         // =============================================================
 
         if (w_line) {
-          outfile << "W"
-                  << "\t" << pg->get_sample_name(path) << "\t"
+          outfile << "W" << "\t" << pg->get_sample_name(path) << "\t"
                   << pg->get_haplotype(path) << "\t" << pg->get_locus_name(path)
                   << "\t" << start_offset << "\t" << start_offset + path_length
                   << "\t";
@@ -908,8 +834,7 @@ int main_augment(int argc, char *argv[]) {
           }
           outfile << std::endl;
         } else {
-          outfile << "P"
-                  << "\t" << pname << "\t";
+          outfile << "P" << "\t" << pname << "\t";
 
           std::stringstream sp;
           for (const handlegraph::handle_t &handle : pg->scan_path(path)) {
@@ -918,30 +843,16 @@ int main_augment(int argc, char *argv[]) {
           }
           std::string p = sp.str();
           p.pop_back();
-          outfile << p << "\t"
-                  << "*" << std::endl;
+          outfile << p << "\t" << "*" << std::endl;
         }
       }
     });
     outfile.close();
-
-    outfile.open(wd + "/" + std::to_string(c) + ".retained.gaf");
-    std::ifstream file(gaf_fn);
-    std::string line;
-    while (std::getline(file, line)) {
-      std::istringstream iss(line);
-      std::string cname;
-      std::getline(iss, cname, '\t');
-      if (retained_consensuses.find(cname) != retained_consensuses.end())
-        outfile << line << std::endl;
-    }
-    outfile.close();
-
     delete pg;
 #pragma omp critical(printf_lock)
     {
       fprintf(stderr, "[M::%s::%d] Refined chunk %ld in %.3f sec\n", __func__,
-              omp_get_thread_num(), c, realtime() - rt0);
+              omp_get_thread_num(), ch, realtime() - rt0);
       fflush(stderr);
     }
   }
@@ -950,24 +861,29 @@ int main_augment(int argc, char *argv[]) {
   // === UNCHOP ======================================================
   rt = realtime();
 #pragma omp parallel for num_threads(2) schedule(static, 1)
-  for (size_t c = 0; c < file_pairs.size(); ++c) {
+  for (size_t ch = 0; ch < file_pairs.size(); ++ch) {
     double rt0 = realtime();
 
-    std::string gfa = wd + "/" + std::to_string(c) + ".final.gfa";
-    std::string ugfa = wd + "/" + std::to_string(c) + ".final.unchopped.gfa";
+    std::string gfa = wd + "/" + std::to_string(ch) + ".final.gfa";
+    std::string ugfa = wd + "/" + std::to_string(ch) + ".final.unchopped.gfa";
 
     std::ostringstream cmd;
     cmd << "vg mod --unchop " << gfa << " > " << ugfa;
+#pragma omp critical(printf_lock)
+    {
+      fprintf(stderr, "%s\n", cmd.str().c_str());
+      fflush(stderr);
+    }
     // XXX: do this better
     (void)std::system(cmd.str().c_str());
-    if (delete_temp) {
-      std::filesystem::remove(wd + "/" + std::to_string(c) + ".final.gfa");
-    }
+    // if (delete_temp) {
+    std::filesystem::remove(wd + "/" + std::to_string(ch) + ".final.gfa");
+    // }
 
 #pragma omp critical(printf_lock)
     {
       fprintf(stderr, "[M::%s::%d] Unchopped chunk %ld in %.3f sec\n", __func__,
-              omp_get_thread_num(), c, realtime() - rt0);
+              omp_get_thread_num(), ch, realtime() - rt0);
       fflush(stderr);
     }
   }
@@ -975,18 +891,18 @@ int main_augment(int argc, char *argv[]) {
 
   // === MERGE =======================================================
   rt = realtime();
-  std::ofstream out_gaf;
-  if (!retained_gaf_fn.empty())
-    out_gaf.open(retained_gaf_fn, std::ios::out);
+  // std::ofstream out_gaf;
+  // if (!retained_gaf_fn.empty())
+  //   out_gaf.open(retained_gaf_fn, std::ios::out);
 
   std::cout << "H\tVN:Z:1.1" << std::endl;
   size_t min_idx = 1;
-  for (size_t c = 0; c < file_pairs.size(); ++c) {
+  for (size_t ch = 0; ch < file_pairs.size(); ++ch) {
     double rt0 = realtime();
     std::ifstream in;
     std::map<std::string, std::string> mapping;
     {
-      in.open(wd + "/" + std::to_string(c) + ".final.unchopped.gfa");
+      in.open(wd + "/" + std::to_string(ch) + ".final.unchopped.gfa");
 
       std::string line;
       while (std::getline(in, line)) {
@@ -1019,8 +935,7 @@ int main_augment(int argc, char *argv[]) {
           mapping[name] = std::to_string(min_idx);
           ++min_idx;
 
-          std::cout << "S"
-                    << "\t" << mapping[name] << "\t" << seq
+          std::cout << "S" << "\t" << mapping[name] << "\t" << seq
                     << (is_new ? "\tTY:Z:new" : "") << std::endl;
         } else if (line[0] == 'L') {
           std::vector<std::string> fields;
@@ -1045,8 +960,7 @@ int main_augment(int argc, char *argv[]) {
 
           fields[1] = mapping[fields[1]];
           fields[3] = mapping[fields[3]];
-          std::cout << "L"
-                    << "\t" << fields[1] << "\t" << fields[2] << "\t"
+          std::cout << "L" << "\t" << fields[1] << "\t" << fields[2] << "\t"
                     << fields[3] << "\t" << fields[4] << "\t" << fields[5]
                     << std::endl;
         } else if (line[0] == 'P') {
@@ -1058,21 +972,22 @@ int main_augment(int argc, char *argv[]) {
       in.close();
     }
 
-    if (!retained_gaf_fn.empty()) {
-      in.open(wd + "/" + std::to_string(c) + ".retained.gaf");
-      out_gaf << in.rdbuf();
-      in.close();
-    }
+    // if (!retained_gaf_fn.empty()) {
+    //   in.open(wd + "/" + std::to_string(c) + ".retained.gaf");
+    //   out_gaf << in.rdbuf();
+    //   in.close();
+    // }
     if (delete_temp) {
-      std::filesystem::remove(wd + "/" + std::to_string(c) +
+      std::filesystem::remove(wd + "/" + std::to_string(ch) +
                               ".final.unchopped.gfa");
-      std::filesystem::remove(wd + "/" + std::to_string(c) + ".retained.gaf");
+      // std::filesystem::remove(wd + "/" + std::to_string(c) +
+      // ".retained.gaf");
     }
 
-    fprintf(stderr, "[M::%s] Dumped chunk %ld in %.3f sec\n", __func__, c,
+    fprintf(stderr, "[M::%s] Dumped chunk %ld in %.3f sec\n", __func__, ch,
             realtime() - rt0);
   }
-  out_gaf.close();
+  // out_gaf.close();
   std::cout.flush();
 
   fprintf(stderr, "[M::%s] Merged in %.3f sec\n", __func__, realtime() - rt);
