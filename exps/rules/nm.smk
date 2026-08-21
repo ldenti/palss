@@ -22,8 +22,13 @@ rule get_nm:
             size=SIZES,
         ),
         expand(
-            pjoin(WD, "n{n}", "tables-nm", "{mgc}.cov{cov}.{size}.csv"),
-            mgc=["mgc", "mgc-real"],
+            pjoin(WD, "n{n}", "tables-nm", "mgc.cov{cov}.{size}.csv"),
+            n=Ns,
+            cov=coverages,
+            size=SIZES,
+        ),
+        expand(
+            pjoin(WD, "n{n}", "tables-nm", "mgc-real.{size}.csv"),
             n=Ns,
             cov=coverages,
             size=SIZES,
@@ -129,33 +134,37 @@ rule get_nm_mgc_unchop:
 
 rule get_nm_mgc_real:
     input:
-        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus-real.cov{cov}.{size}.gaf"),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus-real.{size}.gaf"),
         txt=pjoin(WD, sample + "-haps.{size}-overlapping.complex.list"),
     output:
-        csv=pjoin(WD, "n{n}", "tables-nm", "mgc-real.cov{cov}.{size}.csv"),
+        csv=pjoin(WD, "n{n}", "tables-nm", "mgc-real.{size}.csv"),
+    params:
+        cov=",".join([str(x) for x in coverages]),
     conda:
         "../envs/pysam.yaml"
     threads: workflow.cores / 4
     shell:
         """
-        python3 ./utils/get_nm.py -t mgcactus-real -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
+        python3 ./utils/get_nm.py -t mgcactus-real -l {wildcards.size} -c {params.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
         """
 
 
 rule get_nm_mgc_real_unchop:
     input:
         gaf=pjoin(
-            WD, "n{n}", "truecontigs-aln", "mgcactus-real-unchop.cov{cov}.{size}.gaf"
+            WD, "n{n}", "truecontigs-aln", "mgcactus-real-unchop.{size}.gaf"
         ),
         txt=pjoin(WD, sample + "-haps.{size}-overlapping.complex.list"),
     output:
-        csv=pjoin(WD, "n{n}", "tables-nm", "mgc-real-unchop.cov{cov}.{size}.csv"),
+        csv=pjoin(WD, "n{n}", "tables-nm", "mgc-real-unchop.{size}.csv"),
+    params:
+        cov=",".join([str(x) for x in coverages]),
     conda:
         "../envs/pysam.yaml"
     threads: workflow.cores / 4
     shell:
         """
-        python3 ./utils/get_nm.py -t mgcactus-real-unchop -l {wildcards.size} -c {wildcards.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
+        python3 ./utils/get_nm.py -t mgcactus-real-unchop -l {wildcards.size} -c {params.cov} -n {wildcards.n} {input.gaf} {input.txt} > {output.csv}
         """
 
 

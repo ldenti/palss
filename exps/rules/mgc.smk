@@ -101,20 +101,20 @@ rule minigraphcactus_real:
         fa2=pjoin(WD, sample + "-hap2.fa"),
         venv=cactus_activate,
     output:
-        gfa=pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus-real.gfa"),
+        gfa=pjoin(WD, "mgcactus", "n{n}", "pangenome-mgcactus-real.gfa"),
         ugfa=pjoin(
-            WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus-real.unchop.gfa"
+            WD, "mgcactus", "n{n}", "pangenome-mgcactus-real.unchop.gfa"
         ),
     params:
         prefix=pjoin(
-            "/scratch2", "luca-palss", WD[1:], "n{n}", "cov{cov}", "mgcactusreal"
+            "/scratch2", "luca-palss", WD[1:], "n{n}", "mgcactusreal"
         ),
     threads: workflow.cores
     # conda:
     #     "../envs/mgc.yaml"
     log:
-        time=pjoin(WD, "times", "mgcactusreal", "full-cov{cov}.n{n}.time"),
-        time2=pjoin(WD, "times", "mgcactusreal", "mgc-cov{cov}.n{n}.time"),
+        time=pjoin(WD, "times", "mgcactusreal", "full-real.n{n}.time"),
+        time2=pjoin(WD, "times", "mgcactusreal", "mgc-real.n{n}.time"),
     shell:
         """
         set +u; source {input.venv}; set -u

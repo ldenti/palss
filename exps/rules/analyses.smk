@@ -120,10 +120,10 @@ rule hapsegs_to_mgcunchop:
 
 rule hapsegs_to_mgcreal:
     input:
-        gfa=pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus-real.gfa"),
+        gfa=pjoin(WD, "mgcactus", "n{n}", "pangenome-mgcactus-real.gfa"),
         fa=rules.split_haplotypes.output.fa,
     output:
-        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus-real.cov{cov}.{size}.gaf"),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus-real.{size}.gaf"),
     conda:
         "../envs/graphaligner.yaml"
     threads: workflow.cores / 2
@@ -136,12 +136,12 @@ rule hapsegs_to_mgcreal:
 rule hapsegs_to_mgcrealunchop:
     input:
         gfa=pjoin(
-            WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus-real.unchop.gfa"
+            WD, "mgcactus", "n{n}", "pangenome-mgcactus-real.unchop.gfa"
         ),
         fa=rules.split_haplotypes.output.fa,
     output:
         gaf=pjoin(
-            WD, "n{n}", "truecontigs-aln", "mgcactus-real-unchop.cov{cov}.{size}.gaf"
+            WD, "n{n}", "truecontigs-aln", "mgcactus-real-unchop.{size}.gaf"
         ),
     conda:
         "../envs/graphaligner.yaml"

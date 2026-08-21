@@ -96,7 +96,7 @@ rule palss_augment:
     shell:
         """
         # python3 ../clean_homopolymer.py {input.gaf} > {input.gaf}.clean.gaf 2> {input.gaf}.cleaning.log
-        /usr/bin/time -vo {log.time} ../palss augment -@4 -s {wildcards.w} -w {params.wd} -g {output.gaf} {input.pg} {input.gaf} > {output.gfa} 2> {log.log}
+        /usr/bin/time -vo {log.time} ../palss augment -f -@4 -s {wildcards.w} -w {params.wd} -g {output.gaf} {input.pg} {input.gaf} > {output.gfa} 2> {log.log}
         """
 
 

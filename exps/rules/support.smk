@@ -8,8 +8,13 @@ rule get_support:
             size=SIZES,
         ),
         expand(
-            pjoin(WD, "n{n}", "tables-supp", "{mgc}.cov{cov}.{size}.csv"),
-            mgc=["mgc", "mgc-real"],
+            pjoin(WD, "n{n}", "tables-supp", "mgc.cov{cov}.{size}.csv"),
+            n=Ns,
+            cov=coverages,
+            size=SIZES,
+        ),
+        expand(
+            pjoin(WD, "n{n}", "tables-supp", "mgc-real.{size}.csv"),
             n=Ns,
             cov=coverages,
             size=SIZES,
@@ -97,17 +102,19 @@ rule get_support_mgcunchop:
 
 rule get_support_mgcreal:
     input:
-        gfa=pjoin(WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus-real.gfa"),
-        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus-real.cov{cov}.{size}.gaf"),
+        gfa=pjoin(WD, "mgcactus", "n{n}", "pangenome-mgcactus-real.gfa"),
+        gaf=pjoin(WD, "n{n}", "truecontigs-aln", "mgcactus-real.{size}.gaf"),
         bed=BED,
     output:
-        csv=pjoin(WD, "n{n}", "tables-supp", "mgc-real.cov{cov}.{size}.csv"),
+        csv=pjoin(WD, "n{n}", "tables-supp", "mgc-real.{size}.csv"),
+    params:
+        cov=",".join([str(x) for x in coverages]),
     conda:
         "../envs/intervaltree.yaml"
     threads: workflow.cores / 4
     shell:
         """
-        python3 ./utils/get_support.py -t mgcactus-real -l {wildcards.size} -c {wildcards.cov} -s {sample} -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
+        python3 ./utils/get_support.py -t mgcactus-real -l {wildcards.size} -c {params.cov} -s {sample} -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
         python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {input.bed} > {output.csv}
         """
 
@@ -115,20 +122,22 @@ rule get_support_mgcreal:
 rule get_support_mgcrealunchop:
     input:
         gfa=pjoin(
-            WD, "mgcactus", "n{n}", "cov{cov}", "pangenome-mgcactus-real.unchop.gfa"
+            WD, "mgcactus", "n{n}", "pangenome-mgcactus-real.unchop.gfa"
         ),
         gaf=pjoin(
-            WD, "n{n}", "truecontigs-aln", "mgcactus-real-unchop.cov{cov}.{size}.gaf"
+            WD, "n{n}", "truecontigs-aln", "mgcactus-real-unchop.{size}.gaf"
         ),
         bed=BED,
     output:
-        csv=pjoin(WD, "n{n}", "tables-supp", "mgc-real-unchop.cov{cov}.{size}.csv"),
+        csv=pjoin(WD, "n{n}", "tables-supp", "mgc-real-unchop.{size}.csv"),
+    params:
+        cov=",".join([str(x) for x in coverages]),
     conda:
         "../envs/intervaltree.yaml"
     threads: workflow.cores / 4
     shell:
         """
-        python3 ./utils/get_support.py -t mgcactus-real-unchop -l {wildcards.size} -c {wildcards.cov} -s {sample} -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
+        python3 ./utils/get_support.py -t mgcactus-real-unchop -l {wildcards.size} -c {params.cov} -s {sample} -n {wildcards.n} {input.gfa} {input.gaf} > {output.csv}.unflagged
         python3 ./utils/flag_vertices.py {input.gfa} {output.csv}.unflagged {input.bed} > {output.csv}
         """
 
