@@ -465,6 +465,7 @@ int main_augment(int argc, char *argv[]) {
       // --- augment chunks ------------------------------------------
       rt = realtime();
       {
+        file_pairs.reserve(n_chunks);
 #pragma omp parallel for num_threads(2) schedule(static, 1)
         for (size_t ch = 0; ch < n_chunks; ++ch) {
           double rt0 = realtime();
@@ -483,7 +484,8 @@ int main_augment(int argc, char *argv[]) {
           }
           // XXX: do this better
           (void)std::system(cmd.str().c_str());
-          file_pairs.push_back({augmented_pg_fn, gaf_fn});
+
+          file_pairs[ch] = {augmented_pg_fn, gaf_fn};
 
 #pragma omp critical(printf_lock)
           {
