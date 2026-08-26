@@ -3,11 +3,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import seaborn as sns
+from functools import reduce
 import numpy as np
 
 sns.set_theme()
 # sns.set_style("whitegrid")
-plt.rcParams.update({"font.size": 18})
 
 def get_pr(pdf, rdf, label):
     pdf.loc[pdf["qual"] == -1, "qual"] = 0
@@ -39,20 +39,24 @@ def get_pr(pdf, rdf, label):
     df["type"] = label
     return df
 
-
 def clean_df(df):
-    tools = {
-        "mgcactus" : "MGC",
-        "mgcactus-real" : "MGC (r)"
-        "original-full" : "Truth",
+    tools = [
+        "mgcactus",
+        "mgcactus-real",
+        "original-full",
         # "palss-d0.1-w2",
         # "palss-d0.25-w2",
         # "palss-d0.33-w2",
-        "palss-d0.5-w2" : "palss",
-        # "palss-d0.5",
+        "palss-d0.5-w2",
+        "palss-d0.5",
     ]
     df = df[df["tool"].isin(tools)]
-    df["tool"] = df["tool"].map(tools)
+
+    # df.loc[df["tool"].eq("palss-d0.5"), "tool"] = "palss"
+    df.loc[df["tool"].eq("palss-d0.5-w2"), "tool"] = "palss"
+    df.loc[df["tool"].eq("original-full"), "tool"] = "Truth"
+    df.loc[df["tool"].eq("mgcactus"), "tool"] = "MGC"
+    df.loc[df["tool"].eq("mgcactus-real"), "tool"] = "MGCr"
 
     df = df.rename(columns={
         "tool": "Graph",
@@ -61,37 +65,105 @@ def clean_df(df):
 
     return df
 
+def load_df(pt, rt, sample, c, cov, l):
+    pdf = pd.read_csv(pt)
+    pdf = pdf[pdf["n"].isin([8, 32, 64])]
+    pdf = pdf[pdf["kind"] == "vertex"]
+    pdf = pdf[pdf["clen"] == l]
+    pdf = pdf[pdf["coverage"] == cov]
+    pdf["l"] = pdf["l"].astype(int)
+
+    rdf = pd.read_csv(rt)
+    rdf = rdf[rdf["cov"] >= c]
+    rdf = rdf[rdf["coverage"] == cov]
+    rdf = rdf[rdf["n"].isin([8, 32, 64])]
+
+    df_all = get_pr(pdf, rdf, "All")
+    df_all["Sample"] = sample
+    df_smp = get_pr(pdf[pdf["type"] == "Simple"], rdf[rdf["type"] == "Simple"], "Simple")
+    df_smp["Sample"] = sample
+    df_cpx = get_pr(pdf[pdf["type"] == "Complex"], rdf[rdf["type"] == "Complex"], "Complex")
+    df_cpx["Sample"] = sample
+
+    df = pd.concat([df_all, df_smp, df_cpx])
+    return clean_df(df)
+
+# def load_p(fp, name, cov, l):
+#     pdf = pd.read_csv(fp)
+#     pdf = pdf[pdf["kind"] == "vertex"]
+#     pdf = pdf[pdf["coverage"] == cov]
+#     pdf = pdf[pdf["clen"] == l]
+#     pdf["l"] = pdf["l"].astype(int)
+#     pdf.loc[pdf["qual"] == -1, "qual"] = 0
+#     # pdf = pdf[pdf["n"].isin([8, 32, 64])]
+#     pdf = (
+#         pdf.groupby(["tool", "n", "type", "coverage"])[["supp", "qual", "l"]]
+#         .apply(
+#             lambda x: pd.Series(
+#                 {
+#                     "supported_vertices": (x["supp"] > 0).sum(),
+#                     "total_vertices": x["supp"].count(),
+#                     "P_vertices": (x["supp"] > 0).sum() / x["supp"].count(),
+#                     "supported_bases": (x["qual"] * x["l"]).sum(),
+#                     "total_bases": x["l"].sum(),
+#                     "P_bases": (x["qual"] * x["l"]).sum() / x["l"].sum(),
+#                 }
+#             )
+#         )
+#         .reset_index()
+#     )
+#     pdf["sample"] = name
+#     print(pdf.head())
+#     return pdf
+
+# def load_r(fp, name, cov):
+#     rdf = pd.read_csv(fp)
+#     rdf = rdf[rdf["cov"] >= 0.995]
+#     pdf = rdf[rdf["coverage"] == cov]
+#     # rdf = rdf[rdf["n"].isin([8, 32, 64])]
+#     rdf = (
+#         rdf.groupby(["tool", "n", "coverage", "type"])[["nm"]]
+#         .apply(
+#             lambda x: pd.Series(
+#                 {
+#                     "perfect": (x["nm"] == 0).sum(),
+#                     "alignments": x["nm"].count(),
+#                     "R": (x["nm"] == 0).sum() / x["nm"].count(),
+#                 }
+#             )
+#         )
+#         .reset_index()
+#     )
+#     rdf["sample"] = name
+#     print(rdf.head())
+#     return rdf
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("PT")
-    parser.add_argument("RT")
-    parser.add_argument("-c", default=0.995, type=float)
-    # parser.add_argument("-t", default="", type=str)
+
+    parser.add_argument("PT1")
+    parser.add_argument("RT1")
+    parser.add_argument("PT2")
+    parser.add_argument("RT2")
+
+    parser.add_argument("-x", default="A", type=str)
+    parser.add_argument("-y", default="B", type=str)
+    #
+    parser.add_argument("--cov", default=0.995, type=float)
+    parser.add_argument("--coverage", default=10, type=int)
+    # parser.add_argument("-b", "--bases", action="store_true")
     parser.add_argument("-l", default=50000, type=int)
-    # parser.add_argument("-s", action="store_true")
     #
     parser.add_argument("-o", default="", type=str)
     parser.add_argument("--title", default="", type=str)
 
     args = parser.parse_args()
 
-    pdf = pd.read_csv(args.PT)
-    pdf = pdf[pdf["n"].isin([8, 32, 64])]
-    pdf = pdf[pdf["kind"] == "vertex"]
-    pdf = pdf[pdf["clen"] == args.l]
-    pdf["l"] = pdf["l"].astype(int)
-
-    rdf = pd.read_csv(args.RT)
-    rdf = rdf[rdf["cov"] >= args.c]
-    rdf = rdf[rdf["n"].isin([8, 32, 64])]
-
-    df_all = get_pr(pdf, rdf, "All")
-    df_smp = get_pr(pdf[pdf["type"] == "Simple"], rdf[rdf["type"] == "Simple"], "Simple")
-    df_cpx = get_pr(pdf[pdf["type"] == "Complex"], rdf[rdf["type"] == "Complex"], "Complex")
-
-    df = pd.concat([df_all, df_smp, df_cpx])
-    df = clean_df(df)
+    df1 = load_df(args.PT1, args.RT1, args.x, args.cov, args.coverage, args.l)
+    df2 = load_df(args.PT2, args.RT2, args.y, args.cov, args.coverage, args.l)
+    
+    df = pd.concat([df1, df2])
     print(df)
 
     ### === Plotting ===
@@ -117,10 +189,10 @@ def main():
                 x="P",
                 y="R",
                 hue="Graph",
-                style="Coverage",
+                style="Sample",
                 s=75,
                 ax=ax,
-                legend=True if row == 2 and col == 2 else False,
+                legend=True if row == 0 and col == 0 else False,
             )
 
             # F1 iso-curves
@@ -155,34 +227,8 @@ def main():
     fig.supxlabel("Correctness (% supported bases)")
     fig.supylabel("Completeness (% perfect alignments)")
 
-
     if args.title != "":
         plt.suptitle(args.title)
-
-    # # # XXX: a lot of hardcoded stuff ##################################
-
-    # # axes[0][0].set_ylabel("P (vertices)")
-    # # axes[1][0].set_ylabel("P (bases)")
-    # # axes[2][0].set_ylabel("P (edges)")
-    # # axes[3][0].set_ylabel("R")
-    # # for i in range(3):
-    # #     axes[3][i].set_xlabel(f"Graph (n={Ns[i]})")
-
-    # # labels = [f"{x}x" for x in hue_order]
-    # # palette = sns.color_palette(palette, n_colors=len(labels))
-    # # color_map = dict(zip(labels, palette))
-    # # handles = [Patch(facecolor=color_map[l], edgecolor="none", label=l) for l in labels]
-    # # fig.legend(
-    # #     handles=handles,
-    # #     title="Coverage",
-    # #     loc="lower center",
-    # #     bbox_to_anchor=(0.5375, -0.01),
-    # #     ncol=len(handles),
-    # #     frameon=False,
-    # # )
-    # # fig.tight_layout(rect=[0, 0.05, 1, 1])
-
-    # ##################################################################
 
     plt.tight_layout()
     if args.o == "":

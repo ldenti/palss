@@ -67,6 +67,14 @@ egrep '^chr(1|20)[[:space:]]' complex.bed > chr1-20.bed
 snakemake -c32 -p --use-conda -s augment.smk --configfile config/exp2.yaml --keep-going [-n]
 ```
 
+```
+python3 ./plots/plot_exp2.py ${SMK_WD}/support.csv ${SMK_WD}/nm.csv
+python3 ./plots/plot_exp2.supp.py ${SMK_WD}/support.csv ${SMK_WD}/nm.csv
+python3 ./plots/plot_recall.py --nm 25 --steps 1 ${SMK_WD}/nm.csv
+python3 ./plots/plot_exp2.wsample.py -x HG03742 -y HG01993 ${HG03742_WD}/support.csv ${HG03742_WD}/nm.csv ${HG01993_WD}/support.csv ${HG01993_WD}/nm.csv
+python3 ./plots/build_pop_table.py ${SMK_WD}/n64/samples-full.list ./data/hprc_release2_sample_metadata.csv
+```
+
 ### Experiment 3 - Real data
 ```
 ### PALSS ###
@@ -93,5 +101,6 @@ samtools index reads_to_reference.bam
 GraphAligner --graph palss/pangenome-augmented.gfa --reads NA12878.10x.fq --alignments-out reads_to_augmented.gaf --preset vg --threads 32
 
 ### Summarize NM ###
-python3 utils/get_nm_table.py --gaf original reads_to_original.gaf palss reads_to_augmented.gaf --bam reference reads_to_reference.bam assembly reads_to_assembly.bam > nm-real.csv
+python3 utils/get_nm_table.py --gaf HPRCv2 reads_to_original.gaf palss reads_to_augmented.gaf --bam T2T-CHM13 reads_to_reference.bam Assembly reads_to_assembly.bam > nm.csv
+python3 ./plots/plot_exp3.py nm.csv
 ```

@@ -4,22 +4,24 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from matplotlib.ticker import FuncFormatter
 
-# import venn
-# from matplotlib_venn import venn3
+import venn
+
+# from matplotlib_venn import venn2
+# from matplotlib_venn.layout.venn2 import DefaultLayoutAlgorithm
+
+sns.set_theme()
+# sns.set_style("whitegrid")
 
 
 def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("CSV")
-
     parser.add_argument("-c", type=float, default=0.995)
-    # parser.add_argument("-n", type=int, default=8)
     parser.add_argument("-m", type=int, default=5)
     parser.add_argument("--peak", action="store_true")
-    # parser.add_argument("--better", action="store_true")
-    # parser.add_argument("--noruns", action="store_true")
     parser.add_argument("-o", type=str, default="")
 
     args = parser.parse_args()
@@ -51,7 +53,7 @@ def main():
     wide.columns = [f"{metric}_{tool}" for metric, tool in wide.columns]
     wide = wide.reset_index()
 
-    wide = wide[wide["NM_assembly"] < wide["NM_original"]]
+    wide = wide[wide["NM_Assembly"] < wide["NM_HPRCv2"]]
 
     wide_long = wide.melt(id_vars="Read", var_name="var", value_name="value")
 
@@ -76,12 +78,17 @@ def main():
     # if args.noruns:
     #     df = df[df["run"] == False]
 
+    # for m in range(args.m):
     for g in graphs:
         zeros = len(subdf[(subdf["Reference"] == g) & (subdf["NM"] == 0)])
         size = len(subdf[subdf["Reference"] == g])
-        print(g, zeros, size, zeros / size)
+        print(0, g, zeros, size, zeros / size)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+    # refs = ["palss-00", "original", "assembly", "reference"]
+    # df = df[df["Reference"].isin(refs)]
+    # subdf = subdf[subdf["Reference"].isin(refs)]
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(10, 4))
 
     sns.histplot(
         data=df,
@@ -94,6 +101,15 @@ def main():
         cumulative=True,
         ax=ax1,
     )
+
+    ax1.set_xlabel("NM ≤ x")
+    ax1.set_ylabel("Number of alignments")
+    ax1.yaxis.set_major_formatter(
+        FuncFormatter(
+            lambda value, position: f"{value / 1000:g}k" if value != 0 else "0"
+        )
+    )
+
     sns.histplot(
         data=subdf,
         x="NM",
@@ -106,57 +122,69 @@ def main():
         cumulative=True,
         ax=ax2,
     )
+    ax2.set_xlabel("NM ≤ x")
+    ax2.set_ylabel("")
+    ax2.yaxis.set_major_formatter(
+        FuncFormatter(
+            lambda value, position: f"{value / 1000:g}k" if value != 0 else "0"
+        )
+    )
+    # plt.tight_layout()
+    # plt.show()
+    # plt.close()
+
+    # fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+
+    zeros_assembly = set(
+        subdf[(subdf["Reference"] == "Assembly") & (subdf["NM"] == 0)]["Read"].unique()
+    )
+    zeros_palss = set(
+        subdf[(subdf["Reference"] == "palss") & (subdf["NM"] == 0)]["Read"].unique()
+    )
+
+    # total = len(zeros_assembly | zeros_palss)
+    # venn2(
+    #     (zeros_assembly, zeros_palss),
+    #     set_labels=("Assembly", "palss"),
+    #     ax=ax3,
+    #     layout_algorithm=DefaultLayoutAlgorithm(fixed_subset_sizes=(2, 2, 2)),
+    #     subset_label_formatter=lambda v: f"{v}\n{v/total:.1%}",
+    # )
+
+    dataset_dict = {"Assembly": zeros_assembly, "palss": zeros_palss}
+    venn.venn(
+        dataset_dict,
+        fmt="{size}\n({percentage:.1f}%)",
+        cmap=sns.color_palette()[2:],
+        fontsize=10,
+        legend_loc="upper left",
+        ax=ax3,
+        # legend_loc=None,
+        figsize=(9, 7),
+    )
+    ax3.set_aspect("equal", adjustable="box")
+    ax3.margins(0)
+    ax3.axis("off")
+
+    # fig = ax3.get_figure()
+    # fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
+    # ax3.set_position([0, 0, 1, 1])
+    # ax3.axis("off")
+
+    ax1.set_title("(a)")
+    ax2.set_title("(b)")
+    ax3.set_title("(c)", pad=18)
+
+    # ax1.set_anchor("N")
+    # ax2.set_anchor("N")
+    # ax3.set_anchor("N")
+
+    # ax3.set_aspect("auto")
+
+    # fig.align_titles()
+    # plt.tight_layout(pad=0)
     plt.tight_layout()
-    if args.o == "":
-        plt.show()
-    else:
-        plt.savefig(args.o)
-
-    # plt.close()
-
-    # # df = subdf
-
-    # zeros_assembly = set(
-    #     df[(df["tool"] == "assembly") & (df["NM"] == 0)]["name"].unique()
-    # )
-    # zeros_palss0 = set(
-    #     df[(df["tool"] == "palss-s0") & (df["NM"] == 0)]["name"].unique()
-    # )
-    # zeros_palss3 = set(
-    #     df[(df["tool"] == "palss-s3") & (df["NM"] == 0)]["name"].unique()
-    # )
-    # zeros_original = set(
-    #     df[(df["tool"] == "original") & (df["NM"] == 0)]["name"].unique()
-    # )
-
-    # labels = venn.get_labels(
-    #     [zeros_assembly, zeros_palss0, zeros_palss3, zeros_original],
-    #     fill=["number"],  # , "logic"],
-    # )
-    # fig, ax = venn.venn4(labels, names=("Assembly", "palss-s0", "palss-s3", "original"))
-    # plt.show()
-
-    # plt.close()
-
-    # df = subdf
-
-    # zeros_assembly = set(
-    #     df[(df["tool"] == "assembly") & (df["NM"] == 0)]["name"].unique()
-    # )
-    # zeros_palss0 = set(
-    #     df[(df["tool"] == "palss-s0") & (df["NM"] == 0)]["name"].unique()
-    # )
-    # zeros_palss3 = set(
-    #     df[(df["tool"] == "palss-s3") & (df["NM"] == 0)]["name"].unique()
-    # )
-
-    # labels = venn.get_labels(
-    #     [zeros_assembly, zeros_palss0, zeros_palss3],
-    #     fill=["number"],  # , "logic"],
-    # )
-    # fig, ax = venn.venn3(labels, names=("Assembly", "palss-s0", "palss-s3"))
-
-    # plt.show()
+    plt.show()
 
 
 if __name__ == "__main__":
