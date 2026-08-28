@@ -95,14 +95,13 @@ rule palss_augment:
     threads: workflow.cores
     shell:
         """
-        # python3 ../clean_homopolymer.py {input.gaf} > {input.gaf}.clean.gaf 2> {input.gaf}.cleaning.log
-        /usr/bin/time -vo {log.time} ../palss augment -f -@4 -s {wildcards.w} -w {params.wd} -g {output.gaf} {input.pg} {input.gaf} > {output.gfa} 2> {log.log}
+        /usr/bin/time -vo {log.time} ../palss augment -f -@{threads} -s {wildcards.w} -w {params.wd} {input.pg} {input.gaf} > {output.gfa} 2> {log.log}
         """
 
 
 rule gaf2fa:
     input:
-        gaf=rules.palss_augment.output.gaf,
+        gaf=rules.palss_align.output.gaf,
     output:
         fa=pjoin(
             WD, "palss", "n{n}", "cov{cov}", "anchoredconsensus-{graph}.d{d}.w{w}.fa"
